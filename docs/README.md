@@ -3,6 +3,7 @@
 ## Current Source Of Truth
 
 - `overhaul-20260302.md`: current implementation and execution checklist (Phase 1 MCP baseline)
+- `mcp_smoke_test_checklist.md`: deploy smoke test for MCP endpoints and usage logs
 - `sql/legacy/README.md`: SQL migration policy (`non-legacy` only for fresh setup)
 
 ## Legacy / Historical Docs

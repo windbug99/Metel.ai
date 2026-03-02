@@ -64,7 +64,13 @@ Operationally, metel records:
 Service connection (OAuth / status / disconnect):
 - Notion
 - Linear
-- Google Calendar
+
+Phase 1 validation status (staging/prod smoke, 2026-03-02):
+- MCP `list_tools` success
+- Notion `call_tool` success (`notion_retrieve_bot_user`)
+- Linear `call_tool` success (`linear_get_viewer`)
+- structured schema error verified (`missing_required_field`)
+- rate limit verified (`rate_limit_exceeded`)
 
 MCP and control features (implemented):
 - `POST /mcp/list_tools`
@@ -195,6 +201,7 @@ docs/sql/legacy/           archived (non-baseline) migrations
 ## Related Docs
 
 - `docs/overhaul-20260302.md` (source-of-truth)
+- `docs/mcp_smoke_test_checklist.md` (deploy smoke test procedure)
 - `docs/sql/legacy/README.md` (migration policy)
 - `docs/work_plan.md` (legacy)
 - `docs/service_plan.md` (legacy)

@@ -42,14 +42,17 @@ cat <<'EOF'
     python scripts/backfill_oauth_granted_scopes.py --apply --limit 1000
 
 [predeploy-dag] 6) staging smoke scenario (manual)
-- Run: MCP `list_tools`, `call_tool` smoke request
+- Run: follow `docs/mcp_smoke_test_checklist.md`
 - Verify:
-  1) `list_tools` returns connected notion/linear tools
-  2) `call_tool` succeeds and logs to `tool_calls`
-  3) `tool_calls` dashboard/API reflects recent call
+  1) `list_tools` success
+  2) Notion/Linear `call_tool` success
+  3) schema error (`missing_required_field`) response shape
+  4) rate limit (`rate_limit_exceeded`) response
+  5) `tool_calls` rows/log visibility
 
 [predeploy-dag] checklist source:
 - ${DOC_PATH}
+- ${ROOT_DIR}/../docs/mcp_smoke_test_checklist.md
 EOF
 
 echo "[predeploy-dag] done"
