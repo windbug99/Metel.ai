@@ -220,6 +220,11 @@ def main() -> int:
                 _write_json(response)
         except urlerror.HTTPError as exc:
             status = exc.code
+            if os.getenv("BRIDGE_DEBUG") == "1":
+                print(
+                    f"[mcp-bridge] upstream_http_error status={status} req_id={request.get('id') if isinstance(request, dict) else None}",
+                    file=sys.stderr,
+                )
             payload = _error_response(
                 request.get("id") if isinstance(request, dict) else None,
                 -32000,
@@ -228,6 +233,11 @@ def main() -> int:
             )
             _write_json(payload)
         except urlerror.URLError as exc:
+            if os.getenv("BRIDGE_DEBUG") == "1":
+                print(
+                    f"[mcp-bridge] upstream_network_error detail={exc.reason} req_id={request.get('id') if isinstance(request, dict) else None}",
+                    file=sys.stderr,
+                )
             payload = _error_response(
                 request.get("id") if isinstance(request, dict) else None,
                 -32002,
