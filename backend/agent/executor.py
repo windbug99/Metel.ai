@@ -1297,6 +1297,23 @@ def _sanitize_stepwise_request_payload(
     return payload
 
 
+def _build_semantic_validation_payload(
+    *,
+    tool_name: str,
+    raw_payload: dict[str, object],
+    sanitized_payload: dict[str, object],
+) -> dict[str, object]:
+    payload = dict(sanitized_payload or {})
+    normalized_tool = str(tool_name or "").strip().lower()
+    if normalized_tool == "google_calendar_list_events":
+        for key in ("time_min", "time_max"):
+            raw_value = str((raw_payload or {}).get(key) or "").strip()
+            if raw_value and key not in payload:
+                # Preserve raw invalid datetime hints for semantic preflight rejection.
+                payload[key] = raw_value
+    return payload
+
+
 def _extract_team_nodes_from_payload(data: object) -> list[dict]:
     if not isinstance(data, dict):
         return []
@@ -1998,6 +2015,7 @@ async def _execute_stepwise_pipeline_task(user_id: str, plan: AgentPlan) -> Agen
                 },
                 steps=execution_steps + [AgentExecutionStep(name=step_id, status="error", detail=parse_error)],
             )
+        raw_request_payload = dict(request_payload) if isinstance(request_payload, dict) else {}
         request_payload = _sanitize_stepwise_request_payload(
             tool_name=tool_name,
             sentence=sentence,
@@ -2079,10 +2097,15 @@ async def _execute_stepwise_pipeline_task(user_id: str, plan: AgentPlan) -> Agen
                 },
                 steps=execution_steps + [AgentExecutionStep(name=step_id, status="error", detail=f"missing_required_fields:{','.join(missing_required_fields)}")],
             )
+        semantic_payload = _build_semantic_validation_payload(
+            tool_name=tool_name,
+            raw_payload=raw_request_payload,
+            sanitized_payload=request_payload,
+        )
         semantic_errors = _validate_stepwise_payload_semantics(
             tool_name=tool_name,
             input_schema=tool_def.input_schema,
-            payload=request_payload,
+            payload=semantic_payload,
         )
         if semantic_errors:
             validation_detail = semantic_errors[0]
@@ -2850,7 +2873,54 @@ async def _autofill_linear_create_with_llm(
     return out
 
 
+def _should_force_generate_linear_update_description(user_text: str) -> bool:
+    lowered = (user_text or "").lower()
+    return (
+        any(token in lowered for token in ("linear", "리니어"))
+        and any(token in lowered for token in ("이슈", "issue"))
+        and any(token in lowered for token in ("설명", "description", "본문"))
+        and any(token in lowered for token in ("생성", "작성", "만들", "generate"))
+        and any(token in lowered for token in ("서식", "양식", "템플릿", "template"))
+        and not any(token in lowered for token in ("notion", "노션", "페이지", "page"))
+    )
+
+
+def _should_force_generate_notion_append_content(user_text: str) -> bool:
+    lowered = (user_text or "").lower()
+    has_generation_signal = any(token in lowered for token in ("생성", "작성", "만들", "generate"))
+    has_template_or_transform_signal = any(
+        token in lowered
+        for token in ("서식", "양식", "템플릿", "template", "초안", "바탕으로", "기반으로", "참고", "요약", "실행 계획")
+    )
+    return (
+        any(token in lowered for token in ("notion", "노션"))
+        and any(token in lowered for token in ("페이지", "page", "본문", "내용"))
+        and any(token in lowered for token in ("업데이트", "추가", "append", "update"))
+        and has_generation_signal
+        and has_template_or_transform_signal
+    )
+
+
+async def _generate_notion_append_content_with_llm(*, user_text: str, filled: dict) -> str:
+    system_prompt = (
+        "사용자 요청에서 Notion 페이지 본문 추가/업데이트용 텍스트를 생성하는 JSON 생성기다. "
+        "반드시 JSON object만 반환한다."
+    )
+    user_prompt = (
+        "아래 입력으로 notion_append_block_children payload의 본문 텍스트를 생성해라.\n"
+        "- 사용자가 요청한 서식/템플릿을 실제 본문 형태로 작성한다.\n"
+        "- 설명문/메타문구 없이 붙여넣기 가능한 본문만 생성한다.\n"
+        "- 한국어로 간결하게 작성한다.\n\n"
+        f"user_text={user_text}\n"
+        f"current_payload={json.dumps(filled, ensure_ascii=False)}\n"
+        '반환 스키마: {"content":string|null}'
+    )
+    parsed = await _request_autofill_json(system_prompt=system_prompt, user_prompt=user_prompt) or {}
+    return str(parsed.get("content") or "").strip()[:5000]
+
+
 async def _autofill_linear_update_with_llm(*, user_text: str, filled: dict) -> dict:
+    force_generate_description = _should_force_generate_linear_update_description(user_text)
     system_prompt = (
         "사용자 요청에서 Linear 이슈 업데이트 입력을 자동 추론하는 JSON 생성기다. "
         "반드시 JSON object만 반환한다."
@@ -2859,6 +2929,7 @@ async def _autofill_linear_update_with_llm(*, user_text: str, filled: dict) -> d
         "아래 입력으로 linear_update_issue payload를 보정해라.\n"
         "- issue_id는 이미 확정된 값이 있으면 유지하고, 없으면 null.\n"
         "- title/description/state_id/priority 중 최소 1개를 채운다.\n"
+        "- 사용자가 '서식/템플릿 생성'을 요청하면 description에 실제 본문 초안을 생성한다.\n"
         "- priority는 0~4 정수 또는 null.\n\n"
         f"user_text={user_text}\n"
         f"current_payload={json.dumps(filled, ensure_ascii=False)}\n"
@@ -2868,7 +2939,7 @@ async def _autofill_linear_update_with_llm(*, user_text: str, filled: dict) -> d
     out = dict(filled)
     for key, max_len in (("title", 120), ("description", 5000), ("state_id", 128)):
         value = str(parsed.get(key) or "").strip()
-        if value and _missing(out.get(key)):
+        if value and (_missing(out.get(key)) or (key == "description" and force_generate_description)):
             out[key] = value[:max_len]
     priority = _sanitize_linear_priority(parsed.get("priority"))
     if priority is not None and out.get("priority") in (None, ""):
@@ -3065,6 +3136,13 @@ def _extract_page_url_from_tool_result(result: dict) -> str:
     if isinstance(data, dict):
         return str(data.get("url") or "")
     return ""
+
+
+def _notion_url_from_page_id(page_id: str) -> str:
+    normalized = re.sub(r"[^0-9a-fA-F]", "", str(page_id or ""))
+    if len(normalized) != 32:
+        return ""
+    return f"https://www.notion.so/{normalized}"
 
 
 def _extract_linear_issue_url_from_tool_result(result: dict) -> str:
@@ -3333,6 +3411,23 @@ def _first_notion_page_id(result: dict) -> str:
     return ""
 
 
+def _first_notion_page_url(result: dict) -> str:
+    data = result.get("data") or {}
+    if isinstance(data, dict):
+        page_url = str(data.get("url") or "").strip()
+        if page_url:
+            return page_url
+        results = data.get("results") or []
+        if isinstance(results, list):
+            for item in results:
+                if not isinstance(item, dict):
+                    continue
+                candidate = str(item.get("url") or "").strip()
+                if candidate:
+                    return candidate
+    return ""
+
+
 def _first_linear_issue_id(result: dict) -> str:
     data = result.get("data") or {}
     if not isinstance(data, dict):
@@ -3373,6 +3468,13 @@ def _update_slot_context_from_tool_result(slot_context: dict[str, str], tool_nam
         page_id = _first_notion_page_id(tool_result)
         if page_id:
             slot_context["recent_notion_page_id"] = page_id
+        page_url = _first_notion_page_url(tool_result)
+        if page_url:
+            slot_context["recent_notion_page_url"] = page_url
+        elif page_id:
+            derived = _notion_url_from_page_id(page_id)
+            if derived:
+                slot_context["recent_notion_page_url"] = derived
     if "linear" in tool_name:
         issue_id = _first_linear_issue_id(tool_result)
         if issue_id:
@@ -3474,8 +3576,9 @@ async def _autofill_task_payload(
 
     if "notion_update_page" in tool_name and _missing(filled.get("page_id")):
         page_id = slot_context.get("recent_notion_page_id", "")
+        rename_title, rename_new_title = (None, None)
         if not page_id and allow_user_text_reparse:
-            rename_title, _ = _extract_page_rename_request(user_text)
+            rename_title, rename_new_title = _extract_page_rename_request(user_text)
             move_title, _ = _extract_move_request(user_text)
             archive_title = _extract_page_archive_target(user_text)
             candidate_title = rename_title or move_title or archive_title or _extract_first_quoted_text(user_text) or ""
@@ -3488,6 +3591,10 @@ async def _autofill_task_payload(
                 )
         if page_id:
             filled["page_id"] = page_id
+            slot_context["recent_notion_page_id"] = page_id
+            slot_context.setdefault("recent_notion_page_url", _notion_url_from_page_id(page_id))
+        if _missing(filled.get("title")) and rename_new_title:
+            filled["title"] = rename_new_title[:100]
 
     if "notion_append_block_children" in tool_name and _missing(filled.get("block_id")):
         page_id = slot_context.get("recent_notion_page_id", "")
@@ -3501,7 +3608,7 @@ async def _autofill_task_payload(
                     page_title=candidate_title,
                     steps=steps,
                 )
-            if _missing(filled.get("children")) and content:
+            if _missing(filled.get("children")) and content and not _should_force_generate_notion_append_content(user_text):
                 filled["children"] = [
                     {
                         "object": "block",
@@ -3511,6 +3618,22 @@ async def _autofill_task_payload(
                 ]
         if page_id:
             filled["block_id"] = page_id
+            slot_context["recent_notion_page_id"] = page_id
+            slot_context.setdefault("recent_notion_page_url", _notion_url_from_page_id(page_id))
+
+    force_generate_notion_append = _should_force_generate_notion_append_content(user_text)
+    if "notion_append_block_children" in tool_name and (_missing(filled.get("children")) or force_generate_notion_append):
+        _, content = _extract_append_target_and_content(user_text)
+        if force_generate_notion_append:
+            generated = await _generate_notion_append_content_with_llm(user_text=user_text, filled=filled)
+            if generated:
+                content = generated
+                steps.append(AgentExecutionStep(name="llm_autofill_notion_append_children", status="success", detail="applied=1"))
+        fallback_text = (content or "").strip()
+        if not fallback_text and not force_generate_notion_append:
+            fallback_text = user_text.strip()
+        if fallback_text:
+            filled["children"] = [_notion_paragraph_block(fallback_text)]
 
     if "linear_create_issue" in tool_name:
         if _missing(filled.get("title")) and allow_user_text_reparse:
@@ -3593,7 +3716,10 @@ async def _autofill_task_payload(
                 )
                 if resolved_issue_id:
                     filled["issue_id"] = resolved_issue_id
-        if not any(filled.get(key) not in (None, "") for key in ("title", "description", "state_id", "priority")):
+        if (
+            not any(filled.get(key) not in (None, "") for key in ("title", "description", "state_id", "priority"))
+            or _should_force_generate_linear_update_description(user_text)
+        ):
             filled = await _autofill_linear_update_with_llm(user_text=user_text, filled=filled)
             steps.append(AgentExecutionStep(name="llm_autofill_linear_update_issue", status="success", detail="applied=1"))
         # Normalize optional linear_update_issue fields to avoid avoidable validation failures.
@@ -3748,6 +3874,8 @@ async def _force_fill_missing_slots(
                 pass
         if page_id:
             filled["page_id"] = page_id
+            slot_context["recent_notion_page_id"] = page_id
+            slot_context.setdefault("recent_notion_page_url", _notion_url_from_page_id(page_id))
 
     if "notion_append_block_children" in tool_name and _missing(filled.get("block_id")):
         block_id = slot_context.get("recent_notion_page_id", "")
@@ -3764,16 +3892,21 @@ async def _force_fill_missing_slots(
                 pass
         if block_id:
             filled["block_id"] = block_id
-        if _missing(filled.get("children")):
-            _, extracted_content = _extract_append_target_and_content(user_text)
-            fallback_text = extracted_content or user_text
-            filled["children"] = [
-                {
-                    "object": "block",
-                    "type": "paragraph",
-                    "paragraph": {"rich_text": [{"type": "text", "text": {"content": fallback_text[:1800]}}]},
-                }
-            ]
+            slot_context["recent_notion_page_id"] = block_id
+            slot_context.setdefault("recent_notion_page_url", _notion_url_from_page_id(block_id))
+    force_generate_notion_append = _should_force_generate_notion_append_content(user_text)
+    if "notion_append_block_children" in tool_name and (_missing(filled.get("children")) or force_generate_notion_append):
+        _, extracted_content = _extract_append_target_and_content(user_text)
+        if force_generate_notion_append:
+            generated = await _generate_notion_append_content_with_llm(user_text=user_text, filled=filled)
+            if generated:
+                extracted_content = generated
+                steps.append(AgentExecutionStep(name="force_fill_llm_notion_append_children", status="success", detail="applied=1"))
+        fallback_text = (extracted_content or "").strip()
+        if not fallback_text and not force_generate_notion_append:
+            fallback_text = user_text.strip()
+        if fallback_text:
+            filled["children"] = [_notion_paragraph_block(fallback_text)]
 
     if "linear_search_issues" in tool_name and _missing(filled.get("query")):
         filled["query"] = _extract_linear_search_query(user_text) or "최근"
@@ -3862,6 +3995,26 @@ async def _execute_task_orchestration(user_id: str, plan: AgentPlan) -> AgentExe
                     normalized2, missing_slots2, validation_errors2 = validate_slots(tool_name, payload)
                     payload = normalized2
                     if validation_errors2:
+                        if any(token in tool_name.lower() for token in ("notion_update_page", "notion_append_block_children")):
+                            ask_slot = validation_errors2[0].split(":", 1)[0]
+                            return AgentExecutionResult(
+                                success=False,
+                                summary="추가 정보가 필요합니다.",
+                                user_message=(
+                                    f"요청을 계속하려면 `{ask_slot}` 정보를 알려주세요.\n"
+                                    f"예: {_slot_prompt_example(tool_name, ask_slot)}"
+                                ),
+                                artifacts={
+                                    "error_code": "clarification_needed",
+                                    "slot_action": tool_name,
+                                    "slot_task_id": task.id,
+                                    "missing_slot": ask_slot,
+                                    "missing_slots": ask_slot,
+                                    "validation_error": validation_errors2[0],
+                                    "slot_payload_json": json.dumps(payload, ensure_ascii=False),
+                                },
+                                steps=steps + [AgentExecutionStep(name=task.id, status="error", detail=f"clarification_validation:{ask_slot}")],
+                            )
                         return AgentExecutionResult(
                             success=False,
                             summary="자동 입력 보정에 실패했습니다.",
@@ -3876,6 +4029,25 @@ async def _execute_task_orchestration(user_id: str, plan: AgentPlan) -> AgentExe
                             steps=steps + [AgentExecutionStep(name=task.id, status="error", detail=f"autofill_validation:{validation_errors2[0]}")],
                         )
                     if missing_slots2:
+                        if any(token in tool_name.lower() for token in ("notion_update_page", "notion_append_block_children")):
+                            missing_slot = missing_slots2[0]
+                            return AgentExecutionResult(
+                                success=False,
+                                summary="추가 정보가 필요합니다.",
+                                user_message=(
+                                    f"`{missing_slot}` 값을 먼저 알려주세요.\n"
+                                    f"예: {_slot_prompt_example(tool_name, missing_slot)}"
+                                ),
+                                artifacts={
+                                    "error_code": "clarification_needed",
+                                    "slot_action": tool_name,
+                                    "slot_task_id": task.id,
+                                    "missing_slot": missing_slot,
+                                    "missing_slots": ",".join(missing_slots2),
+                                    "slot_payload_json": json.dumps(payload, ensure_ascii=False),
+                                },
+                                steps=steps + [AgentExecutionStep(name=task.id, status="error", detail=f"clarification_missing:{missing_slot}")],
+                            )
                         return AgentExecutionResult(
                             success=False,
                             summary="자동 입력 보정에 실패했습니다.",
@@ -4046,6 +4218,14 @@ async def _execute_task_orchestration(user_id: str, plan: AgentPlan) -> AgentExe
         if page_url:
             artifacts["created_page_url"] = page_url
             final_user_message = f"{final_user_message}\n- 생성 페이지: {page_url}"
+        if "notion_" in tool_name and not artifacts.get("notion_page_url"):
+            notion_page_url = page_url or slot_context.get("recent_notion_page_url", "")
+            if not notion_page_url:
+                notion_page_url = _notion_url_from_page_id(slot_context.get("recent_notion_page_id", ""))
+            if notion_page_url:
+                artifacts["notion_page_url"] = notion_page_url
+                if "notion_create_page" not in tool_name:
+                    final_user_message = f"{final_user_message}\n- 페이지 링크: {notion_page_url}"
         issue_url = _extract_linear_issue_url_from_tool_result(tool_result)
         if issue_url and issue_url != artifacts.get("linear_issue_url"):
             artifacts["linear_issue_url"] = issue_url
@@ -4146,16 +4326,20 @@ def _extract_nested_create_request(user_text: str) -> tuple[str | None, str | No
 
 def _extract_target_page_title(user_text: str) -> str | None:
     patterns = [
-        r"(?i)(?:노션에서\s*)?(.+?)의\s*(?:내용|본문)",
-        r"(?i)(?:노션에서\s*)?(.+?)\s*페이지(?:의)?\s*(?:내용|본문)",
-        r"(?i)(?:노션에서\s*)?(.+?)\s*(?:페이지)?\s*요약(?:해줘|해|해서|해봐)?",
+        r"(?i)(?:(?:노션|notion)(?:에서|에)?\s*)?(.+?)의\s*(?:내용|본문)",
+        r"(?i)(?:(?:노션|notion)(?:에서|에)?\s*)?(.+?)\s*페이지(?:의)?\s*(?:내용|본문)",
+        r"(?i)(?:(?:노션|notion)(?:에서|에)?\s*)?(.+?)의\s*(?:설명|description)",
+        r"(?i)(?:(?:노션|notion)(?:에서|에)?\s*)?(.+?)\s*페이지(?:의)?\s*(?:설명|description)",
+        r"(?i)(?:(?:노션|notion)(?:에서|에)?\s*)?(.+?)\s*(?:페이지)?\s*요약(?:해줘|해|해서|해봐)?",
     ]
     for pattern in patterns:
         match = re.search(pattern, user_text)
         if not match:
             continue
         candidate = match.group(1).strip(" \"'`")
-        candidate = re.sub(r"^(노션|notion)\s*", "", candidate, flags=re.IGNORECASE).strip()
+        candidate = re.sub(r"^(?:노션|notion)(?:에서|에)?\s*", "", candidate, flags=re.IGNORECASE).strip()
+        if any(token in (user_text or "").lower() for token in ("설명", "description")):
+            candidate = re.sub(r"\s*페이지$", "", candidate, flags=re.IGNORECASE).strip()
         if candidate:
             return candidate
     return None
@@ -4204,6 +4388,45 @@ def _extract_append_target_and_content(user_text: str) -> tuple[str | None, str 
         content = match.group("content").strip(" \"'`")
         if title and content:
             return title, content
+
+    # update form:
+    # "노션에서 서비스 기획서 페이지의 설명에 회의록 서식을 생성해서 업데이트 하세요"
+    match = re.search(
+        r'(?is)(?:(?:노션|notion)에서\s*)?(?P<title>.+?)\s*(?:페이지)?(?:의)?\s*(?:설명|내용|본문|description)에\s*(?P<content>.+?)\s*(?:을|를)?\s*(?:생성(?:해서)?\s*)?(?:업데이트|수정|변경)\s*(?:해줘|해|해줘요|해주세요|하세요)?$',
+        text_for_parse,
+    )
+    if match:
+        title = re.sub(r"^(?:노션|notion)(?:에서|에)?\s*", "", match.group("title").strip(" \"'`"), flags=re.IGNORECASE).strip()
+        content = match.group("content").strip(" \"'`")
+        if title and content:
+            return title, content
+
+    # generation-from-existing-body form:
+    # "노션에서 '서비스 기획서' 페이지의 본문을 바탕으로 실행 계획을 생성해서 업데이트해줘"
+    match = re.search(
+        r'(?is)(?:(?:노션|notion)에서\s*)?(?P<title>.+?)\s*(?:페이지)?(?:의)?\s*(?:본문|내용|설명|description)(?:을|를)?\s*(?:바탕으로|기반으로|참고(?:해|하여)?)\s*(?P<content>.+?)\s*(?:을|를)?\s*생성(?:해서)?\s*(?:업데이트|수정|변경|추가|작성)\s*(?:해줘|해|해줘요|해주세요|하세요)?$',
+        text_for_parse,
+    )
+    if match:
+        title = re.sub(r"^(?:노션|notion)(?:에서|에)?\s*", "", match.group("title").strip(" \"'`"), flags=re.IGNORECASE).strip()
+        content = match.group("content").strip(" \"'`")
+        if content.endswith(("을", "를")) and len(content) > 1:
+            content = content[:-1].strip()
+        if title and content:
+            return title, content
+
+    # explicit body-update form:
+    # "노션에서 \"스프린트 보고서 v2\" 페이지 본문 업데이트: ... "
+    match = re.search(
+        r'(?is)(?:(?:노션|notion)에서\s*)?(?P<title>.+?)\s*(?:페이지)?\s*(?:본문|내용|설명|description)\s*(?:업데이트|수정|변경)\s*[:：]\s*(?P<content>.+)$',
+        text_for_parse,
+    )
+    if match:
+        title = re.sub(r"^(?:노션|notion)(?:에서|에)?\s*", "", match.group("title").strip(" \"'`"), flags=re.IGNORECASE).strip()
+        title = re.sub(r"\s*페이지$", "", title, flags=re.IGNORECASE).strip()
+        content = match.group("content").strip(" \"'`")
+        if title and content:
+            return title, content
     return None, None
 
 
@@ -4227,8 +4450,8 @@ def _extract_move_request(user_text: str) -> tuple[str | None, str | None]:
 
 def _extract_page_rename_request(user_text: str) -> tuple[str | None, str | None]:
     patterns = [
-        r'(?i)(?:노션에서\s*)?"?(?P<title>.+?)"?\s*(?:페이지)?\s*제목(?:을)?\s*"?(?P<new_title>.+?)"?\s*로\s*(?:변경|수정|바꿔줘|바꿔|바꾸고|바꾸|rename)',
-        r'(?i)(?:노션에서\s*)?"?(?P<title>.+?)"?의\s*제목(?:을)?\s*"?(?P<new_title>.+?)"?\s*로\s*(?:변경|수정|바꿔줘|바꿔|바꾸고|바꾸|rename)',
+        r'(?i)(?:노션에서\s*)?"?(?P<title>.+?)"?\s*(?:페이지)?\s*제목(?:을)?\s*"?(?P<new_title>.+?)"?\s*로\s*(?:변경|수정|업데이트|바꿔줘|바꿔|바꾸고|바꾸|rename)',
+        r'(?i)(?:노션에서\s*)?"?(?P<title>.+?)"?의\s*제목(?:을)?\s*"?(?P<new_title>.+?)"?\s*로\s*(?:변경|수정|업데이트|바꿔줘|바꿔|바꾸고|바꾸|rename)',
     ]
     for pattern in patterns:
         match = re.search(pattern, user_text.strip())

@@ -13,8 +13,9 @@ import httpx
 from fastapi import APIRouter, Header, HTTPException, Request
 from supabase import create_client
 
-from agent.loop import run_agent_analysis
+from agent.loop import _should_run_atomic_overhaul, run_agent_analysis
 from agent.registry import load_registry
+from agent.runtime_api_profile import build_runtime_api_profile
 from agent.service_resolver import resolve_primary_service
 from app.core.auth import get_authenticated_user_id
 from app.core.config import get_settings
@@ -36,6 +37,49 @@ router = APIRouter(prefix="/api/telegram", tags=["telegram"])
 logger = logging.getLogger(__name__)
 OPENAI_CHAT_COMPLETIONS_URL = "https://api.openai.com/v1/chat/completions"
 GEMINI_GENERATE_CONTENT_URL = "https://generativelanguage.googleapis.com/v1beta/models/{model}:generateContent?key={api_key}"
+
+_HELP_FEATURES: dict[str, list[dict[str, object]]] = {
+    "linear": [
+        {"name": "최근 이슈 조회", "tools": ["linear_list_issues"], "examples": ["linear 최근 이슈 5개 검색해줘"]},
+        {"name": "이슈 검색", "tools": ["linear_search_issues"], "examples": ['linear에서 "로그인 오류" 이슈 검색해줘']},
+        {
+            "name": "이슈 생성",
+            "tools": ["linear_create_issue", "linear_list_teams"],
+            "examples": ['linear에서 팀: operate, 제목: 결제 오류 대응 이슈 생성해줘'],
+        },
+        {
+            "name": "이슈 설명 추가/수정",
+            "tools": ["linear_update_issue"],
+            "examples": [
+                'linear에서 OPT-283 이슈의 설명에 "추가 메모"를 추가해줘',
+                'linear에서 OPT-283 이슈의 설명을 "수정 메모"로 수정해줘',
+            ],
+        },
+        {"name": "이슈 상태 변경", "tools": ["linear_update_issue", "linear_list_workflow_states"], "examples": ["linear에서 OPT-283 이슈의 상태를 Todo로 변경"]},
+        {"name": "댓글 작성", "tools": ["linear_create_comment"], "examples": ['linear에서 OPT-283 이슈에 댓글로 "재현 확인 필요"를 남겨줘']},
+    ],
+    "notion": [
+        {"name": "페이지 생성", "tools": ["notion_create_page"], "examples": ['notion에 "스프린트 회고" 페이지 생성해줘']},
+        {"name": "페이지 조회", "tools": ["notion_search"], "examples": ['notion에서 "서비스 기획서" 페이지 조회해줘']},
+        {
+            "name": "본문 업데이트/추가",
+            "tools": ["notion_update_page", "notion_append_block_children"],
+            "examples": ['notion에서 "서비스 기획서" 페이지 본문에 "다음 액션"을 추가해줘'],
+        },
+    ],
+    "google": [
+        {"name": "캘린더 목록 조회", "tools": ["google_calendar_list_calendars"], "examples": ["구글 캘린더 목록 보여줘"]},
+        {"name": "일정 조회", "tools": ["google_calendar_list_events"], "examples": ["오늘 구글 캘린더 일정 5개 조회해줘"]},
+    ],
+    "spotify": [
+        {"name": "내 프로필 조회", "tools": ["spotify_get_me"], "examples": ["spotify 내 계정 정보 보여줘"]},
+        {"name": "최근 재생 조회", "tools": ["spotify_get_recent_tracks"], "examples": ["spotify 최근 들은 곡 10개 보여줘"]},
+        {"name": "플레이리스트 생성", "tools": ["spotify_create_playlist"], "examples": ['spotify에 "출근용 플레이리스트" 생성해줘']},
+    ],
+    "web": [
+        {"name": "URL 본문 추출", "tools": ["http_fetch_url_text"], "examples": ["https://example.com 본문을 가져와 요약해줘"]},
+    ],
+}
 
 
 def _require_telegram_settings():
@@ -313,6 +357,96 @@ def _get_connected_services_for_user(user_id: str) -> list[str]:
     return list(dict.fromkeys(services))
 
 
+def _get_granted_scopes_for_user(user_id: str) -> dict[str, set[str]]:
+    settings = get_settings()
+    supabase = create_client(settings.supabase_url, settings.supabase_service_role_key)
+    result = (
+        supabase.table("oauth_tokens")
+        .select("provider,granted_scopes")
+        .eq("user_id", user_id)
+        .execute()
+    )
+    rows = result.data or []
+    scope_map: dict[str, set[str]] = {}
+    for row in rows:
+        provider = (row.get("provider") or "").strip().lower()
+        if not provider:
+            continue
+        raw = row.get("granted_scopes")
+        scopes: set[str] = set()
+        if isinstance(raw, list):
+            scopes = {str(item).strip() for item in raw if str(item).strip()}
+        elif isinstance(raw, str) and raw.strip():
+            scopes = {item.strip() for item in raw.replace(",", " ").split() if item.strip()}
+        scope_map[provider] = scopes
+    return scope_map
+
+
+def _normalize_help_target(target_text: str, connected_services: list[str]) -> str | None:
+    raw = (target_text or "").strip().lower()
+    if not raw:
+        return None
+    alias = {
+        "리니어": "linear",
+        "노션": "notion",
+        "구글": "google",
+        "캘린더": "google",
+        "스포티파이": "spotify",
+        "웹": "web",
+        "api": "",
+        "apis": "",
+    }
+    if raw in alias:
+        mapped = alias[raw]
+        return mapped or None
+    token = raw.split()[0].strip()
+    if token in alias:
+        mapped = alias[token]
+        return mapped or None
+    registry = load_registry()
+    available = set(registry.list_services())
+    if token in available:
+        return token
+    inferred = resolve_primary_service(raw, connected_services=connected_services)
+    if inferred in available:
+        return inferred
+    return None
+
+
+def _build_service_help_message(service: str, enabled_api_ids: set[str]) -> str:
+    svc = service.strip().lower()
+    features = _HELP_FEATURES.get(svc, [])
+    lines = [f"[{svc}] 사용 가능한 기능/예시"]
+    available_count = 0
+    for feature in features:
+        required_tools = [str(item) for item in (feature.get("tools") or [])]
+        if required_tools and not all(tool in enabled_api_ids for tool in required_tools):
+            continue
+        available_count += 1
+        lines.append(f"- 기능: {feature.get('name')}")
+        for example in feature.get("examples") or []:
+            lines.append(f"  예시: {example}")
+    if available_count == 0:
+        lines.append("- 현재 권한/연결 상태로 바로 실행 가능한 기능이 없습니다.")
+        lines.append(f"- OAuth 권한을 다시 승인한 뒤 /help {svc} 로 재확인하세요.")
+    return "\n".join(lines)
+
+
+def _build_status_message(connected_services: list[str]) -> str:
+    connected = [item.strip().lower() for item in (connected_services or []) if item and item.strip()]
+    connected = list(dict.fromkeys(connected))
+    registry = load_registry()
+    known_services = registry.list_services()
+
+    lines = ["현재 연동 상태입니다.", "- Telegram: 연결됨"]
+    for service in connected:
+        lines.append(f"- {service}: 연결됨")
+    for service in known_services:
+        if service not in connected:
+            lines.append(f"- {service}: 미연결")
+    return "\n".join(lines)
+
+
 async def _rewrite_user_preface_with_llm(
     *,
     settings,
@@ -390,8 +524,9 @@ def _map_natural_text_to_command(text: str) -> tuple[str, str]:
     raw = text.strip()
     lower = raw.lower()
 
-    if re.fullmatch(r"(?i)(?:/help|/menu|help|menu|도움말|메뉴|명령어)(?:\s*알려줘)?", raw):
-        return "/help", ""
+    help_match = re.fullmatch(r"(?i)(?:/help|/menu|/apis|/capabilities|help|menu|도움말|메뉴|명령어)\s*(.*)", raw)
+    if help_match:
+        return "/help", str(help_match.group(1) or "").strip()
 
     if re.fullmatch(r"(?i)(?:/status|status|상태|연결상태)(?:\s*(?:확인|조회|알려줘|보여줘))?", raw):
         return "/status", ""
@@ -476,6 +611,11 @@ def _record_command_log(
     failed_task_id: str | None = None,
     failure_reason: str | None = None,
     missing_required_fields: list[str] | None = None,
+    atomic_tool_name: str | None = None,
+    atomic_verified: bool | None = None,
+    atomic_verification_reason: str | None = None,
+    atomic_verification_retry_attempted: bool | None = None,
+    atomic_verification_checks: dict | None = None,
 ):
     try:
         settings = get_settings()
@@ -501,6 +641,11 @@ def _record_command_log(
             "failed_task_id": failed_task_id,
             "failure_reason": failure_reason,
             "missing_required_fields": missing_required_fields or [],
+            "atomic_tool_name": atomic_tool_name,
+            "atomic_verified": atomic_verified,
+            "atomic_verification_reason": atomic_verification_reason,
+            "atomic_verification_retry_attempted": atomic_verification_retry_attempted,
+            "atomic_verification_checks": atomic_verification_checks or {},
         }
         supabase.table("command_logs").insert(payload).execute()
     except Exception as exc:
@@ -534,6 +679,16 @@ def _record_pipeline_step_logs(
         except Exception:
             pass
         return []
+
+    def _parse_checks(raw: str | None) -> dict:
+        text = str(raw or "").strip()
+        if not text:
+            return {}
+        try:
+            parsed = json.loads(text)
+            return parsed if isinstance(parsed, dict) else {}
+        except Exception:
+            return {}
 
     # DAG node runs -> step logs
     dag_node_runs_json = str(artifacts.get("dag_node_runs_json") or "").strip()
@@ -653,6 +808,71 @@ def _record_pipeline_step_logs(
             }
         )
 
+    # Atomic overhaul fallback rows (single-tool pipeline) when DAG/stepwise rows are absent.
+    if not rows:
+        tool_name = str(artifacts.get("tool_name") or "").strip()
+        verified = str(artifacts.get("verified") or "").strip()
+        verification_reason = str(artifacts.get("verification_reason") or "").strip() or None
+        verification_checks = _parse_checks(str(artifacts.get("verification_checks") or "").strip())
+        error_code = str(artifacts.get("error_code") or "").strip() or None
+        missing_slot = str(artifacts.get("missing_slot") or "").strip()
+        service = _infer_service_from_api(tool_name) if tool_name else None
+        if tool_name:
+            call_status = "succeeded"
+            if error_code == "tool_failed":
+                call_status = "failed"
+            elif error_code in {"validation_error", "clarification_needed", "risk_gate_blocked"}:
+                call_status = "skipped"
+            rows.append(
+                {
+                    "run_id": run_id,
+                    "request_id": request_id,
+                    "user_id": user_id,
+                    "task_index": 1,
+                    "task_id": f"tool:{tool_name}",
+                    "sentence": tool_name,
+                    "service": service,
+                    "api": tool_name,
+                    "catalog_id": str(artifacts.get("catalog_id") or "").strip() or None,
+                    "contract_version": "v1",
+                    "llm_status": "success",
+                    "validation_status": "failed" if error_code in {"validation_error", "clarification_needed", "risk_gate_blocked"} else "passed",
+                    "call_status": call_status,
+                    "missing_required_fields": [missing_slot] if missing_slot else [],
+                    "validation_error_code": error_code,
+                    "failure_reason": verification_reason or error_code,
+                    "request_payload": None,
+                    "normalized_response": {"verification_checks": verification_checks} if verification_checks else None,
+                    "raw_response": None,
+                    "created_at": now_iso,
+                }
+            )
+
+            rows.append(
+                {
+                    "run_id": run_id,
+                    "request_id": request_id,
+                    "user_id": user_id,
+                    "task_index": 2,
+                    "task_id": "expectation_verification",
+                    "sentence": "expectation_verification",
+                    "service": service,
+                    "api": "expectation_verification",
+                    "catalog_id": str(artifacts.get("catalog_id") or "").strip() or None,
+                    "contract_version": "v1",
+                    "llm_status": "success",
+                    "validation_status": "passed" if verified == "1" else "failed",
+                    "call_status": "succeeded" if verified == "1" else "failed",
+                    "missing_required_fields": [],
+                    "validation_error_code": error_code if verified != "1" else None,
+                    "failure_reason": verification_reason if verified != "1" else None,
+                    "request_payload": None,
+                    "normalized_response": {"checks": verification_checks, "reason": verification_reason},
+                    "raw_response": None,
+                    "created_at": now_iso,
+                }
+            )
+
     if not rows:
         return
 
@@ -690,6 +910,19 @@ def _parse_missing_required_fields(value: object) -> list[str]:
     if not isinstance(parsed, list):
         return []
     return [str(item).strip() for item in parsed if str(item).strip()]
+
+
+def _parse_atomic_verification_checks(value: object) -> dict:
+    if isinstance(value, dict):
+        return value
+    raw = str(value or "").strip()
+    if not raw:
+        return {}
+    try:
+        parsed = json.loads(raw)
+    except Exception:
+        return {}
+    return parsed if isinstance(parsed, dict) else {}
 
 
 def _infer_service_from_api(api: str | None) -> str | None:
@@ -844,6 +1077,10 @@ def _build_structured_pipeline_log(
         "transform_error_count": transform_error_count,
         "verify_error_count": verify_error_count,
         "verify_fail_before_write": bool(verify_error_count > 0 and write_success_count == 0),
+        "atomic_tool_name": str(artifacts.get("tool_name") or "").strip() or None,
+        "atomic_verified": str(artifacts.get("verified") or "").strip() == "1",
+        "atomic_verification_reason": str(artifacts.get("verification_reason") or "").strip() or None,
+        "atomic_verification_retry_attempted": str(artifacts.get("verification_retry_attempted") or "").strip() == "1",
     }
     if router_mode != "STEPWISE_PIPELINE":
         return base_payload
@@ -1177,6 +1414,8 @@ async def telegram_webhook(
             v2_shadow_mode = None
             v2_shadow_executed = None
             v2_shadow_ok = None
+            atomic_overhaul_rollout = None
+            atomic_overhaul_shadow_mode = None
             skill_llm_transform_rollout = None
             skill_llm_transform_shadow_mode = None
             skill_llm_transform_shadow_executed = None
@@ -1201,6 +1440,10 @@ async def telegram_webhook(
                     v2_shadow_executed = note.split("=", 1)[1]
                 if note.startswith("skill_v2_shadow_ok="):
                     v2_shadow_ok = note.split("=", 1)[1]
+                if note.startswith("atomic_overhaul_rollout="):
+                    atomic_overhaul_rollout = note.split("=", 1)[1]
+                if note.startswith("atomic_overhaul_shadow_mode="):
+                    atomic_overhaul_shadow_mode = note.split("=", 1)[1]
                 if note.startswith("skill_llm_transform_rollout="):
                     skill_llm_transform_rollout = note.split("=", 1)[1]
                 if note.startswith("skill_llm_transform_shadow_mode="):
@@ -1211,6 +1454,18 @@ async def telegram_webhook(
                     skill_llm_transform_shadow_ok = note.split("=", 1)[1]
                 if note.startswith("router_source="):
                     router_source = note.split("=", 1)[1]
+            if atomic_overhaul_rollout is None or atomic_overhaul_shadow_mode is None:
+                try:
+                    atomic_serve, atomic_shadow, atomic_reason = _should_run_atomic_overhaul(
+                        settings=settings,
+                        user_id=str(user_id or ""),
+                    )
+                    if atomic_overhaul_rollout is None:
+                        atomic_overhaul_rollout = atomic_reason
+                    if atomic_overhaul_shadow_mode is None:
+                        atomic_overhaul_shadow_mode = "1" if atomic_shadow and not atomic_serve else "0"
+                except Exception:
+                    pass
             if analysis.execution:
                 execution_steps_text = (
                     "\n".join(f"- {step.name}: {step.status} ({step.detail})" for step in analysis.execution.steps)
@@ -1334,6 +1589,12 @@ async def telegram_webhook(
                 + (f";skill_v2_shadow_mode={v2_shadow_mode}" if v2_shadow_mode is not None else "")
                 + (f";skill_v2_shadow_executed={v2_shadow_executed}" if v2_shadow_executed is not None else "")
                 + (f";skill_v2_shadow_ok={v2_shadow_ok}" if v2_shadow_ok is not None else "")
+                + (f";atomic_overhaul_rollout={atomic_overhaul_rollout}" if atomic_overhaul_rollout else "")
+                + (
+                    f";atomic_overhaul_shadow_mode={atomic_overhaul_shadow_mode}"
+                    if atomic_overhaul_shadow_mode is not None
+                    else ""
+                )
                 + (f";skill_llm_transform_rollout={skill_llm_transform_rollout}" if skill_llm_transform_rollout else "")
                 + (
                     f";skill_llm_transform_shadow_mode={skill_llm_transform_shadow_mode}"
@@ -1408,6 +1669,15 @@ async def telegram_webhook(
                 failed_task_id=str(exec_artifacts.get("failed_task_id") or exec_artifacts.get("failed_step") or "").strip() or None,
                 failure_reason=str(exec_artifacts.get("failure_reason") or exec_artifacts.get("reason") or "").strip() or None,
                 missing_required_fields=_parse_missing_required_fields(exec_artifacts.get("missing_required_fields")),
+                atomic_tool_name=str(exec_artifacts.get("tool_name") or "").strip() or None,
+                atomic_verified=(str(exec_artifacts.get("verified") or "").strip() == "1") if exec_artifacts.get("verified") is not None else None,
+                atomic_verification_reason=str(exec_artifacts.get("verification_reason") or "").strip() or None,
+                atomic_verification_retry_attempted=(
+                    str(exec_artifacts.get("verification_retry_attempted") or "").strip() == "1"
+                    if exec_artifacts.get("verification_retry_attempted") is not None
+                    else None
+                ),
+                atomic_verification_checks=_parse_atomic_verification_checks(exec_artifacts.get("verification_checks")),
             )
             _record_pipeline_step_logs(
                 user_id=user_id,
@@ -1455,24 +1725,19 @@ async def telegram_webhook(
             return {"ok": True}
 
     if command in {"/status", "/my_status"}:
-        notion_connected = _is_notion_connected(user_id)
+        status_connected_services = _get_connected_services_for_user(str(user_id))
         _record_command_log(
             user_id=user_id,
             chat_id=chat_id,
             command=command,
             status="success",
-            detail=f"notion_connected={notion_connected}",
+            detail=f"connected_services={','.join(status_connected_services) if status_connected_services else '(none)'}",
         )
         await _telegram_api(
             "sendMessage",
             {
                 "chat_id": chat_id,
-                "text": (
-                    "현재 연동 상태입니다.\n"
-                    "- Telegram: 연결됨\n"
-                    f"- Notion: {'연결됨' if notion_connected else '미연결'}\n"
-                    "Notion 페이지 조회: /notion_pages"
-                ),
+                "text": _build_status_message(status_connected_services),
             },
         )
         return {"ok": True}
@@ -1616,7 +1881,54 @@ async def telegram_webhook(
         )
         return {"ok": True}
 
-    if command in {"/help", "/menu"}:
+    if command in {"/help", "/menu", "/apis", "/capabilities"}:
+        help_target = _normalize_help_target(rest, connected_services)
+        if rest.strip() and not help_target:
+            available = ", ".join(connected_services) if connected_services else "(없음)"
+            await _telegram_api(
+                "sendMessage",
+                {
+                    "chat_id": chat_id,
+                    "text": (
+                        f"지원하지 않는 서비스입니다: {rest.strip()}\n"
+                        f"연결된 서비스: {available}\n"
+                        "예: /help linear"
+                    ),
+                },
+            )
+            _record_command_log(
+                user_id=user_id,
+                chat_id=chat_id,
+                command=command,
+                status="error",
+                error_code="invalid_help_target",
+                detail=f"target={rest.strip()}",
+            )
+            return {"ok": True}
+
+        if help_target:
+            granted_scopes = _get_granted_scopes_for_user(str(user_id))
+            settings = get_settings()
+            profile = build_runtime_api_profile(
+                connected_services=connected_services,
+                granted_scopes=granted_scopes,
+                risk_policy={"allow_high_risk": bool(settings.delete_operations_enabled)},
+            )
+            enabled_api_ids = {str(item) for item in (profile.get("enabled_api_ids") or [])}
+            text_out = _build_service_help_message(help_target, enabled_api_ids)
+            _record_command_log(
+                user_id=user_id,
+                chat_id=chat_id,
+                command=command,
+                status="success",
+                detail=f"target_service={help_target}",
+            )
+            await _telegram_api(
+                "sendMessage",
+                {"chat_id": chat_id, "text": text_out, "disable_web_page_preview": True},
+            )
+            return {"ok": True}
+
         _record_command_log(
             user_id=user_id,
             chat_id=chat_id,
@@ -1630,9 +1942,7 @@ async def telegram_webhook(
                 "text": (
                     "사용 가능한 명령어\n"
                     "- /status\n"
-                    "- /notion_pages\n"
-                    "- /notion_pages 5\n"
-                    "- /notion_create 제목\n"
+                    "- /help linear | /help notion | /help google | /help spotify\n"
                     "- /disconnect\n"
                     "- /help"
                 ),

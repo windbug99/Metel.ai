@@ -23,6 +23,8 @@ from agent.executor import (
     _extract_linear_issue_reference,
     _extract_linear_update_fields,
     _ensure_linear_update_patch_field,
+    _should_force_generate_linear_update_description,
+    _should_force_generate_notion_append_content,
     _sanitize_stepwise_request_payload,
 )
 from agent.types import AgentPlan, AgentRequirement
@@ -72,6 +74,51 @@ def test_extract_output_title():
     assert title == "주간 회의록"
 
 
+def test_should_force_generate_linear_update_description_true():
+    assert (
+        _should_force_generate_linear_update_description(
+            "linear OPT-343 이슈 설명에 회의록 서식을 생성해서 업데이트하세요"
+        )
+        is True
+    )
+
+
+def test_should_force_generate_linear_update_description_false_for_notion_page_request():
+    assert (
+        _should_force_generate_linear_update_description(
+            "linear OPT-343 이슈 설명에 노션 페이지 내용을 생성해서 업데이트하세요"
+        )
+        is False
+    )
+
+
+def test_should_force_generate_notion_append_content_true():
+    assert (
+        _should_force_generate_notion_append_content(
+            "notion에서 Metel 자동 요약 페이지의 본문에 회의록 서식을 생성해서 업데이트 하세요"
+        )
+        is True
+    )
+
+
+def test_should_force_generate_notion_append_content_false_without_template_request():
+    assert (
+        _should_force_generate_notion_append_content(
+            "notion에서 Metel 자동 요약 페이지의 본문을 그대로 업데이트 하세요"
+        )
+        is False
+    )
+
+
+def test_should_force_generate_notion_append_content_true_for_transform_phrase():
+    assert (
+        _should_force_generate_notion_append_content(
+            'notion에서 "서비스 기획서" 페이지의 본문을 바탕으로 실행 계획을 생성해서 업데이트해줘'
+        )
+        is True
+    )
+
+
 def test_extract_target_page_title():
     title = _extract_target_page_title("노션에서 Metel test page의 내용 중 상위 10줄 출력")
     assert title == "Metel test page"
@@ -85,6 +132,11 @@ def test_extract_target_page_title_summary_pattern():
 def test_extract_target_page_title_with_trailing_body():
     title = _extract_target_page_title("노션에서 주간 회의록 페이지의 내용 중 핵심만 요약해줘 그리고 마지막에 TODO를 붙여줘")
     assert title == "주간 회의록 페이지"
+
+
+def test_extract_target_page_title_description_pattern():
+    title = _extract_target_page_title("notion에서 서비스 기획서 페이지의 설명에 회의록 서식을 생성해서 업데이트 하세요")
+    assert title == "서비스 기획서"
 
 
 def test_extract_requested_line_count():
@@ -174,6 +226,30 @@ def test_extract_append_target_and_content_content_first_formal():
     assert content == "다음 요약을"
 
 
+def test_extract_append_target_and_content_update_description_form():
+    title, content = _extract_append_target_and_content(
+        "notion에서 서비스 기획서 페이지의 설명에 회의록 서식을 생성해서 업데이트 하세요"
+    )
+    assert title == "서비스 기획서"
+    assert content == "회의록 서식"
+
+
+def test_extract_append_target_and_content_body_update_colon_form():
+    title, content = _extract_append_target_and_content(
+        '노션에서 "스프린트 보고서 v2" 페이지 본문 업데이트: 이번 주 배포 리스크와 대응 현황을 3줄로 추가'
+    )
+    assert title == "스프린트 보고서 v2"
+    assert content == "이번 주 배포 리스크와 대응 현황을 3줄로 추가"
+
+
+def test_extract_append_target_and_content_generate_from_existing_body_form():
+    title, content = _extract_append_target_and_content(
+        'notion에서 "서비스 기획서" 페이지의 본문을 바탕으로 실행 계획을 생성해서 업데이트해줘'
+    )
+    assert title == "서비스 기획서"
+    assert content == "실행 계획"
+
+
 def test_extract_page_rename_request():
     title, new_title = _extract_page_rename_request("노션에서 Metel test page 페이지 제목을 주간 회의록으로 변경")
     assert title == "Metel test page"
@@ -182,6 +258,10 @@ def test_extract_page_rename_request():
     title2, new_title2 = _extract_page_rename_request('더 코어 페이지 제목을 "더 코어 2"로 바꾸고')
     assert title2 == "더 코어"
     assert new_title2 == "더 코어 2"
+
+    title3, new_title3 = _extract_page_rename_request('노션에서 "스프린트 보고서" 페이지 제목을 "스프린트 보고서 v2"로 업데이트')
+    assert title3 == "스프린트 보고서"
+    assert new_title3 == "스프린트 보고서 v2"
 
 
 def test_extract_linear_update_fields_natural_state_expression():
@@ -1967,6 +2047,158 @@ def test_task_orchestration_autofills_notion_append_with_search(monkeypatch):
     result = asyncio.run(execute_agent_plan("user-1", plan))
     assert result.success is True
     assert [name for name, _ in calls] == ["notion_search", "notion_append_block_children"]
+    assert "페이지 링크: https://www.notion.so/" in result.user_message
+
+
+def test_task_orchestration_notion_append_generates_template_content_with_llm(monkeypatch):
+    calls = []
+
+    async def _fake_execute_tool(user_id: str, tool_name: str, payload: dict):
+        calls.append((tool_name, payload))
+        if tool_name == "notion_search":
+            return {
+                "ok": True,
+                "data": {
+                    "results": [
+                        {
+                            "id": "30c50e84a3bf8109b781ed4e0e0dacb3",
+                            "url": "https://notion.so/page-1",
+                            "properties": {"title": {"type": "title", "title": [{"plain_text": "Metel 자동 요약"}]}},
+                        }
+                    ]
+                },
+            }
+        if tool_name == "notion_append_block_children":
+            children = payload.get("children") or []
+            assert children
+            text = (((children[0].get("paragraph") or {}).get("rich_text") or [{}])[0].get("text") or {}).get("content", "")
+            assert "회의 제목" in text
+            assert "참석자" in text
+            return {"ok": True, "data": {"results": [{"id": "block-1"}]}}
+        raise AssertionError(f"unexpected tool: {tool_name}")
+
+    async def _fake_request_autofill_json(*, system_prompt: str, user_prompt: str):
+        _ = (system_prompt, user_prompt)
+        return {"content": "## 회의록\n- 회의 제목:\n- 일시:\n- 참석자:\n- 안건:\n- 결정사항:\n- 액션 아이템:"}
+
+    monkeypatch.setattr("agent.executor.execute_tool", _fake_execute_tool)
+    monkeypatch.setattr("agent.executor._request_autofill_json", _fake_request_autofill_json)
+
+    plan = AgentPlan(
+        user_text="notion에서 Metel 자동 요약 페이지의 본문에 회의록 서식을 생성해서 업데이트 하세요",
+        requirements=[AgentRequirement(summary="노션 본문 업데이트")],
+        target_services=["notion"],
+        selected_tools=["notion_search", "notion_append_block_children"],
+        workflow_steps=[],
+        tasks=[
+            AgentTask(
+                id="task_append",
+                title="본문 추가",
+                task_type="TOOL",
+                service="notion",
+                tool_name="notion_append_block_children",
+                payload={},
+                output_schema={"type": "tool_result"},
+            )
+        ],
+        notes=[],
+    )
+
+    result = asyncio.run(execute_agent_plan("user-1", plan))
+    assert result.success is True
+    assert [name for name, _ in calls] == ["notion_search", "notion_append_block_children"]
+
+
+def test_task_orchestration_notion_append_never_writes_raw_request_when_generation_fails(monkeypatch):
+    calls = []
+
+    async def _fake_execute_tool(user_id: str, tool_name: str, payload: dict):
+        calls.append((tool_name, payload))
+        if tool_name == "notion_search":
+            return {
+                "ok": True,
+                "data": {
+                    "results": [
+                        {
+                            "id": "30c50e84a3bf8109b781ed4e0e0dacb3",
+                            "url": "https://notion.so/page-1",
+                            "properties": {"title": {"type": "title", "title": [{"plain_text": "서비스 기획서"}]}},
+                        }
+                    ]
+                },
+            }
+        if tool_name == "notion_append_block_children":
+            children = payload.get("children") or []
+            assert children
+            text = (((children[0].get("paragraph") or {}).get("rich_text") or [{}])[0].get("text") or {}).get("content", "")
+            assert text != plan.user_text
+            return {"ok": True, "data": {"results": [{"id": "block-1"}]}}
+        raise AssertionError(f"unexpected tool: {tool_name}")
+
+    async def _fake_request_autofill_json(*, system_prompt: str, user_prompt: str):
+        _ = (system_prompt, user_prompt)
+        return {}
+
+    monkeypatch.setattr("agent.executor.execute_tool", _fake_execute_tool)
+    monkeypatch.setattr("agent.executor._request_autofill_json", _fake_request_autofill_json)
+
+    plan = AgentPlan(
+        user_text='notion에서 "서비스 기획서" 페이지 본문을 참고해 실행 계획을 생성해서 업데이트해줘',
+        requirements=[AgentRequirement(summary="노션 본문 업데이트")],
+        target_services=["notion"],
+        selected_tools=["notion_search", "notion_append_block_children"],
+        workflow_steps=[],
+        tasks=[
+            AgentTask(
+                id="task_append",
+                title="본문 추가",
+                task_type="TOOL",
+                service="notion",
+                tool_name="notion_append_block_children",
+                payload={},
+                output_schema={"type": "tool_result"},
+            )
+        ],
+        notes=[],
+    )
+
+    result = asyncio.run(execute_agent_plan("user-1", plan))
+    assert result.success is True
+    assert [name for name, _ in calls] == ["notion_search", "notion_append_block_children"]
+
+
+def test_task_orchestration_notion_update_missing_page_returns_clarification_needed(monkeypatch):
+    async def _fake_execute_tool(user_id: str, tool_name: str, payload: dict):
+        if tool_name == "notion_search":
+            return {"ok": True, "data": {"results": []}}
+        raise AssertionError(f"unexpected tool: {tool_name}")
+
+    monkeypatch.setattr("agent.executor.execute_tool", _fake_execute_tool)
+
+    plan = AgentPlan(
+        user_text='노션에서 "없는 페이지" 페이지 제목을 "새 제목"으로 업데이트',
+        requirements=[AgentRequirement(summary="노션 페이지 제목 업데이트")],
+        target_services=["notion"],
+        selected_tools=["notion_search", "notion_update_page"],
+        workflow_steps=[],
+        tasks=[
+            AgentTask(
+                id="task_update",
+                title="페이지 제목 업데이트",
+                task_type="TOOL",
+                service="notion",
+                tool_name="notion_update_page",
+                payload={},
+                output_schema={"type": "tool_result"},
+            )
+        ],
+        notes=[],
+    )
+
+    result = asyncio.run(execute_agent_plan("user-1", plan))
+    assert result.success is False
+    assert result.artifacts.get("error_code") == "clarification_needed"
+    assert result.artifacts.get("slot_action") == "notion_update_page"
 
 
 def test_execute_linear_create_issue_uses_task_payload(monkeypatch):
