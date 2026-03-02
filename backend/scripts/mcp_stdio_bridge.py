@@ -27,20 +27,25 @@ def _load_env() -> tuple[str, str]:
     return base_url, api_key
 
 
-def _write_json(payload: dict[str, Any]) -> None:
-    body = json.dumps(payload, ensure_ascii=False).encode("utf-8")
-    header = f"Content-Length: {len(body)}\r\n\r\n".encode("ascii")
-    sys.stdout.buffer.write(header)
-    sys.stdout.buffer.write(body)
-    sys.stdout.buffer.flush()
+def _write_json(payload: dict[str, Any], io_mode: str) -> None:
+    body_text = json.dumps(payload, ensure_ascii=False)
+    if io_mode == "ndjson":
+        sys.stdout.write(body_text + "\n")
+        sys.stdout.flush()
+    else:
+        body = body_text.encode("utf-8")
+        header = f"Content-Length: {len(body)}\r\nContent-Type: application/json\r\n\r\n".encode("ascii")
+        sys.stdout.buffer.write(header)
+        sys.stdout.buffer.write(body)
+        sys.stdout.buffer.flush()
     if os.getenv("BRIDGE_DEBUG") == "1":
         print(f"[mcp-bridge] -> {json.dumps(payload, ensure_ascii=False)}", file=sys.stderr)
 
 
-def _read_json() -> dict[str, Any] | None:
+def _parse_framed_message(first_line: bytes) -> dict[str, Any] | None:
     headers: dict[str, str] = {}
+    line = first_line
     while True:
-        line = sys.stdin.buffer.readline()
         if not line:
             return None
         # Header terminator.
@@ -51,6 +56,7 @@ def _read_json() -> dict[str, Any] | None:
             continue
         key, value = text.split(":", 1)
         headers[key.strip().lower()] = value.strip()
+        line = sys.stdin.buffer.readline()
 
     length_text = headers.get("content-length")
     if not length_text:
@@ -62,9 +68,42 @@ def _read_json() -> dict[str, Any] | None:
     parsed = json.loads(payload.decode("utf-8"))
     if not isinstance(parsed, dict):
         raise ValueError("invalid_request_body")
+    return parsed
+
+
+def _read_json(io_mode: str | None) -> tuple[dict[str, Any] | None, str | None]:
+    if io_mode == "ndjson":
+        line = sys.stdin.buffer.readline()
+        if not line:
+            return None, io_mode
+        raw = line.strip()
+        if not raw:
+            return None, io_mode
+        parsed = json.loads(raw.decode("utf-8"))
+        if not isinstance(parsed, dict):
+            raise ValueError("invalid_request_body")
+        if os.getenv("BRIDGE_DEBUG") == "1":
+            print(f"[mcp-bridge] <- {json.dumps(parsed, ensure_ascii=False)}", file=sys.stderr)
+        return parsed, io_mode
+
+    first_line = sys.stdin.buffer.readline()
+    if not first_line:
+        return None, io_mode
+    stripped = first_line.lstrip()
+    if io_mode is None and stripped.startswith(b"{"):
+        parsed = json.loads(first_line.decode("utf-8"))
+        if not isinstance(parsed, dict):
+            raise ValueError("invalid_request_body")
+        if os.getenv("BRIDGE_DEBUG") == "1":
+            print(f"[mcp-bridge] <- {json.dumps(parsed, ensure_ascii=False)}", file=sys.stderr)
+        return parsed, "ndjson"
+
+    parsed = _parse_framed_message(first_line)
+    if parsed is None:
+        return None, "framed" if io_mode is None else io_mode
     if os.getenv("BRIDGE_DEBUG") == "1":
         print(f"[mcp-bridge] <- {json.dumps(parsed, ensure_ascii=False)}", file=sys.stderr)
-    return parsed
+    return parsed, "framed" if io_mode is None else io_mode
 
 
 def _error_response(req_id: Any, code: int, message: str, data: dict[str, Any] | None = None) -> dict[str, Any]:
@@ -205,19 +244,20 @@ def main() -> int:
         print(f"[mcp-bridge] config_error: {exc}", file=sys.stderr)
         return 2
 
+    io_mode: str | None = None
     while True:
         request: dict[str, Any] | None = None
         try:
-            parsed = _read_json()
+            parsed, io_mode = _read_json(io_mode)
             if parsed is None:
                 break
             if not isinstance(parsed, dict):
-                _write_json(_error_response(None, -32600, "invalid_request_body"))
+                _write_json(_error_response(None, -32600, "invalid_request_body"), io_mode or "framed")
                 continue
             request = parsed
             response = _dispatch(request, base_url=base_url, api_key=api_key)
             if response is not None:
-                _write_json(response)
+                _write_json(response, io_mode or "framed")
         except urlerror.HTTPError as exc:
             status = exc.code
             if os.getenv("BRIDGE_DEBUG") == "1":
@@ -231,7 +271,7 @@ def main() -> int:
                 "upstream_http_error",
                 {"status_code": status},
             )
-            _write_json(payload)
+            _write_json(payload, io_mode or "framed")
         except urlerror.URLError as exc:
             if os.getenv("BRIDGE_DEBUG") == "1":
                 print(
@@ -244,7 +284,7 @@ def main() -> int:
                 "upstream_network_error",
                 {"detail": str(exc.reason)},
             )
-            _write_json(payload)
+            _write_json(payload, io_mode or "framed")
         except Exception as exc:  # pragma: no cover
             payload = _error_response(
                 request.get("id") if isinstance(request, dict) else None,
@@ -252,7 +292,7 @@ def main() -> int:
                 "bridge_internal_error",
                 {"detail": str(exc)},
             )
-            _write_json(payload)
+            _write_json(payload, io_mode or "framed")
     return 0
 
 
