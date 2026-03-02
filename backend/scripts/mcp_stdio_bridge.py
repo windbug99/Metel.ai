@@ -33,6 +33,8 @@ def _write_json(payload: dict[str, Any]) -> None:
     sys.stdout.buffer.write(header)
     sys.stdout.buffer.write(body)
     sys.stdout.buffer.flush()
+    if os.getenv("BRIDGE_DEBUG") == "1":
+        print(f"[mcp-bridge] -> {json.dumps(payload, ensure_ascii=False)}", file=sys.stderr)
 
 
 def _read_json() -> dict[str, Any] | None:
@@ -60,6 +62,8 @@ def _read_json() -> dict[str, Any] | None:
     parsed = json.loads(payload.decode("utf-8"))
     if not isinstance(parsed, dict):
         raise ValueError("invalid_request_body")
+    if os.getenv("BRIDGE_DEBUG") == "1":
+        print(f"[mcp-bridge] <- {json.dumps(parsed, ensure_ascii=False)}", file=sys.stderr)
     return parsed
 
 
@@ -94,12 +98,14 @@ def _post_jsonrpc(*, base_url: str, api_key: str, endpoint: str, payload: dict[s
     return parsed
 
 
-def _handle_initialize(req_id: Any) -> dict[str, Any]:
+def _handle_initialize(req_id: Any, params: dict[str, Any]) -> dict[str, Any]:
+    client_protocol = params.get("protocolVersion")
+    negotiated_protocol = client_protocol if isinstance(client_protocol, str) and client_protocol else PROTOCOL_VERSION
     return _ok_response(
         req_id,
         {
-            "protocolVersion": PROTOCOL_VERSION,
-            "capabilities": {"tools": {}},
+            "protocolVersion": negotiated_protocol,
+            "capabilities": {"tools": {"listChanged": False}},
             "serverInfo": {"name": SERVER_NAME, "version": SERVER_VERSION},
         },
     )
@@ -180,7 +186,7 @@ def _dispatch(request: dict[str, Any], *, base_url: str, api_key: str) -> dict[s
         return None
 
     if method == "initialize":
-        return _handle_initialize(req_id)
+        return _handle_initialize(req_id, params)
     if method == "notifications/initialized":
         return None
     if method == "ping":
