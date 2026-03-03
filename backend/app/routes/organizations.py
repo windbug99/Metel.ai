@@ -87,6 +87,11 @@ def _org_member_role(*, supabase, user_id: str, organization_id: str | int) -> s
     return str(rows[0].get("role") or "").strip().lower() or None
 
 
+def _is_org_admin_or_owner(*, supabase, user_id: str, organization_id: str | int) -> bool:
+    role = _org_member_role(supabase=supabase, user_id=user_id, organization_id=organization_id)
+    return role in {"owner", "admin"}
+
+
 def _user_email(*, supabase, user_id: str) -> str | None:
     rows = (
         supabase.table("users")
@@ -295,6 +300,69 @@ async def create_organization_invite(request: Request, organization_id: str, bod
     return {"item": row[0] if row else payload}
 
 
+@router.post("/{organization_id}/invites/{invite_id}/revoke")
+async def revoke_organization_invite(request: Request, organization_id: str, invite_id: str):
+    user_id = await get_authenticated_user_id(request)
+    settings = get_settings()
+    supabase = create_client(settings.supabase_url, settings.supabase_service_role_key)
+    if not _is_org_owner(supabase=supabase, user_id=user_id, organization_id=organization_id):
+        raise HTTPException(status_code=404, detail="organization_not_found")
+    rows = (
+        supabase.table("org_invites")
+        .select("id,organization_id,accepted_at,revoked_at")
+        .eq("id", invite_id)
+        .eq("organization_id", organization_id)
+        .limit(1)
+        .execute()
+    ).data or []
+    if not rows:
+        raise HTTPException(status_code=404, detail="invite_not_found")
+    invite = rows[0]
+    if invite.get("accepted_at") is not None:
+        raise HTTPException(status_code=409, detail="invite_already_accepted")
+    if invite.get("revoked_at") is not None:
+        return {"ok": True, "status": "already_revoked"}
+    now = datetime.now(timezone.utc).isoformat()
+    supabase.table("org_invites").update({"revoked_at": now}).eq("id", invite_id).eq("organization_id", organization_id).execute()
+    return {"ok": True, "status": "revoked"}
+
+
+@router.post("/{organization_id}/invites/{invite_id}/reissue")
+async def reissue_organization_invite(request: Request, organization_id: str, invite_id: str):
+    user_id = await get_authenticated_user_id(request)
+    settings = get_settings()
+    supabase = create_client(settings.supabase_url, settings.supabase_service_role_key)
+    if not _is_org_owner(supabase=supabase, user_id=user_id, organization_id=organization_id):
+        raise HTTPException(status_code=404, detail="organization_not_found")
+    rows = (
+        supabase.table("org_invites")
+        .select("id,organization_id,invited_email,role,accepted_at,revoked_at")
+        .eq("id", invite_id)
+        .eq("organization_id", organization_id)
+        .limit(1)
+        .execute()
+    ).data or []
+    if not rows:
+        raise HTTPException(status_code=404, detail="invite_not_found")
+    invite = rows[0]
+    if invite.get("accepted_at") is not None:
+        raise HTTPException(status_code=409, detail="invite_already_accepted")
+    now = datetime.now(timezone.utc)
+    token = uuid4().hex
+    supabase.table("org_invites").update({"revoked_at": now.isoformat()}).eq("id", invite_id).eq("organization_id", organization_id).execute()
+    payload = {
+        "organization_id": organization_id,
+        "token": token,
+        "invited_email": invite.get("invited_email"),
+        "role": invite.get("role"),
+        "invited_by": user_id,
+        "expires_at": (now + timedelta(hours=72)).isoformat(),
+        "created_at": now.isoformat(),
+    }
+    created = supabase.table("org_invites").insert(payload).execute().data or []
+    return {"item": created[0] if created else payload}
+
+
 @router.post("/invites/accept")
 async def accept_organization_invite(request: Request, body: OrganizationInviteAcceptRequest):
     user_id = await get_authenticated_user_id(request)
@@ -370,8 +438,7 @@ async def create_organization_role_request(request: Request, organization_id: st
     requested_by = await get_authenticated_user_id(request)
     settings = get_settings()
     supabase = create_client(settings.supabase_url, settings.supabase_service_role_key)
-    member_role = _org_member_role(supabase=supabase, user_id=requested_by, organization_id=organization_id)
-    if member_role not in {"owner", "admin"}:
+    if not _is_org_admin_or_owner(supabase=supabase, user_id=requested_by, organization_id=organization_id):
         raise HTTPException(status_code=404, detail="organization_not_found")
     requested_role = str(body.requested_role or "").strip().lower()
     if requested_role not in _ALLOWED_MEMBER_ROLES:
@@ -405,7 +472,7 @@ async def review_organization_role_request(
         raise HTTPException(status_code=400, detail="invalid_decision")
     rows = (
         supabase.table("org_role_change_requests")
-        .select("id,organization_id,target_user_id,requested_role,status")
+        .select("id,organization_id,target_user_id,requested_role,status,requested_by")
         .eq("id", request_id)
         .eq("organization_id", organization_id)
         .limit(1)
@@ -414,6 +481,8 @@ async def review_organization_role_request(
     if not rows:
         raise HTTPException(status_code=404, detail="role_request_not_found")
     row = rows[0]
+    if str(row.get("requested_by") or "").strip() == reviewer_id:
+        raise HTTPException(status_code=403, detail="self_review_not_allowed")
     if str(row.get("status") or "").strip().lower() != "pending":
         raise HTTPException(status_code=409, detail="role_request_already_reviewed")
     now = datetime.now(timezone.utc).isoformat()

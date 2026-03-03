@@ -316,6 +316,8 @@ async def review_incident_banner_revision(request: Request, revision_id: str, bo
     if not rows:
         raise HTTPException(status_code=404, detail="revision_not_found")
     revision = rows[0]
+    if str(revision.get("requested_by") or "").strip() == user_id:
+        raise HTTPException(status_code=403, detail="self_review_not_allowed")
     current_status = str(revision.get("status") or "").strip().lower()
     if current_status != "pending":
         raise HTTPException(status_code=409, detail="revision_already_reviewed")

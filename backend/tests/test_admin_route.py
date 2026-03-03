@@ -160,3 +160,48 @@ def test_review_incident_banner_revision_rejects_invalid_decision(monkeypatch):
         assert exc.detail == "invalid_decision"
     else:
         assert False, "expected HTTPException"
+
+
+def test_review_incident_banner_revision_blocks_self_review(monkeypatch):
+    class _Query:
+        def __init__(self, table_name: str):
+            self.table_name = table_name
+
+        def select(self, *_args, **_kwargs):
+            return self
+
+        def eq(self, *_args, **_kwargs):
+            return self
+
+        def limit(self, *_args, **_kwargs):
+            return self
+
+        def execute(self):
+            if self.table_name == "incident_banner_revisions":
+                return SimpleNamespace(data=[{"id": 1, "user_id": "user-1", "status": "pending", "requested_by": "user-1"}])
+            return SimpleNamespace(data=[])
+
+    class _Client:
+        def table(self, name: str):
+            return _Query(name)
+
+    async def _fake_user(_request: Request) -> str:
+        return "user-1"
+
+    monkeypatch.setattr("app.routes.admin.get_authenticated_user_id", _fake_user)
+    monkeypatch.setattr("app.routes.admin.create_client", lambda *_args, **_kwargs: _Client())
+    monkeypatch.setattr("app.routes.admin.get_settings", lambda: SimpleNamespace(supabase_url="x", supabase_service_role_key="y"))
+
+    try:
+        asyncio.run(
+            review_incident_banner_revision(
+                _request("/api/admin/incident-banner/revisions/1/review", "POST"),
+                "1",
+                IncidentBannerRevisionReviewRequest(decision="approve"),
+            )
+        )
+    except HTTPException as exc:
+        assert exc.status_code == 403
+        assert exc.detail == "self_review_not_allowed"
+    else:
+        assert False, "expected HTTPException"

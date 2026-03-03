@@ -491,6 +491,7 @@ export default function DashboardPage() {
   const [organizationMemberRoleDraft, setOrganizationMemberRoleDraft] = useState<Record<number, string>>({});
   const [organizationInvites, setOrganizationInvites] = useState<Record<number, OrganizationInviteItem[]>>({});
   const [organizationInvitesLoadingId, setOrganizationInvitesLoadingId] = useState<number | null>(null);
+  const [organizationInviteActionLoadingId, setOrganizationInviteActionLoadingId] = useState<string | null>(null);
   const [organizationInviteEmailDraft, setOrganizationInviteEmailDraft] = useState<Record<number, string>>({});
   const [organizationInviteRoleDraft, setOrganizationInviteRoleDraft] = useState<Record<number, string>>({});
   const [organizationInviteExpiryDraft, setOrganizationInviteExpiryDraft] = useState<Record<number, string>>({});
@@ -1114,6 +1115,61 @@ export default function DashboardPage() {
       setOrganizationsError("Failed to accept organization invite.");
     } finally {
       setOrganizationInviteAcceptLoading(false);
+    }
+  };
+
+  const handleCopyInviteToken = async (token: string) => {
+    try {
+      await navigator.clipboard.writeText(token);
+      setOrganizationsError(null);
+    } catch {
+      setOrganizationsError("Failed to copy invite token.");
+    }
+  };
+
+  const handleRevokeOrganizationInvite = async (organizationId: number, inviteId: number) => {
+    if (!apiBaseUrl) {
+      return;
+    }
+    setOrganizationInviteActionLoadingId(`${organizationId}:${inviteId}:revoke`);
+    try {
+      const headers = await getAuthHeaders();
+      const response = await fetch(`${apiBaseUrl}/api/organizations/${organizationId}/invites/${inviteId}/revoke`, {
+        method: "POST",
+        headers,
+      });
+      if (!response.ok) {
+        throw new Error("failed_revoke_organization_invite");
+      }
+      await fetchOrganizationInvites(organizationId);
+      setOrganizationsError(null);
+    } catch {
+      setOrganizationsError("Failed to revoke invite.");
+    } finally {
+      setOrganizationInviteActionLoadingId(null);
+    }
+  };
+
+  const handleReissueOrganizationInvite = async (organizationId: number, inviteId: number) => {
+    if (!apiBaseUrl) {
+      return;
+    }
+    setOrganizationInviteActionLoadingId(`${organizationId}:${inviteId}:reissue`);
+    try {
+      const headers = await getAuthHeaders();
+      const response = await fetch(`${apiBaseUrl}/api/organizations/${organizationId}/invites/${inviteId}/reissue`, {
+        method: "POST",
+        headers,
+      });
+      if (!response.ok) {
+        throw new Error("failed_reissue_organization_invite");
+      }
+      await fetchOrganizationInvites(organizationId);
+      setOrganizationsError(null);
+    } catch {
+      setOrganizationsError("Failed to reissue invite.");
+    } finally {
+      setOrganizationInviteActionLoadingId(null);
     }
   };
 
@@ -3080,12 +3136,47 @@ export default function DashboardPage() {
                   </div>
                   {(organizationInvites[org.id] ?? []).length > 0 ? (
                     <div className="mt-2 space-y-1">
-                      {(organizationInvites[org.id] ?? []).slice(0, 5).map((invite) => (
-                        <p key={`org-${org.id}-invite-${invite.id}`} className="text-xs text-gray-700">
-                          #{invite.id} · {invite.role} · {invite.invited_email ?? "email-any"} · exp{" "}
-                          {new Date(invite.expires_at).toLocaleString()} · {invite.accepted_at ? "accepted" : "pending"} · token {invite.token.slice(0, 8)}...
-                        </p>
-                      ))}
+                      {(organizationInvites[org.id] ?? []).slice(0, 5).map((invite) => {
+                        const isExpired = new Date(invite.expires_at).getTime() < Date.now();
+                        const status = invite.accepted_at ? "accepted" : invite.revoked_at ? "revoked" : isExpired ? "expired" : "pending";
+                        return (
+                          <div key={`org-${org.id}-invite-${invite.id}`} className="flex flex-wrap items-center justify-between gap-2">
+                            <p className="text-xs text-gray-700">
+                              #{invite.id} · {invite.role} · {invite.invited_email ?? "email-any"} · exp{" "}
+                              {new Date(invite.expires_at).toLocaleString()} · {status} · token {invite.token.slice(0, 8)}...
+                            </p>
+                            <div className="flex items-center gap-1">
+                              <button
+                                type="button"
+                                onClick={() => void handleCopyInviteToken(invite.token)}
+                                className="rounded-md border border-gray-300 px-2 py-1 text-[11px] font-medium text-gray-900 hover:bg-gray-100"
+                              >
+                                Copy
+                              </button>
+                              {status === "pending" ? (
+                                <>
+                                  <button
+                                    type="button"
+                                    onClick={() => void handleRevokeOrganizationInvite(org.id, invite.id)}
+                                    disabled={organizationInviteActionLoadingId === `${org.id}:${invite.id}:revoke`}
+                                    className="rounded-md border border-rose-300 px-2 py-1 text-[11px] font-medium text-rose-700 hover:bg-rose-50 disabled:opacity-60"
+                                  >
+                                    Revoke
+                                  </button>
+                                  <button
+                                    type="button"
+                                    onClick={() => void handleReissueOrganizationInvite(org.id, invite.id)}
+                                    disabled={organizationInviteActionLoadingId === `${org.id}:${invite.id}:reissue`}
+                                    className="rounded-md border border-gray-300 px-2 py-1 text-[11px] font-medium text-gray-900 hover:bg-gray-100 disabled:opacity-60"
+                                  >
+                                    Reissue
+                                  </button>
+                                </>
+                              ) : null}
+                            </div>
+                          </div>
+                        );
+                      })}
                     </div>
                   ) : (
                     <p className="mt-2 text-xs text-gray-500">No loaded invites.</p>
@@ -3154,7 +3245,7 @@ export default function DashboardPage() {
                           <p className="text-xs text-gray-700">
                             #{requestItem.id} · {requestItem.target_user_id} {"->"} {requestItem.requested_role} · {requestItem.status}
                           </p>
-                          {requestItem.status === "pending" ? (
+                          {requestItem.status === "pending" && requestItem.requested_by !== profile?.id ? (
                             <div className="flex items-center gap-1">
                               <button
                                 type="button"
@@ -3173,7 +3264,7 @@ export default function DashboardPage() {
                                 Reject
                               </button>
                             </div>
-                          ) : null}
+                          ) : requestItem.status === "pending" ? <p className="text-[11px] text-gray-500">Self-review blocked</p> : null}
                         </div>
                       ))}
                     </div>
@@ -3597,7 +3688,7 @@ export default function DashboardPage() {
                       <p className="text-[11px] text-gray-700">
                         #{rev.id} · {rev.severity} · {rev.status} · {new Date(rev.created_at).toLocaleString()}
                       </p>
-                      {rev.status === "pending" ? (
+                      {rev.status === "pending" && rev.requested_by !== profile?.id ? (
                         <div className="flex items-center gap-1">
                           <button
                             type="button"
@@ -3616,7 +3707,7 @@ export default function DashboardPage() {
                             Reject
                           </button>
                         </div>
-                      ) : null}
+                      ) : rev.status === "pending" ? <p className="text-[11px] text-gray-500">Self-review blocked</p> : null}
                     </div>
                   ))}
                 </div>

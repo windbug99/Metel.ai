@@ -22,7 +22,7 @@
     - 완료: 팀 정책 편집, 리비전 조회/롤백, 멤버 추가/삭제 UI/API, 런타임 정책 병합
     - 완료(확장): Organization invite 링크 발급/수락 API, 권한 변경 요청/승인 API
     - 완료(확장): Organization invite/role-request 기본 UI 반영
-    - 잔여: invite 링크 복사/만료 관리 UX polish(선택)
+    - 완료(추가): invite 링크 복사, 만료/상태 표시, revoke/reissue 기본 UX
   - P3-G5 Audit 상세화
     - 완료: 상세 필드, 필터, export, `/api/audit/settings`(retention/masking/export_enabled)
     - 완료: team/org 기준 필터(목록/내보내기) 반영
@@ -32,12 +32,14 @@
     - 완료: dead-letter 상태 전환(최대 재시도 초과/비활성 구독/잘못된 endpoint)
     - 완료: dead-letter 외부 webhook 알림 자동화(수동 retry / process-retries)
     - 완료(확장): Slack 메시지 포맷 표준화 + SIEM/티켓 webhook(`ALERT_TICKET_WEBHOOK_URL`) 연동
+    - 완료(추가): dead-letter 알림 dedupe window(중복 억제) 적용
     - 잔여: Jira/Linear 필드 매핑 템플릿 확정(선택)
   - P3-G8 Admin/Ops
     - 완료: diagnostics, rate-limit/quota, system-health, external-health, incident-banner API+UI
     - 완료(확장): incident-banner revisions 이력 조회/승인 API
     - 완료(확장): incident-banner revisions 생성/승인 기본 UI 반영
-    - 잔여: 승인자 분리 정책/권한 분리(옵션), 작업 큐 상태(큐 도입 시)
+    - 완료(추가): 승인자 분리 정책 기본 적용(requester != approver)
+    - 잔여: 세부 권한 분리(옵션), 작업 큐 상태(큐 도입 시)
 
 - DB/RLS 적용 완료:
   - `021_create_team_policy_tables.sql`
@@ -66,7 +68,7 @@
   - `/api/api-keys/{id}/drilldown`
 
 ## P3-G3. Team Policy 관리 (Must)
-- 상태: 대부분 완료
+- 상태: 완료
 - 완료:
   - 팀/멤버십/정책/리비전/롤백 API
   - Team Policy UI (수정/리비전 조회/롤백)
@@ -75,8 +77,8 @@
   - Organization invite 발급/수락 API
   - Organization role change request 생성/승인 API
   - Organization invite/role request 기본 UI
-- 잔여:
-  - invite 링크 복사/만료/재발급 UX polish 및 권한 레벨 정교화(선택)
+- 완료(추가):
+  - invite 링크 복사/만료 상태 표시/revoke/reissue API+UI 반영
 
 ## P3-G4. Policy Simulation (Should)
 - 상태: 완료
@@ -103,7 +105,7 @@
   - Usage Trends UI
 
 ## P3-G7. Event Integration (Must)
-- 상태: 대부분 완료
+- 상태: 완료
 - 완료:
   - webhook schema + RLS
   - `/api/integrations/webhooks/*`
@@ -114,11 +116,12 @@
   - dead-letter alert webhook 연동 (`DEAD_LETTER_ALERT_WEBHOOK_URL`)
   - Slack 전송 포맷 표준화(`text` + structured payload)
   - 자동 티켓 webhook 연동(`ALERT_TICKET_WEBHOOK_URL`)
+  - dead-letter 중복 알림 억제(`DEAD_LETTER_ALERT_DEDUPE_SECONDS`)
 - 잔여:
   - Jira/Linear 티켓 템플릿/필드 매핑 표준화(선택)
 
 ## P3-G8. Admin/Ops 진단 (Should)
-- 상태: 대부분 완료
+- 상태: 완료
 - 완료:
   - `/api/admin/connectors/diagnostics`
   - `/api/admin/rate-limit-events`
@@ -128,17 +131,16 @@
   - `/api/admin/incident-banner/revisions` (생성/조회)
   - `/api/admin/incident-banner/revisions/{id}/review` (승인/반려)
   - incident banner revisions 기본 UI (요청/승인)
+  - self-approval 차단 정책(requester != approver) 반영
   - Admin/Ops UI 확장
 - 잔여:
   - 큐 상태 모니터링(큐 도입 시)
-  - 배너 승인 UI/승인자 분리 정책(선택)
 
 ## 3) 남은 작업 우선순위 (필수/선택)
 
 선택:
-1. Organization 초대/승인 UX polish (링크 복사/만료/재발급)
-2. SIEM/티켓 연동 표준 템플릿(Jira/Linear 필드 매핑 확정)
-3. Admin/Ops 승인자 분리 정책(요청자≠승인자) 도입
+1. SIEM/티켓 연동 표준 템플릿(Jira/Linear 필드 매핑 확정)
+2. Admin/Ops 세부 승인 권한 모델(Owner/Admin/Reviewer role 분리)
 
 ## 4) 테스트/운영 TODO
 

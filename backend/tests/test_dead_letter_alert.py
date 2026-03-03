@@ -37,6 +37,7 @@ def test_send_dead_letter_alert_slack_payload_uses_text(monkeypatch):
             source="process_retries",
             dead_lettered=1,
             details={"x": 1},
+            dedupe_window_seconds=0,
         )
     )
 
@@ -57,6 +58,7 @@ def test_send_dead_letter_alert_generic_payload_keeps_structured_json(monkeypatc
             source="process_retries",
             dead_lettered=2,
             details={"x": 2},
+            dedupe_window_seconds=0,
         )
     )
 
@@ -77,6 +79,7 @@ def test_send_dead_letter_alert_posts_ticket_payload_when_configured(monkeypatch
             dead_lettered=3,
             details={"delivery_id": 9},
             ticket_webhook_url="https://example.com/ticket",
+            dedupe_window_seconds=0,
         )
     )
 
@@ -84,3 +87,34 @@ def test_send_dead_letter_alert_posts_ticket_payload_when_configured(monkeypatch
     assert len(capture["posts"]) == 2
     assert capture["posts"][1]["url"] == "https://example.com/ticket"
     assert capture["posts"][1]["json"]["event"] == "dead_letter_alert"
+
+
+def test_send_dead_letter_alert_dedupes_within_window(monkeypatch):
+    capture: dict = {}
+    monkeypatch.setattr("app.core.dead_letter_alert.httpx.AsyncClient", lambda timeout=5.0: _Client(capture))
+    monkeypatch.setattr("app.core.dead_letter_alert._DEDUPE_CACHE", {})
+
+    first = asyncio.run(
+        send_dead_letter_alert(
+            webhook_url="https://hooks.slack.com/services/T/A/B",
+            user_id="u1",
+            source="manual_retry",
+            dead_lettered=1,
+            details={"delivery_id": 123},
+            dedupe_window_seconds=300,
+        )
+    )
+    second = asyncio.run(
+        send_dead_letter_alert(
+            webhook_url="https://hooks.slack.com/services/T/A/B",
+            user_id="u1",
+            source="manual_retry",
+            dead_lettered=1,
+            details={"delivery_id": 123},
+            dedupe_window_seconds=300,
+        )
+    )
+
+    assert first is True
+    assert second is True
+    assert len(capture["posts"]) == 1

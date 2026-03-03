@@ -5,6 +5,8 @@ from typing import Any
 
 import httpx
 
+_DEDUPE_CACHE: dict[str, float] = {}
+
 
 def _build_standard_payload(*, user_id: str, source: str, dead_lettered: int, details: dict[str, Any] | None) -> dict[str, Any]:
     timestamp = datetime.now(timezone.utc).isoformat()
@@ -40,6 +42,7 @@ async def send_dead_letter_alert(
     dead_lettered: int,
     details: dict[str, Any] | None = None,
     ticket_webhook_url: str | None = None,
+    dedupe_window_seconds: int = 300,
 ) -> bool:
     url = str(webhook_url or "").strip()
     if not url:
@@ -51,6 +54,15 @@ async def send_dead_letter_alert(
         dead_lettered=dead_lettered,
         details=details,
     )
+    dedupe_key = str(standard_payload.get("dedupe_key") or "")
+    now_ts = datetime.now(timezone.utc).timestamp()
+    dedupe_window = max(0, int(dedupe_window_seconds))
+    if dedupe_window > 0 and dedupe_key:
+        # Best-effort in-process dedupe for repeated retry-triggered alerts.
+        last_sent_ts = _DEDUPE_CACHE.get(dedupe_key)
+        if last_sent_ts is not None and (now_ts - float(last_sent_ts)) < dedupe_window:
+            return True
+
     payload: dict[str, Any] = dict(standard_payload)
     if "hooks.slack.com/services/" in url:
         # Slack Incoming Webhook expects message payload with `text`.
@@ -71,6 +83,8 @@ async def send_dead_letter_alert(
             sent = 200 <= int(response.status_code) < 300
             if ticket_url:
                 await client.post(ticket_url, json=standard_payload)
+        if sent and dedupe_window > 0 and dedupe_key:
+            _DEDUPE_CACHE[dedupe_key] = now_ts
         return sent
     except Exception:
         return False

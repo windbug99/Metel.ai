@@ -219,6 +219,7 @@ async def retry_delivery(request: Request, delivery_id: str):
                 "error_message": result.get("error_message"),
             },
             ticket_webhook_url=str(getattr(settings, "alert_ticket_webhook_url", "") or "").strip() or None,
+            dedupe_window_seconds=max(0, int(getattr(settings, "dead_letter_alert_dedupe_seconds", 300))),
         )
     return {"ok": True, "result": result}
 
@@ -247,5 +248,6 @@ async def process_deliveries(request: Request, limit: int = Query(100, ge=1, le=
             dead_lettered=dead_lettered,
             details={"result": result, "limit": limit},
             ticket_webhook_url=str(getattr(settings, "alert_ticket_webhook_url", "") or "").strip() or None,
+            dedupe_window_seconds=max(0, int(getattr(settings, "dead_letter_alert_dedupe_seconds", 300))),
         )
     return {"ok": True, **result}
