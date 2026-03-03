@@ -844,3 +844,110 @@ def test_mcp_call_tool_denied_by_policy_allowed_linear_team_ids(monkeypatch):
     payload = response.body.decode("utf-8")
     assert "access_denied" in payload
     assert "team_not_allowed" in payload
+
+
+def test_merge_team_and_key_policy_applies_intersection_and_union():
+    team_policy = {
+        "allow_high_risk": True,
+        "allowed_services": ["notion", "linear"],
+        "allowed_linear_team_ids": ["team-a", "team-b"],
+        "deny_tools": ["linear_list_issues"],
+    }
+    key_policy = {
+        "allow_high_risk": False,
+        "allowed_services": ["linear"],
+        "allowed_linear_team_ids": ["team-b", "team-c"],
+        "deny_tools": ["notion_search"],
+    }
+
+    merged = mcp._merge_team_and_key_policy(team_policy, key_policy)
+    assert merged["allow_high_risk"] is False
+    assert merged["allowed_services"] == ["linear"]
+    assert merged["allowed_linear_team_ids"] == ["team-b"]
+    assert merged["deny_tools"] == ["linear_list_issues", "notion_search"]
+
+
+def test_mcp_call_tool_emits_webhook_events_on_success(monkeypatch):
+    async def _fake_auth(_authorization: str | None):
+        return {"id": 61, "user_id": "user-1", "is_active": True}
+
+    class _Tool:
+        service = "linear"
+
+    class _Registry:
+        def get_tool(self, _name: str):
+            return _Tool()
+
+    emitted: list[str] = []
+
+    async def _fake_emit(**kwargs):
+        emitted.append(str(kwargs.get("event_type") or ""))
+
+    async def _fake_execute_tool(*, user_id: str, tool_name: str, payload: dict):
+        assert user_id == "user-1"
+        assert tool_name == "linear_list_issues"
+        assert payload == {"first": 3}
+        return {"ok": True, "data": {"items": []}}
+
+    monkeypatch.setattr("app.routes.mcp._authenticate_api_key", _fake_auth)
+    monkeypatch.setattr("app.routes.mcp._is_rate_limited", lambda **_kwargs: False)
+    monkeypatch.setattr(
+        "app.routes.mcp.get_settings",
+        lambda: SimpleNamespace(supabase_url="x", supabase_service_role_key="y", mcp_retry_max_retries=0, mcp_retry_backoff_ms=0),
+    )
+    monkeypatch.setattr("app.routes.mcp.create_client", lambda *_args, **_kwargs: _Supabase())
+    monkeypatch.setattr("app.routes.mcp.load_registry", lambda: _Registry())
+    monkeypatch.setattr("app.routes.mcp.execute_tool", _fake_execute_tool)
+    monkeypatch.setattr("app.routes.mcp.emit_webhook_event", _fake_emit)
+    monkeypatch.setattr("app.routes.mcp._log_tool_call", lambda **_kwargs: None)
+
+    req = _Request(
+        {
+            "jsonrpc": "2.0",
+            "id": "12",
+            "method": "call_tool",
+            "params": {"name": "linear_list_issues", "arguments": {"first": 3}},
+        }
+    )
+    response = asyncio.run(mcp.mcp_call_tool(req, authorization="Bearer metel_xxx"))
+    assert isinstance(response, dict)
+    assert response["result"]["ok"] is True
+    assert emitted == ["tool_called", "tool_succeeded"]
+
+
+def test_mcp_call_tool_emits_policy_blocked_event(monkeypatch):
+    async def _fake_auth(_authorization: str | None):
+        return {"id": 62, "user_id": "user-1", "is_active": True}
+
+    class _Tool:
+        service = "notion"
+
+    class _Registry:
+        def get_tool(self, _name: str):
+            return _Tool()
+
+    emitted: list[str] = []
+
+    async def _fake_emit(**kwargs):
+        emitted.append(str(kwargs.get("event_type") or ""))
+
+    monkeypatch.setattr("app.routes.mcp._authenticate_api_key", _fake_auth)
+    monkeypatch.setattr("app.routes.mcp._is_rate_limited", lambda **_kwargs: False)
+    monkeypatch.setattr("app.routes.mcp.get_settings", lambda: SimpleNamespace(supabase_url="x", supabase_service_role_key="y"))
+    monkeypatch.setattr("app.routes.mcp.create_client", lambda *_args, **_kwargs: _Supabase())
+    monkeypatch.setattr("app.routes.mcp.load_registry", lambda: _Registry())
+    monkeypatch.setattr("app.routes.mcp.emit_webhook_event", _fake_emit)
+    monkeypatch.setattr("app.routes.mcp._log_tool_call", lambda **_kwargs: None)
+
+    req = _Request(
+        {
+            "jsonrpc": "2.0",
+            "id": "13",
+            "method": "call_tool",
+            "params": {"name": "notion_delete_block", "arguments": {"block_id": "abc"}},
+        }
+    )
+    response = asyncio.run(mcp.mcp_call_tool(req, authorization="Bearer metel_xxx"))
+    payload = response.body.decode("utf-8")
+    assert "policy_blocked" in payload
+    assert emitted == ["tool_called", "policy_blocked"]

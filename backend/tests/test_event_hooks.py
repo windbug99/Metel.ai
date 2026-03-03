@@ -144,3 +144,64 @@ def test_process_pending_webhook_retries_counts_dead_letter(monkeypatch):
     assert out["processed"] == 1
     assert out["dead_lettered"] == 1
     assert out["failed"] == 0
+
+
+def test_attempt_delivery_marks_dead_letter_when_retry_limit_reached(monkeypatch):
+    async def _fake_deliver_http(**_kwargs):
+        return "failed", 429, "http_429"
+
+    monkeypatch.setattr("app.core.event_hooks._deliver_http", _fake_deliver_http)
+    client = _Client()
+    out = asyncio.run(
+        event_hooks._attempt_delivery(
+            supabase=client,
+            delivery_id=11,
+            subscription={"id": 10, "endpoint_url": "https://example.com/hook", "secret": "x"},
+            event_type="tool_failed",
+            delivery_payload={"x": 1},
+            retry_count=3,
+            max_retries=3,
+            base_backoff_seconds=30,
+            max_backoff_seconds=900,
+        )
+    )
+    assert out["status"] == "dead_letter"
+    assert out["retry_count"] == 4
+    assert out["next_retry_at"] is None
+
+
+def test_process_pending_webhook_retries_skips_future_next_retry(monkeypatch):
+    called = {"retry": 0}
+
+    async def _fake_retry_webhook_delivery(**_kwargs):
+        called["retry"] += 1
+        return {"status": "success"}
+
+    monkeypatch.setattr("app.core.event_hooks.retry_webhook_delivery", _fake_retry_webhook_delivery)
+    client = _Client(
+        delivery_rows=[
+            {
+                "id": 1,
+                "user_id": "user-1",
+                "subscription_id": 10,
+                "event_type": "tool_failed",
+                "payload": {},
+                "retry_count": 1,
+                "next_retry_at": "2099-01-01T00:00:00+00:00",
+                "status": "retrying",
+            }
+        ]
+    )
+    out = asyncio.run(
+        event_hooks.process_pending_webhook_retries(
+            supabase=client,
+            user_id="user-1",
+            limit=100,
+            max_retries=3,
+            base_backoff_seconds=30,
+            max_backoff_seconds=900,
+        )
+    )
+    assert called["retry"] == 0
+    assert out["processed"] == 0
+    assert out["skipped"] == 1

@@ -7,9 +7,12 @@ from starlette.requests import Request
 from app.routes.organizations import (
     OrganizationCreateRequest,
     OrganizationMemberRequest,
+    OrganizationUpdateRequest,
     create_organization,
+    delete_organization_member,
     list_organization_members,
     list_organizations,
+    update_organization,
     upsert_organization_member,
 )
 
@@ -185,5 +188,78 @@ def test_upsert_organization_member_rejects_invalid_role(monkeypatch):
     except HTTPException as exc:
         assert exc.status_code == 400
         assert exc.detail == "invalid_member_role"
+    else:
+        assert False, "expected HTTPException"
+
+
+def test_update_organization_requires_owner(monkeypatch):
+    class _Query:
+        def select(self, *_args, **_kwargs):
+            return self
+
+        def update(self, *_args, **_kwargs):
+            return self
+
+        def eq(self, *_args, **_kwargs):
+            return self
+
+        def limit(self, *_args, **_kwargs):
+            return self
+
+        def execute(self):
+            return SimpleNamespace(data=[])
+
+    class _Client:
+        def table(self, _name: str):
+            return _Query()
+
+    async def _fake_user(_request: Request) -> str:
+        return "user-1"
+
+    monkeypatch.setattr("app.routes.organizations.get_authenticated_user_id", _fake_user)
+    monkeypatch.setattr("app.routes.organizations.create_client", lambda *_args, **_kwargs: _Client())
+    monkeypatch.setattr("app.routes.organizations.get_settings", lambda: SimpleNamespace(supabase_url="x", supabase_service_role_key="y"))
+
+    try:
+        asyncio.run(update_organization(_request("/api/organizations/1", "PATCH"), "1", body=OrganizationUpdateRequest(name="Renamed")))
+    except HTTPException as exc:
+        assert exc.status_code == 404
+        assert exc.detail == "organization_not_found"
+    else:
+        assert False, "expected HTTPException"
+
+
+def test_delete_organization_member_blocks_owner_self_removal(monkeypatch):
+    class _OwnerQuery:
+        def select(self, *_args, **_kwargs):
+            return self
+
+        def eq(self, *_args, **_kwargs):
+            return self
+
+        def limit(self, *_args, **_kwargs):
+            return self
+
+        def execute(self):
+            return SimpleNamespace(data=[{"id": 1}])
+
+    class _Client:
+        def table(self, name: str):
+            if name == "organizations":
+                return _OwnerQuery()
+            return _OwnerQuery()
+
+    async def _fake_user(_request: Request) -> str:
+        return "owner-user"
+
+    monkeypatch.setattr("app.routes.organizations.get_authenticated_user_id", _fake_user)
+    monkeypatch.setattr("app.routes.organizations.create_client", lambda *_args, **_kwargs: _Client())
+    monkeypatch.setattr("app.routes.organizations.get_settings", lambda: SimpleNamespace(supabase_url="x", supabase_service_role_key="y"))
+
+    try:
+        asyncio.run(delete_organization_member(_request("/api/organizations/1/members/owner-user", "DELETE"), "1", "owner-user"))
+    except HTTPException as exc:
+        assert exc.status_code == 400
+        assert exc.detail == "cannot_remove_owner_self"
     else:
         assert False, "expected HTTPException"

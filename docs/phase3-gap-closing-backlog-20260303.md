@@ -1,4 +1,4 @@
-# Phase 3 Gap-Closing Backlog (Updated: 2026-03-03, post SQL 026 + audit org filter)
+# Phase 3 Gap-Closing Backlog (Updated: 2026-03-03, post SQL 026 + worker cron ops)
 
 기준:
 - `docs/overhaul-20260302.md`
@@ -118,30 +118,66 @@
   - 큐 상태 모니터링(큐 도입 시)
   - 배너 이력/승인 워크플로우(선택)
 
-## 3) 남은 작업 우선순위
+## 3) 남은 작업 우선순위 (필수/선택)
 
-Sprint D-Next:
-1. 테스트 보강 (우선순위 높음)
-2. Organization 고도화 UX (초대 링크/권한 승격 승인) (선택)
-3. SIEM/Slack 알림 포맷 표준화 (선택)
+필수:
+1. Slack/SIEM dead-letter 알림 수신 확인
+
+선택:
+1. Organization 고도화 UX (초대 링크/권한 승격 승인)
+2. SIEM/Slack 알림 포맷 표준화 + 자동 티켓 연동
+3. Admin/Ops 배너 이력/승인 워크플로우
 
 ## 4) 테스트/운영 TODO
 
-- 테스트 추가:
+- 테스트:
   - `test_teams_route.py` (추가됨)
   - `test_integrations_route.py` (추가됨)
   - `test_event_hooks.py` (dead-letter 전환/집계 케이스 추가)
   - `test_organizations_route.py` (org 조회 케이스 추가)
-  - `test_organizations_route.py` (create/member 권한 검증 케이스 확장)
+  - `test_organizations_route.py` (create/member + update/delete owner 권한 검증 케이스 확장)
   - `test_admin_route.py` (추가됨)
-  - `test_mcp_routes.py` (team policy merge / webhook emit / retry)
+  - `test_mcp_routes.py` (team policy merge + webhook emit + retry 케이스 보강 완료)
   - `test_audit_route.py` (team filter 케이스 추가, settings/export 차단은 `test_audit_settings_route.py`로 분리)
   - `test_api_keys_drilldown_route.py` (추가됨)
 - 회귀:
-  - `backend/scripts/run_phase3_regression.sh`에 신규 테스트 포함
+  - `backend/scripts/run_phase3_regression.sh` 실행 결과: **74 passed**
 - 운영:
-  - scheduler로 `/api/integrations/deliveries/process-retries` 주기 실행
-  - pytest 실행 환경 정리 (CI/local 공통)
+  - scheduler로 `backend/scripts/process_webhook_retries.py` 주기 실행 (스크립트 추가 완료)
+  - Railway cron 최소 주기 제약: **5분 미만 불가** (`*/5 * * * *` 이상)
+  - 검증 명령(터미널):
+    - `curl -sS -H "Authorization: Bearer <SUPABASE_ACCESS_TOKEN>" "<API_BASE_URL>/api/integrations/deliveries?status=retrying&limit=20"`
+    - `curl -sS -X POST -H "Authorization: Bearer <SUPABASE_ACCESS_TOKEN>" "<API_BASE_URL>/api/integrations/deliveries/process-retries?limit=100"`
+    - `curl -sS -H "Authorization: Bearer <SUPABASE_ACCESS_TOKEN>" "<API_BASE_URL>/api/integrations/deliveries?status=dead_letter&limit=20"`
+  - 합격 기준:
+    - retry 대상이 있으면 `process-retries` 호출 후 `processed` 증가
+    - delivery가 `delivered` 또는 `dead_letter`로 전이
+    - `dead_lettered >= DEAD_LETTER_ALERT_MIN_COUNT` 시 Slack/SIEM 알림 수신
+  - pytest 실행 환경 정리 (CI/local 공통) (완료: `.venv/bin/python -m pytest` 기준)
+
+## 4-1) 운영 검증 진행 상태 (2026-03-03 KST)
+
+- 완료:
+  - `process-retries` 수동 실행으로 `processed=1` 확인
+  - delivery 재시도 누적(`retry_count` 증가, `next_retry_at` 갱신) 확인
+  - dead-letter 최종 전환 확인
+    - `dead_lettered=1`
+    - `status=dead_letter`
+    - `error_message=max_retries_exceeded:http_500`
+- 진행중:
+  - Slack/SIEM 알림 수신 확인(`dead_lettered >= DEAD_LETTER_ALERT_MIN_COUNT`)
+
+## 4-2) Slack/SIEM 수신 확인 방법
+
+- 1차 확인(애플리케이션 기준):
+  - dead-letter 발생 직후 `process-retries` 응답에서 `dead_lettered >= DEAD_LETTER_ALERT_MIN_COUNT` 확인
+- 2차 확인(Slack 채널 기준):
+  - 설정한 Slack 채널에서 dead-letter 경고 메시지 수신 시각/건수 확인
+  - 동일 시각대에 중복 경고 과다 발생 여부 확인
+- 3차 확인(미수신 시 점검):
+  - `DEAD_LETTER_ALERT_WEBHOOK_URL` 값이 Railway 백엔드 서비스 변수에 등록되어 있는지 확인
+  - `DEAD_LETTER_ALERT_MIN_COUNT`가 현재 dead-letter 건수보다 크게 설정되어 있지 않은지 확인
+  - 백엔드 Deploy/Cron 로그에서 alert webhook 전송 오류(4xx/5xx/timeout) 확인
 
 ## 5) 비범위 (Phase 4 유지)
 
