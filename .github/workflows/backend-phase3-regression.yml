@@ -1,6 +1,7 @@
 name: backend-phase3-regression
 
 on:
+  workflow_dispatch:
   pull_request:
     paths:
       - "backend/**"

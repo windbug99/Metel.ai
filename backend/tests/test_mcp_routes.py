@@ -344,6 +344,57 @@ def test_mcp_call_tool_policy_blocked_archive_payload(monkeypatch):
     assert captured["error_code"] == "policy_blocked"
 
 
+def test_mcp_call_tool_policy_allows_high_risk_when_enabled(monkeypatch):
+    async def _fake_auth(_authorization: str | None):
+        return {
+            "id": 25,
+            "user_id": "user-1",
+            "is_active": True,
+            "policy_json": {"allow_high_risk": True},
+        }
+
+    class _Tool:
+        service = "notion"
+
+    class _Registry:
+        def get_tool(self, _name: str):
+            return _Tool()
+
+    captured = {"logged": False, "error_code": None}
+
+    async def _fake_execute_tool(*, user_id: str, tool_name: str, payload: dict):
+        assert user_id == "user-1"
+        assert tool_name == "notion_update_page"
+        assert payload.get("archived") is True
+        return {"ok": True, "data": {"updated": True}}
+
+    def _fake_log_tool_call(**kwargs):
+        captured["logged"] = True
+        captured["error_code"] = kwargs.get("error_code")
+
+    monkeypatch.setattr("app.routes.mcp._authenticate_api_key", _fake_auth)
+    monkeypatch.setattr("app.routes.mcp._is_rate_limited", lambda **_kwargs: False)
+    monkeypatch.setattr("app.routes.mcp.get_settings", lambda: SimpleNamespace(supabase_url="x", supabase_service_role_key="y"))
+    monkeypatch.setattr("app.routes.mcp.create_client", lambda *_args, **_kwargs: _Supabase())
+    monkeypatch.setattr("app.routes.mcp.load_registry", lambda: _Registry())
+    monkeypatch.setattr("app.routes.mcp.execute_tool", _fake_execute_tool)
+    monkeypatch.setattr("app.routes.mcp._log_tool_call", _fake_log_tool_call)
+
+    req = _Request(
+        {
+            "jsonrpc": "2.0",
+            "id": "2",
+            "method": "call_tool",
+            "params": {"name": "notion_update_page", "arguments": {"page_id": "p1", "archived": True}},
+        }
+    )
+    response = asyncio.run(mcp.mcp_call_tool(req, authorization="Bearer metel_xxx"))
+    assert isinstance(response, dict)
+    assert response["result"]["ok"] is True
+    assert captured["logged"] is True
+    assert captured["error_code"] == "policy_override_allowed"
+
+
 def test_mcp_call_tool_resolves_notion_page_title(monkeypatch):
     async def _fake_auth(_authorization: str | None):
         return {"id": 23, "user_id": "user-1", "is_active": True}
@@ -642,3 +693,115 @@ def test_mcp_call_tool_maps_upstream_temporary_failure(monkeypatch):
     assert "upstream_temporary_failure" in payload
     assert "\"status\":503" in payload
     assert captured["error_code"] == "upstream_temporary_failure"
+
+
+def test_mcp_list_tools_applies_policy_filters(monkeypatch):
+    async def _fake_auth(_authorization: str | None):
+        return {
+            "id": 51,
+            "user_id": "user-1",
+            "is_active": True,
+            "policy_json": {"allowed_services": ["notion"], "deny_tools": ["notion_search"]},
+        }
+
+    class _Tool:
+        def __init__(self, service: str, name: str):
+            self.service = service
+            self._name = name
+
+        def to_llm_tool(self):
+            return {"name": self._name, "description": "", "input_schema": {"type": "object"}}
+
+    class _Registry:
+        def list_available_tools(self, **_kwargs):
+            return [
+                _Tool("notion", "notion_search"),
+                _Tool("notion", "notion_retrieve_bot_user"),
+                _Tool("linear", "linear_get_viewer"),
+            ]
+
+    monkeypatch.setattr("app.routes.mcp._authenticate_api_key", _fake_auth)
+    monkeypatch.setattr("app.routes.mcp.load_registry", lambda: _Registry())
+    monkeypatch.setattr("app.routes.mcp.get_settings", lambda: SimpleNamespace(supabase_url="x", supabase_service_role_key="y"))
+    monkeypatch.setattr(
+        "app.routes.mcp.create_client",
+        lambda *_args, **_kwargs: _Supabase(oauth_rows=[{"provider": "notion", "granted_scopes": ["read_content"]}]),
+    )
+
+    req = _Request({"jsonrpc": "2.0", "id": "1", "method": "list_tools"})
+    response = asyncio.run(mcp.mcp_list_tools(req, authorization="Bearer metel_xxx"))
+    assert isinstance(response, dict)
+    names = [tool["name"] for tool in response["result"]["tools"]]
+    assert "notion_retrieve_bot_user" in names
+    assert "notion_search" not in names
+    assert "linear_get_viewer" not in names
+
+
+def test_mcp_call_tool_denied_by_policy_deny_tools(monkeypatch):
+    async def _fake_auth(_authorization: str | None):
+        return {
+            "id": 52,
+            "user_id": "user-1",
+            "is_active": True,
+            "policy_json": {"deny_tools": ["linear_list_issues"]},
+        }
+
+    class _Tool:
+        service = "linear"
+
+    class _Registry:
+        def get_tool(self, _name: str):
+            return _Tool()
+
+    monkeypatch.setattr("app.routes.mcp._authenticate_api_key", _fake_auth)
+    monkeypatch.setattr("app.routes.mcp._is_rate_limited", lambda **_kwargs: False)
+    monkeypatch.setattr("app.routes.mcp.get_settings", lambda: SimpleNamespace(supabase_url="x", supabase_service_role_key="y"))
+    monkeypatch.setattr("app.routes.mcp.create_client", lambda *_args, **_kwargs: _Supabase())
+    monkeypatch.setattr("app.routes.mcp.load_registry", lambda: _Registry())
+
+    req = _Request(
+        {
+            "jsonrpc": "2.0",
+            "id": "9",
+            "method": "call_tool",
+            "params": {"name": "linear_list_issues", "arguments": {"first": 3}},
+        }
+    )
+    response = asyncio.run(mcp.mcp_call_tool(req, authorization="Bearer metel_xxx"))
+    payload = response.body.decode("utf-8")
+    assert "access_denied" in payload
+
+
+def test_mcp_call_tool_denied_by_policy_allowed_services(monkeypatch):
+    async def _fake_auth(_authorization: str | None):
+        return {
+            "id": 53,
+            "user_id": "user-1",
+            "is_active": True,
+            "policy_json": {"allowed_services": ["notion"]},
+        }
+
+    class _Tool:
+        service = "linear"
+
+    class _Registry:
+        def get_tool(self, _name: str):
+            return _Tool()
+
+    monkeypatch.setattr("app.routes.mcp._authenticate_api_key", _fake_auth)
+    monkeypatch.setattr("app.routes.mcp._is_rate_limited", lambda **_kwargs: False)
+    monkeypatch.setattr("app.routes.mcp.get_settings", lambda: SimpleNamespace(supabase_url="x", supabase_service_role_key="y"))
+    monkeypatch.setattr("app.routes.mcp.create_client", lambda *_args, **_kwargs: _Supabase())
+    monkeypatch.setattr("app.routes.mcp.load_registry", lambda: _Registry())
+
+    req = _Request(
+        {
+            "jsonrpc": "2.0",
+            "id": "10",
+            "method": "call_tool",
+            "params": {"name": "linear_list_issues", "arguments": {"first": 3}},
+        }
+    )
+    response = asyncio.run(mcp.mcp_call_tool(req, authorization="Bearer metel_xxx"))
+    payload = response.body.decode("utf-8")
+    assert "service_not_allowed" in payload

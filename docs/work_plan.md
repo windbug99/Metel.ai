@@ -65,10 +65,10 @@
 
 ### 1) 권한/통제 확장
 
-- [ ] API Key별 Tool 권한 설정
+- [x] API Key별 Tool 권한 설정
 - [ ] 팀 단위 정책 적용 (허용/차단 규칙)
-- [ ] Audit UI 제공
-- [ ] Usage Dashboard 제공 (호출수/성공률/실패원인)
+- [x] Audit UI 제공
+- [x] Usage Dashboard 제공 (호출수/성공률/실패원인)
 - [ ] Webhook/Event Log Export 제공
 
 ### 2) 플랫폼 품질
@@ -82,6 +82,9 @@
 - [ ] 키/팀 기준으로 실행 권한이 분리됨
 - [ ] 조직 단위 감사 및 사용량 분석 가능
 - [ ] 외부 SIEM/내부 시스템으로 이벤트 연동 가능
+
+실행 준비 문서:
+- `docs/phase3-kickoff-backlog-20260303.md`
 
 ## 4. Phase 4 — Enterprise Layer
 

@@ -13,21 +13,26 @@ from agent.tool_runner import execute_tool
 from app.core.api_keys import API_KEY_PREFIX, hash_api_key
 from app.core.config import get_settings
 from app.core.error_codes import (
+    CODE_ACCESS_DENIED,
     CODE_POLICY_BLOCKED,
     CODE_QUOTA_EXCEEDED,
     CODE_RESOLVE_AMBIGUOUS,
     CODE_RESOLVE_NOT_FOUND,
+    CODE_SERVICE_NOT_ALLOWED,
     CODE_TOOL_NOT_ALLOWED,
     CODE_UPSTREAM_TEMPORARY_FAILURE,
+    ERR_ACCESS_DENIED,
     ERR_POLICY_BLOCKED,
+    ERR_POLICY_OVERRIDE_ALLOWED,
     ERR_QUOTA_EXCEEDED,
     ERR_RESOLVE_NOT_FOUND,
+    ERR_SERVICE_NOT_ALLOWED,
     ERR_UPSTREAM_TEMPORARY_FAILURE,
 )
 from app.core.quota import evaluate_daily_quota
 from app.core.resolver import ResolverException, resolve_tool_payload
 from app.core.retry_policy import run_with_retry
-from app.core.risk_gate import evaluate_risk
+from app.core.risk_gate import evaluate_risk_with_policy
 
 router = APIRouter(prefix="/mcp", tags=["mcp"])
 
@@ -76,7 +81,7 @@ async def _authenticate_api_key(authorization: str | None) -> dict[str, Any]:
 
     result = (
         supabase.table("api_keys")
-        .select("id,user_id,is_active,allowed_tools")
+        .select("id,user_id,is_active,allowed_tools,policy_json")
         .eq("key_hash", key_hash)
         .limit(1)
         .execute()
@@ -194,6 +199,43 @@ def _apply_allowed_tools(tools: list[ToolDefinition], api_key: dict[str, Any]) -
     return [tool for tool in tools if tool.tool_name in allowed]
 
 
+def _api_key_policy(api_key: dict[str, Any]) -> dict[str, Any] | None:
+    raw = api_key.get("policy_json")
+    return raw if isinstance(raw, dict) else None
+
+
+def _policy_allowed_services(api_key: dict[str, Any]) -> set[str] | None:
+    policy = _api_key_policy(api_key)
+    if not policy:
+        return None
+    items = policy.get("allowed_services")
+    if not isinstance(items, list):
+        return None
+    services = {str(item).strip().lower() for item in items if str(item).strip()}
+    return services or None
+
+
+def _policy_deny_tools(api_key: dict[str, Any]) -> set[str]:
+    policy = _api_key_policy(api_key)
+    if not policy:
+        return set()
+    items = policy.get("deny_tools")
+    if not isinstance(items, list):
+        return set()
+    return {str(item).strip() for item in items if str(item).strip()}
+
+
+def _apply_policy_filters(tools: list[ToolDefinition], api_key: dict[str, Any]) -> list[ToolDefinition]:
+    allowed_services = _policy_allowed_services(api_key)
+    deny_tools = _policy_deny_tools(api_key)
+    filtered = tools
+    if allowed_services:
+        filtered = [tool for tool in filtered if tool.service in allowed_services]
+    if deny_tools:
+        filtered = [tool for tool in filtered if str(getattr(tool, "tool_name", getattr(tool, "_name", ""))) not in deny_tools]
+    return filtered
+
+
 @router.post("/list_tools")
 async def mcp_list_tools(
     request: Request,
@@ -219,11 +261,14 @@ async def mcp_list_tools(
 
     registry = load_registry()
     tools = _apply_allowed_tools(
-        _phase1_filter_tools(
-            registry.list_available_tools(
-                connected_services=connected_services,
-                granted_scopes=scope_map,
-            )
+        _apply_policy_filters(
+            _phase1_filter_tools(
+                registry.list_available_tools(
+                    connected_services=connected_services,
+                    granted_scopes=scope_map,
+                )
+            ),
+            api_key,
         ),
         api_key,
     )
@@ -299,7 +344,22 @@ async def mcp_call_tool(
         allowed = _api_key_allowed_set(api_key)
         if allowed is not None and tool_name not in allowed:
             return _jsonrpc_error(req_id=req_id, code=CODE_TOOL_NOT_ALLOWED, message="tool_not_allowed_for_api_key")
-        risk = evaluate_risk(tool_name, arguments)
+        deny_tools = _policy_deny_tools(api_key)
+        if tool_name in deny_tools:
+            return _jsonrpc_error(req_id=req_id, code=CODE_ACCESS_DENIED, message=ERR_ACCESS_DENIED)
+        allowed_services = _policy_allowed_services(api_key)
+        if allowed_services is not None and tool.service not in allowed_services:
+            return _jsonrpc_error(
+                req_id=req_id,
+                code=CODE_SERVICE_NOT_ALLOWED,
+                message=ERR_SERVICE_NOT_ALLOWED,
+                data={"service": tool.service},
+            )
+        risk = evaluate_risk_with_policy(
+            tool_name=tool_name,
+            payload=arguments,
+            policy=_api_key_policy(api_key),
+        )
         if not risk.allowed:
             latency_ms = int((time.perf_counter() - started) * 1000)
             _log_tool_call(
@@ -332,6 +392,9 @@ async def mcp_call_tool(
             backoff_ms=backoff_ms,
         )
         result = retried.data
+        success_error_code: str | None = None
+        if risk.reason == "policy_override_high_risk":
+            success_error_code = ERR_POLICY_OVERRIDE_ALLOWED
         latency_ms = int((time.perf_counter() - started) * 1000)
         _log_tool_call(
             supabase=supabase,
@@ -340,7 +403,7 @@ async def mcp_call_tool(
             api_key_id=api_key["id"],
             tool_name=tool_name,
             status="success",
-            error_code=None,
+            error_code=success_error_code,
             latency_ms=latency_ms,
         )
         return {"jsonrpc": "2.0", "id": req_id, "result": result}

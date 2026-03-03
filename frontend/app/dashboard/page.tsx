@@ -59,12 +59,46 @@ type ToolCallSummary = {
   retryable_fail_rate_24h: number;
   policy_blocked_24h: number;
   quota_exceeded_24h: number;
+  high_risk_allowed_24h: number;
+  policy_override_usage_24h: number;
   resolve_fail_24h: number;
   upstream_temporary_24h: number;
   top_failure_codes: Array<{
     error_code: string;
     count: number;
   }>;
+};
+
+type AuditEventItem = {
+  id: number;
+  request_id: string | null;
+  timestamp: string;
+  action: {
+    tool_name: string;
+  };
+  actor: {
+    user_id: string;
+    api_key: {
+      id: number | null;
+      name: string | null;
+      key_prefix: string | null;
+    };
+  };
+  outcome: {
+    decision: "allowed" | "policy_blocked" | "access_denied" | "failed";
+    status: "success" | "fail";
+    error_code: string | null;
+    latency_ms: number | null;
+  };
+};
+
+type AuditSummary = {
+  allowed_count: number;
+  high_risk_allowed_count: number;
+  policy_override_usage: number;
+  policy_blocked_count: number;
+  access_denied_count: number;
+  failed_count: number;
 };
 
 function ServiceLogo({ src, alt }: { src: string; alt: string }) {
@@ -109,6 +143,10 @@ export default function DashboardPage() {
   const [toolCallNameFilter, setToolCallNameFilter] = useState("");
   const [toolCallFromFilter, setToolCallFromFilter] = useState("");
   const [toolCallToFilter, setToolCallToFilter] = useState("");
+  const [auditEvents, setAuditEvents] = useState<AuditEventItem[]>([]);
+  const [auditSummary, setAuditSummary] = useState<AuditSummary | null>(null);
+  const [auditLoading, setAuditLoading] = useState(false);
+  const [auditError, setAuditError] = useState<string | null>(null);
 
   const browserTimezone = useMemo(() => detectBrowserTimezone(), []);
 
@@ -255,6 +293,29 @@ export default function DashboardPage() {
     }
   }, [apiBaseUrl, getAuthHeaders, toolCallFromFilter, toolCallNameFilter, toolCallStatusFilter, toolCallToFilter]);
 
+  const fetchAuditEvents = useCallback(async () => {
+    if (!apiBaseUrl) {
+      return;
+    }
+    setAuditLoading(true);
+    try {
+      const headers = await getAuthHeaders();
+      const query = new URLSearchParams({ limit: "20" });
+      const response = await fetch(`${apiBaseUrl}/api/audit/events?${query.toString()}`, { headers });
+      if (!response.ok) {
+        throw new Error("failed_audit_events_list");
+      }
+      const payload = (await response.json()) as { items?: AuditEventItem[]; summary?: AuditSummary };
+      setAuditEvents(Array.isArray(payload.items) ? payload.items : []);
+      setAuditSummary(payload.summary ?? null);
+      setAuditError(null);
+    } catch {
+      setAuditError("Failed to load audit events.");
+    } finally {
+      setAuditLoading(false);
+    }
+  }, [apiBaseUrl, getAuthHeaders]);
+
   useEffect(() => {
     let mounted = true;
 
@@ -288,7 +349,7 @@ export default function DashboardPage() {
       setProfile(profileData);
       setTimezoneDraft(profileData?.timezone ?? browserTimezone);
 
-      await Promise.all([refreshStatuses(), fetchApiKeys(), fetchToolCalls()]);
+      await Promise.all([refreshStatuses(), fetchApiKeys(), fetchToolCalls(), fetchAuditEvents()]);
       setLoading(false);
     };
 
@@ -297,7 +358,7 @@ export default function DashboardPage() {
     return () => {
       mounted = false;
     };
-  }, [browserTimezone, fetchApiKeys, fetchToolCalls, fetchUserProfile, refreshStatuses, router]);
+  }, [browserTimezone, fetchApiKeys, fetchToolCalls, fetchAuditEvents, fetchUserProfile, refreshStatuses, router]);
 
   const handleOAuthStart = async (provider: "notion" | "linear") => {
     if (!apiBaseUrl) {
@@ -402,7 +463,7 @@ export default function DashboardPage() {
       }
       const payload = (await response.json()) as { api_key?: string };
       setCreatedApiKey(payload.api_key ?? null);
-      await Promise.all([fetchApiKeys(), fetchToolCalls()]);
+      await Promise.all([fetchApiKeys(), fetchToolCalls(), fetchAuditEvents()]);
     } catch {
       setApiKeysError("Failed to create API key.");
     } finally {
@@ -424,7 +485,7 @@ export default function DashboardPage() {
       if (!response.ok) {
         throw new Error("failed_revoke_api_key");
       }
-      await Promise.all([fetchApiKeys(), fetchToolCalls()]);
+      await Promise.all([fetchApiKeys(), fetchToolCalls(), fetchAuditEvents()]);
     } catch {
       setApiKeysError("Failed to revoke API key.");
     } finally {
@@ -745,6 +806,16 @@ export default function DashboardPage() {
             <p className="text-xs text-gray-500">Upstream Temporary</p>
             <p className="mt-1 text-lg font-semibold text-indigo-700">{toolCallsSummary?.upstream_temporary_24h ?? 0}</p>
           </article>
+          <article className="rounded-lg border border-gray-200 p-3">
+            <p className="text-xs text-gray-500">High Risk Allowed</p>
+            <p className="mt-1 text-lg font-semibold text-cyan-700">{toolCallsSummary?.high_risk_allowed_24h ?? 0}</p>
+          </article>
+          <article className="rounded-lg border border-gray-200 p-3">
+            <p className="text-xs text-gray-500">Policy Override Usage</p>
+            <p className="mt-1 text-lg font-semibold text-cyan-700">
+              {((toolCallsSummary?.policy_override_usage_24h ?? 0) * 100).toFixed(1)}%
+            </p>
+          </article>
         </div>
 
         {toolCallsError ? <p className="mt-2 text-xs text-red-600">{toolCallsError}</p> : null}
@@ -792,6 +863,92 @@ export default function DashboardPage() {
       </section>
 
       <section className="rounded-xl border border-gray-200 p-5">
+        <div className="mb-4 flex items-center justify-between gap-2">
+          <div>
+            <h2 className="text-base font-semibold text-gray-900">Audit Events</h2>
+            <p className="mt-1 text-sm text-gray-600">Who ran what, and whether it was allowed or blocked.</p>
+          </div>
+          <button
+            type="button"
+            onClick={() => void fetchAuditEvents()}
+            disabled={auditLoading}
+            className="rounded-md border border-gray-300 px-3 py-1.5 text-xs font-medium text-gray-900 hover:bg-gray-100 disabled:opacity-60"
+          >
+            Refresh
+          </button>
+        </div>
+
+        <div className="mb-4 grid gap-2 sm:grid-cols-4">
+          <article className="rounded-lg border border-gray-200 p-3">
+            <p className="text-xs text-gray-500">Allowed</p>
+            <p className="mt-1 text-lg font-semibold text-emerald-700">{auditSummary?.allowed_count ?? 0}</p>
+          </article>
+          <article className="rounded-lg border border-gray-200 p-3">
+            <p className="text-xs text-gray-500">Policy Blocked</p>
+            <p className="mt-1 text-lg font-semibold text-amber-700">{auditSummary?.policy_blocked_count ?? 0}</p>
+          </article>
+          <article className="rounded-lg border border-gray-200 p-3">
+            <p className="text-xs text-gray-500">Access Denied</p>
+            <p className="mt-1 text-lg font-semibold text-orange-700">{auditSummary?.access_denied_count ?? 0}</p>
+          </article>
+          <article className="rounded-lg border border-gray-200 p-3">
+            <p className="text-xs text-gray-500">Failed</p>
+            <p className="mt-1 text-lg font-semibold text-rose-700">{auditSummary?.failed_count ?? 0}</p>
+          </article>
+          <article className="rounded-lg border border-gray-200 p-3">
+            <p className="text-xs text-gray-500">High Risk Allowed</p>
+            <p className="mt-1 text-lg font-semibold text-cyan-700">{auditSummary?.high_risk_allowed_count ?? 0}</p>
+          </article>
+          <article className="rounded-lg border border-gray-200 p-3">
+            <p className="text-xs text-gray-500">Policy Override Usage</p>
+            <p className="mt-1 text-lg font-semibold text-cyan-700">
+              {((auditSummary?.policy_override_usage ?? 0) * 100).toFixed(1)}%
+            </p>
+          </article>
+        </div>
+
+        {auditError ? <p className="mb-2 text-xs text-red-600">{auditError}</p> : null}
+        {auditLoading ? <p className="mb-2 text-xs text-gray-500">Loading audit events...</p> : null}
+
+        <div className="space-y-2">
+          {auditEvents.length === 0 ? (
+            <p className="text-xs text-gray-500">No audit events yet.</p>
+          ) : (
+            auditEvents.map((event) => (
+              <article key={event.id} className="rounded-lg border border-gray-200 p-3">
+                <div className="flex flex-wrap items-center justify-between gap-2">
+                  <div>
+                    <p className="text-sm font-medium text-gray-900">{event.action.tool_name}</p>
+                    <p className="text-xs text-gray-600">
+                      {event.actor.api_key.name ?? "unknown key"} ({event.actor.api_key.key_prefix ?? "n/a"}...)
+                    </p>
+                  </div>
+                  <div className="text-right">
+                    <p
+                      className={`text-xs font-medium ${
+                        event.outcome.decision === "allowed"
+                          ? "text-emerald-700"
+                          : event.outcome.decision === "policy_blocked"
+                            ? "text-amber-700"
+                            : event.outcome.decision === "access_denied"
+                              ? "text-orange-700"
+                              : "text-rose-700"
+                      }`}
+                    >
+                      {event.outcome.decision}
+                    </p>
+                    <p className="text-xs text-gray-500">{event.outcome.latency_ms ?? 0} ms</p>
+                  </div>
+                </div>
+                <p className="mt-1 text-xs text-gray-500">{new Date(event.timestamp).toLocaleString()}</p>
+                {event.outcome.error_code ? <p className="mt-1 text-xs text-rose-700">error: {event.outcome.error_code}</p> : null}
+              </article>
+            ))
+          )}
+        </div>
+      </section>
+
+      <section className="mt-8 rounded-xl border border-gray-200 p-5">
         <h2 className="text-base font-semibold text-gray-900">OAuth Connections</h2>
         <p className="mt-1 text-sm text-gray-600">Connect Notion and Linear to expose MCP tools.</p>
 

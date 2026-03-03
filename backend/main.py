@@ -9,6 +9,7 @@ from fastapi.responses import JSONResponse
 from agent.registry import ToolSpecValidationError, validate_registry_on_startup
 from app.core.config import get_settings
 from app.routes.api_keys import router as api_keys_router
+from app.routes.audit import router as audit_router
 from app.routes.linear import router as linear_router
 from app.routes.mcp import router as mcp_router
 from app.routes.notion import router as notion_router
@@ -139,3 +140,4 @@ app.include_router(linear_router)
 app.include_router(api_keys_router)
 app.include_router(mcp_router)
 app.include_router(tool_calls_router)
+app.include_router(audit_router)

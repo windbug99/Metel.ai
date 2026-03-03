@@ -17,6 +17,22 @@ _HIGH_RISK_TOOL_NAMES = {
 
 
 def evaluate_risk(tool_name: str, payload: dict[str, Any]) -> RiskDecision:
+    return evaluate_risk_with_policy(tool_name=tool_name, payload=payload, policy=None)
+
+
+def evaluate_risk_with_policy(
+    *,
+    tool_name: str,
+    payload: dict[str, Any],
+    policy: dict[str, Any] | None,
+) -> RiskDecision:
+    base = _evaluate_without_policy(tool_name=tool_name, payload=payload)
+    if not base.allowed and isinstance(policy, dict) and bool(policy.get("allow_high_risk")):
+        return RiskDecision(allowed=True, reason="policy_override_high_risk", risk_type=base.risk_type)
+    return base
+
+
+def _evaluate_without_policy(*, tool_name: str, payload: dict[str, Any]) -> RiskDecision:
     normalized = tool_name.strip()
     if normalized in _HIGH_RISK_TOOL_NAMES:
         return RiskDecision(allowed=False, reason="high_risk_tool_blocked_by_default", risk_type="delete")

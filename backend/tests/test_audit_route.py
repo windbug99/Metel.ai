@@ -4,15 +4,15 @@ from types import SimpleNamespace
 from fastapi import HTTPException
 from starlette.requests import Request
 
-from app.routes.tool_calls import list_tool_calls
+from app.routes.audit import list_audit_events
 
 
 def _request() -> Request:
-    scope = {"type": "http", "method": "GET", "path": "/api/tool-calls", "headers": []}
+    scope = {"type": "http", "method": "GET", "path": "/api/audit/events", "headers": []}
     return Request(scope)
 
 
-def test_list_tool_calls_applies_filters(monkeypatch):
+def test_list_audit_events_filters_and_maps_decisions(monkeypatch):
     class _Query:
         def __init__(self, client, table_name: str):
             self.client = client
@@ -46,30 +46,33 @@ def test_list_tool_calls_applies_filters(monkeypatch):
 
         def execute(self):
             self.client.query_logs.append((self.table_name, self.selected, list(self.ops)))
-            if self.table_name == "tool_calls" and self.selected.startswith("id,api_key_id"):
+            if self.table_name == "tool_calls":
                 return SimpleNamespace(
                     data=[
                         {
-                            "id": 10,
-                            "api_key_id": 1,
-                            "tool_name": "linear_list_issues",
+                            "id": 1,
+                            "request_id": "r1",
+                            "api_key_id": 10,
+                            "tool_name": "notion_search",
                             "status": "success",
                             "error_code": None,
-                            "latency_ms": 120,
-                            "created_at": "2026-03-02T00:00:00+00:00",
-                        }
-                    ]
-                )
-            if self.table_name == "tool_calls" and self.selected == "status,error_code":
-                return SimpleNamespace(
-                    data=[
-                        {"status": "success", "error_code": None},
-                        {"status": "fail", "error_code": "policy_blocked"},
-                        {"status": "fail", "error_code": "upstream_temporary_failure"},
+                            "latency_ms": 100,
+                            "created_at": "2026-03-03T00:00:00+00:00",
+                        },
+                        {
+                            "id": 2,
+                            "request_id": "r2",
+                            "api_key_id": 10,
+                            "tool_name": "notion_delete_block",
+                            "status": "fail",
+                            "error_code": "policy_blocked",
+                            "latency_ms": 50,
+                            "created_at": "2026-03-03T00:01:00+00:00",
+                        },
                     ]
                 )
             if self.table_name == "api_keys":
-                return SimpleNamespace(data=[{"id": 1, "name": "prod", "key_prefix": "metel_prod"}])
+                return SimpleNamespace(data=[{"id": 10, "name": "prod", "key_prefix": "metel_prod"}])
             return SimpleNamespace(data=[])
 
     class _Client:
@@ -84,68 +87,63 @@ def test_list_tool_calls_applies_filters(monkeypatch):
     async def _fake_user(_request: Request) -> str:
         return "user-1"
 
-    monkeypatch.setattr("app.routes.tool_calls.get_authenticated_user_id", _fake_user)
-    monkeypatch.setattr("app.routes.tool_calls.create_client", lambda *_args, **_kwargs: client)
+    monkeypatch.setattr("app.routes.audit.get_authenticated_user_id", _fake_user)
+    monkeypatch.setattr("app.routes.audit.create_client", lambda *_args, **_kwargs: client)
     monkeypatch.setattr(
-        "app.routes.tool_calls.get_settings",
+        "app.routes.audit.get_settings",
         lambda: SimpleNamespace(supabase_url="https://example.supabase.co", supabase_service_role_key="service-role-key"),
     )
 
     out = asyncio.run(
-        list_tool_calls(
+        list_audit_events(
             _request(),
-            limit=20,
-            status="success",
-            tool_name="linear_list_issues",
-            api_key_id=1,
+            limit=50,
+            status="all",
+            tool_name="",
+            api_key_id=10,
+            error_code="",
             from_="2026-03-01T00:00:00Z",
-            to="2026-03-03T00:00:00Z",
+            to="2026-03-04T00:00:00Z",
         )
     )
 
-    assert out["count"] == 1
-    assert out["items"][0]["tool_name"] == "linear_list_issues"
-    assert out["summary"]["calls_24h"] == 3
-    assert out["summary"]["success_24h"] == 1
-    assert out["summary"]["fail_24h"] == 2
-    assert out["summary"]["fail_rate_24h"] == 0.6667
-    assert out["summary"]["blocked_rate_24h"] == 0.3333
-    assert out["summary"]["retryable_fail_rate_24h"] == 0.3333
-    assert out["summary"]["policy_blocked_24h"] == 1
-    assert out["summary"]["upstream_temporary_24h"] == 1
-    assert out["summary"]["high_risk_allowed_24h"] == 0
-    assert out["summary"]["policy_override_usage_24h"] == 0.0
-    assert out["summary"]["top_failure_codes"][0]["error_code"] in {"policy_blocked", "upstream_temporary_failure"}
+    assert out["count"] == 2
+    assert out["summary"]["allowed_count"] == 1
+    assert out["summary"]["high_risk_allowed_count"] == 0
+    assert out["summary"]["policy_override_usage"] == 0.0
+    assert out["summary"]["policy_blocked_count"] == 1
+    assert out["items"][0]["actor"]["api_key"]["name"] == "prod"
+    assert out["items"][0]["outcome"]["decision"] == "allowed"
+    assert out["items"][1]["outcome"]["decision"] == "policy_blocked"
 
     tool_calls_queries = [item for item in client.query_logs if item[0] == "tool_calls"]
-    assert len(tool_calls_queries) >= 2
+    assert len(tool_calls_queries) >= 1
     flattened = [op for _, _, ops in tool_calls_queries for op in ops]
-    assert ("eq", "status", "success") in flattened
-    assert ("eq", "tool_name", "linear_list_issues") in flattened
-    assert ("eq", "api_key_id", 1) in flattened
+    assert ("eq", "api_key_id", 10) in flattened
     assert any(op[0] == "gte" and op[1] == "created_at" for op in flattened)
     assert any(op[0] == "lte" and op[1] == "created_at" for op in flattened)
 
 
-def test_list_tool_calls_invalid_datetime_raises(monkeypatch):
+def test_list_audit_events_invalid_datetime_raises(monkeypatch):
     async def _fake_user(_request: Request) -> str:
         return "user-1"
 
-    monkeypatch.setattr("app.routes.tool_calls.get_authenticated_user_id", _fake_user)
+    monkeypatch.setattr("app.routes.audit.get_authenticated_user_id", _fake_user)
     monkeypatch.setattr(
-        "app.routes.tool_calls.get_settings",
+        "app.routes.audit.get_settings",
         lambda: SimpleNamespace(supabase_url="https://example.supabase.co", supabase_service_role_key="service-role-key"),
     )
-    monkeypatch.setattr("app.routes.tool_calls.create_client", lambda *_args, **_kwargs: SimpleNamespace(table=lambda _name: None))
+    monkeypatch.setattr("app.routes.audit.create_client", lambda *_args, **_kwargs: SimpleNamespace(table=lambda _name: None))
 
     try:
         asyncio.run(
-            list_tool_calls(
+            list_audit_events(
                 _request(),
-                limit=20,
+                limit=50,
                 status="all",
                 tool_name="",
                 api_key_id=None,
+                error_code="",
                 from_="not-a-date",
                 to="",
             )
