@@ -16,3 +16,5 @@
 - `docs/sql/012_add_users_timezone.sql`
 - `docs/sql/015_create_api_keys_and_tool_calls_tables.sql`
 - `docs/sql/016_add_api_keys_allowed_tools.sql`
+- `docs/sql/017_add_api_keys_policy_json.sql`
+- `docs/sql/018_drop_legacy_tables_phase3.sql`
