@@ -377,6 +377,34 @@ type IncidentBannerRevisionItem = {
   updated_at: string;
 };
 
+type PermissionSnapshot = {
+  user_id: string;
+  role: string;
+  org_ids: number[];
+  team_ids: number[];
+  feature_flags?: {
+    read_guard_enabled?: boolean;
+    write_guard_enabled?: boolean;
+    ui_strict_enabled?: boolean;
+  };
+  permissions: {
+    can_read_audit_settings: boolean;
+    can_update_audit_settings: boolean;
+    can_read_admin_ops: boolean;
+    can_manage_incident_banner: boolean;
+    can_manage_organizations: boolean;
+    can_manage_teams: boolean;
+    can_manage_integrations: boolean;
+    can_manage_api_keys: boolean;
+  };
+};
+
+type DashboardMenuItem = {
+  id: string;
+  label: string;
+  visible: boolean;
+};
+
 function ServiceLogo({ src, alt }: { src: string; alt: string }) {
   return <img src={src} alt={alt} width={20} height={20} className="h-5 w-5 rounded-sm object-contain" />;
 }
@@ -529,8 +557,39 @@ export default function DashboardPage() {
   const [incidentRevisions, setIncidentRevisions] = useState<IncidentBannerRevisionItem[]>([]);
   const [incidentRevisionSaving, setIncidentRevisionSaving] = useState(false);
   const [incidentRevisionReviewLoadingId, setIncidentRevisionReviewLoadingId] = useState<number | null>(null);
+  const [permissionSnapshot, setPermissionSnapshot] = useState<PermissionSnapshot | null>(null);
+  const [forbiddenBanner, setForbiddenBanner] = useState<string | null>(null);
 
   const browserTimezone = useMemo(() => detectBrowserTimezone(), []);
+  const uiStrictEnabled = permissionSnapshot?.feature_flags?.ui_strict_enabled ?? true;
+  const canReadAuditSettings = !uiStrictEnabled || Boolean(permissionSnapshot?.permissions?.can_read_audit_settings);
+  const canReadAdminOps = !uiStrictEnabled || Boolean(permissionSnapshot?.permissions?.can_read_admin_ops);
+  const canUpdateAuditSettings =
+    !uiStrictEnabled || Boolean(permissionSnapshot?.permissions?.can_update_audit_settings);
+  const canManageIncidentBanner =
+    !uiStrictEnabled || Boolean(permissionSnapshot?.permissions?.can_manage_incident_banner);
+  const canManageOrganizations =
+    !uiStrictEnabled || Boolean(permissionSnapshot?.permissions?.can_manage_organizations);
+  const canManageTeams = !uiStrictEnabled || Boolean(permissionSnapshot?.permissions?.can_manage_teams);
+  const canManageIntegrations =
+    !uiStrictEnabled || Boolean(permissionSnapshot?.permissions?.can_manage_integrations);
+  const isOwnerRole = permissionSnapshot?.role === "owner";
+  const dashboardMenuItems = useMemo<DashboardMenuItem[]>(
+    () => [
+      { id: "overview", label: "Overview", visible: true },
+      { id: "profile", label: "Profile", visible: true },
+      { id: "api-keys", label: "API Keys", visible: true },
+      { id: "policy-simulator", label: "Policy Simulator", visible: true },
+      { id: "mcp-usage", label: "MCP Usage", visible: true },
+      { id: "audit-events", label: "Audit Events", visible: true },
+      { id: "organizations", label: "Organizations", visible: true },
+      { id: "team-policy", label: "Team Policy", visible: true },
+      { id: "integrations", label: "Integrations", visible: true },
+      { id: "admin-ops", label: "Admin / Ops", visible: canReadAdminOps },
+      { id: "oauth-connections", label: "OAuth", visible: true },
+    ],
+    [canReadAdminOps]
+  );
 
   const timezoneOptions = useMemo(() => {
     try {
@@ -557,6 +616,28 @@ export default function DashboardPage() {
     return { Authorization: `Bearer ${accessToken}` };
   }, []);
 
+  const assertOk = (response: Response, errorCode: string) => {
+    if (response.ok) {
+      return;
+    }
+    if (response.status === 403) {
+      setForbiddenBanner("권한이 없어 요청이 거부되었습니다. 역할/범위를 확인해주세요.");
+    }
+    throw new Error(errorCode);
+  };
+
+  const fetchPermissions = useCallback(async () => {
+    if (!apiBaseUrl) {
+      return null;
+    }
+    const headers = await getAuthHeaders();
+    const response = await fetch(`${apiBaseUrl}/api/me/permissions`, { headers });
+    assertOk(response, "failed_permissions");
+    const payload = (await response.json()) as PermissionSnapshot;
+    setPermissionSnapshot(payload);
+    return payload;
+  }, [apiBaseUrl, getAuthHeaders]);
+
   const fetchUserProfile = useCallback(async () => {
     const {
       data: { user }
@@ -581,9 +662,7 @@ export default function DashboardPage() {
       }
       const headers = await getAuthHeaders();
       const response = await fetch(`${apiBaseUrl}/api/oauth/${provider}/status`, { headers });
-      if (!response.ok) {
-        throw new Error(`failed_${provider}_status`);
-      }
+      assertOk(response, `failed_${provider}_status`);
       return (await response.json()) as OAuthStatus;
     },
     [apiBaseUrl, getAuthHeaders]
@@ -613,9 +692,7 @@ export default function DashboardPage() {
     try {
       const headers = await getAuthHeaders();
       const response = await fetch(`${apiBaseUrl}/api/api-keys`, { headers });
-      if (!response.ok) {
-        throw new Error("failed_api_keys_list");
-      }
+      assertOk(response, "failed_api_keys_list");
       const payload = (await response.json()) as { items?: ApiKeyItem[] };
       const items = Array.isArray(payload.items) ? payload.items : [];
       setApiKeys(items);
@@ -698,9 +775,7 @@ export default function DashboardPage() {
         query.set("to", new Date(toolCallToFilter).toISOString());
       }
       const response = await fetch(`${apiBaseUrl}/api/tool-calls?${query.toString()}`, { headers });
-      if (!response.ok) {
-        throw new Error("failed_tool_calls_list");
-      }
+      assertOk(response, "failed_tool_calls_list");
       const payload = (await response.json()) as {
         items?: ToolCallItem[];
         summary?: ToolCallSummary;
@@ -723,9 +798,7 @@ export default function DashboardPage() {
     try {
       const headers = await getAuthHeaders();
       const response = await fetch(`${apiBaseUrl}/api/tool-calls/overview?hours=24`, { headers });
-      if (!response.ok) {
-        throw new Error("failed_tool_calls_overview");
-      }
+      assertOk(response, "failed_tool_calls_overview");
       setOverview((await response.json()) as OverviewPayload);
       setOverviewError(null);
     } catch {
@@ -747,9 +820,9 @@ export default function DashboardPage() {
         fetch(`${apiBaseUrl}/api/tool-calls/failure-breakdown?days=7`, { headers }),
         fetch(`${apiBaseUrl}/api/tool-calls/connectors?days=7`, { headers }),
       ]);
-      if (!trendsRes.ok || !breakdownRes.ok || !connectorsRes.ok) {
-        throw new Error("failed_usage_trends");
-      }
+      assertOk(trendsRes, "failed_usage_trends");
+      assertOk(breakdownRes, "failed_usage_trends");
+      assertOk(connectorsRes, "failed_usage_trends");
       const trendsPayload = (await trendsRes.json()) as { items?: TrendPoint[] };
       const breakdownPayload = (await breakdownRes.json()) as FailureBreakdown;
       const connectorsPayload = (await connectorsRes.json()) as { items?: ConnectorSummary[] };
@@ -779,9 +852,7 @@ export default function DashboardPage() {
         query.set("organization_id", auditOrganizationFilter);
       }
       const response = await fetch(`${apiBaseUrl}/api/audit/events?${query.toString()}`, { headers });
-      if (!response.ok) {
-        throw new Error("failed_audit_events_list");
-      }
+      assertOk(response, "failed_audit_events_list");
       const payload = (await response.json()) as { items?: AuditEventItem[]; summary?: AuditSummary };
       setAuditEvents(Array.isArray(payload.items) ? payload.items : []);
       setAuditSummary(payload.summary ?? null);
@@ -801,9 +872,7 @@ export default function DashboardPage() {
     try {
       const headers = await getAuthHeaders();
       const response = await fetch(`${apiBaseUrl}/api/audit/settings`, { headers });
-      if (!response.ok) {
-        throw new Error("failed_audit_settings");
-      }
+      assertOk(response, "failed_audit_settings");
       const payload = (await response.json()) as AuditSettings;
       setAuditSettings(payload);
       setAuditRetentionDraft(String(payload.retention_days ?? 90));
@@ -826,9 +895,7 @@ export default function DashboardPage() {
       try {
         const headers = await getAuthHeaders();
         const response = await fetch(`${apiBaseUrl}/api/audit/events/${eventId}`, { headers });
-        if (!response.ok) {
-          throw new Error("failed_audit_event_detail");
-        }
+        assertOk(response, "failed_audit_event_detail");
         setAuditDetail((await response.json()) as AuditDetail);
       } catch {
         setAuditError("Failed to load audit event detail.");
@@ -867,9 +934,7 @@ export default function DashboardPage() {
           masking_policy: maskingPolicy,
         }),
       });
-      if (!response.ok) {
-        throw new Error("failed_update_audit_settings");
-      }
+      assertOk(response, "failed_update_audit_settings");
       await fetchAuditSettings();
       setAuditError(null);
     } catch {
@@ -893,9 +958,7 @@ export default function DashboardPage() {
         query.set("organization_id", auditOrganizationFilter);
       }
       const response = await fetch(`${apiBaseUrl}/api/audit/export?${query.toString()}`, { headers });
-      if (!response.ok) {
-        throw new Error("failed_export_audit");
-      }
+      assertOk(response, "failed_export_audit");
       const blob = await response.blob();
       const url = window.URL.createObjectURL(blob);
       const anchor = document.createElement("a");
@@ -919,9 +982,7 @@ export default function DashboardPage() {
     try {
       const headers = await getAuthHeaders();
       const response = await fetch(`${apiBaseUrl}/api/organizations`, { headers });
-      if (!response.ok) {
-        throw new Error("failed_organization_list");
-      }
+      assertOk(response, "failed_organization_list");
       const payload = (await response.json()) as { items?: OrganizationItem[] };
       setOrganizations(Array.isArray(payload.items) ? payload.items : []);
       setOrganizationsError(null);
@@ -944,9 +1005,7 @@ export default function DashboardPage() {
         headers: { ...headers, "Content-Type": "application/json" },
         body: JSON.stringify({ name: newOrganizationName.trim() }),
       });
-      if (!response.ok) {
-        throw new Error("failed_create_organization");
-      }
+      assertOk(response, "failed_create_organization");
       setNewOrganizationName("");
       await fetchOrganizations();
       setOrganizationsError(null);
@@ -966,9 +1025,7 @@ export default function DashboardPage() {
       try {
         const headers = await getAuthHeaders();
         const response = await fetch(`${apiBaseUrl}/api/organizations/${organizationId}/members`, { headers });
-        if (!response.ok) {
-          throw new Error("failed_organization_members");
-        }
+        assertOk(response, "failed_organization_members");
         const payload = (await response.json()) as { items?: OrganizationMemberItem[] };
         setOrganizationMembers((prev) => ({ ...prev, [organizationId]: Array.isArray(payload.items) ? payload.items : [] }));
         setOrganizationsError(null);
@@ -1001,9 +1058,7 @@ export default function DashboardPage() {
           role: (organizationMemberRoleDraft[organizationId] ?? "member").trim() || "member",
         }),
       });
-      if (!response.ok) {
-        throw new Error("failed_organization_member_upsert");
-      }
+      assertOk(response, "failed_organization_member_upsert");
       setOrganizationMemberUserDraft((prev) => ({ ...prev, [organizationId]: "" }));
       setOrganizationMemberRoleDraft((prev) => ({ ...prev, [organizationId]: "member" }));
       await fetchOrganizationMembers(organizationId);
@@ -1026,9 +1081,7 @@ export default function DashboardPage() {
         method: "DELETE",
         headers,
       });
-      if (!response.ok) {
-        throw new Error("failed_organization_member_delete");
-      }
+      assertOk(response, "failed_organization_member_delete");
       await fetchOrganizationMembers(organizationId);
       setOrganizationsError(null);
     } catch {
@@ -1047,9 +1100,7 @@ export default function DashboardPage() {
       try {
         const headers = await getAuthHeaders();
         const response = await fetch(`${apiBaseUrl}/api/organizations/${organizationId}/invites`, { headers });
-        if (!response.ok) {
-          throw new Error("failed_organization_invites");
-        }
+        assertOk(response, "failed_organization_invites");
         const payload = (await response.json()) as { items?: OrganizationInviteItem[] };
         setOrganizationInvites((prev) => ({ ...prev, [organizationId]: Array.isArray(payload.items) ? payload.items : [] }));
         setOrganizationsError(null);
@@ -1078,9 +1129,7 @@ export default function DashboardPage() {
           expires_in_hours: Number((organizationInviteExpiryDraft[organizationId] ?? "72").trim() || "72"),
         }),
       });
-      if (!response.ok) {
-        throw new Error("failed_create_organization_invite");
-      }
+      assertOk(response, "failed_create_organization_invite");
       setOrganizationInviteEmailDraft((prev) => ({ ...prev, [organizationId]: "" }));
       setOrganizationInviteRoleDraft((prev) => ({ ...prev, [organizationId]: "member" }));
       setOrganizationInviteExpiryDraft((prev) => ({ ...prev, [organizationId]: "72" }));
@@ -1105,9 +1154,7 @@ export default function DashboardPage() {
         headers: { ...headers, "Content-Type": "application/json" },
         body: JSON.stringify({ token: organizationInviteAcceptToken.trim() }),
       });
-      if (!response.ok) {
-        throw new Error("failed_accept_organization_invite");
-      }
+      assertOk(response, "failed_accept_organization_invite");
       setOrganizationInviteAcceptToken("");
       await fetchOrganizations();
       setOrganizationsError(null);
@@ -1138,9 +1185,7 @@ export default function DashboardPage() {
         method: "POST",
         headers,
       });
-      if (!response.ok) {
-        throw new Error("failed_revoke_organization_invite");
-      }
+      assertOk(response, "failed_revoke_organization_invite");
       await fetchOrganizationInvites(organizationId);
       setOrganizationsError(null);
     } catch {
@@ -1161,9 +1206,7 @@ export default function DashboardPage() {
         method: "POST",
         headers,
       });
-      if (!response.ok) {
-        throw new Error("failed_reissue_organization_invite");
-      }
+      assertOk(response, "failed_reissue_organization_invite");
       await fetchOrganizationInvites(organizationId);
       setOrganizationsError(null);
     } catch {
@@ -1182,9 +1225,7 @@ export default function DashboardPage() {
       try {
         const headers = await getAuthHeaders();
         const response = await fetch(`${apiBaseUrl}/api/organizations/${organizationId}/role-requests`, { headers });
-        if (!response.ok) {
-          throw new Error("failed_organization_role_requests");
-        }
+        assertOk(response, "failed_organization_role_requests");
         const payload = (await response.json()) as { items?: OrganizationRoleRequestItem[] };
         setOrganizationRoleRequests((prev) => ({ ...prev, [organizationId]: Array.isArray(payload.items) ? payload.items : [] }));
         setOrganizationsError(null);
@@ -1218,9 +1259,7 @@ export default function DashboardPage() {
           reason: (organizationRoleReasonDraft[organizationId] ?? "").trim() || null,
         }),
       });
-      if (!response.ok) {
-        throw new Error("failed_create_organization_role_request");
-      }
+      assertOk(response, "failed_create_organization_role_request");
       setOrganizationRoleTargetUserDraft((prev) => ({ ...prev, [organizationId]: "" }));
       setOrganizationRoleRequestedRoleDraft((prev) => ({ ...prev, [organizationId]: "member" }));
       setOrganizationRoleReasonDraft((prev) => ({ ...prev, [organizationId]: "" }));
@@ -1245,9 +1284,7 @@ export default function DashboardPage() {
         headers: { ...headers, "Content-Type": "application/json" },
         body: JSON.stringify({ decision }),
       });
-      if (!response.ok) {
-        throw new Error("failed_review_organization_role_request");
-      }
+      assertOk(response, "failed_review_organization_role_request");
       await Promise.all([fetchOrganizationRoleRequests(organizationId), fetchOrganizationMembers(organizationId)]);
       setOrganizationsError(null);
     } catch {
@@ -1282,9 +1319,7 @@ export default function DashboardPage() {
           arguments: argsPayload,
         }),
       });
-      if (!response.ok) {
-        throw new Error("failed_policy_simulation");
-      }
+      assertOk(response, "failed_policy_simulation");
       setSimulatorResult((await response.json()) as PolicySimulationResult);
     } catch {
       setSimulatorError("Failed to run policy simulation.");
@@ -1301,9 +1336,7 @@ export default function DashboardPage() {
     try {
       const headers = await getAuthHeaders();
       const response = await fetch(`${apiBaseUrl}/api/teams`, { headers });
-      if (!response.ok) {
-        throw new Error("failed_team_list");
-      }
+      assertOk(response, "failed_team_list");
       const payload = (await response.json()) as { items?: TeamItem[] };
       const items = Array.isArray(payload.items) ? payload.items : [];
       setTeams(items);
@@ -1366,9 +1399,8 @@ export default function DashboardPage() {
         fetch(`${apiBaseUrl}/api/integrations/webhooks`, { headers }),
         fetch(`${apiBaseUrl}/api/integrations/deliveries?limit=20`, { headers }),
       ]);
-      if (!webhooksRes.ok || !deliveriesRes.ok) {
-        throw new Error("failed_integrations");
-      }
+      assertOk(webhooksRes, "failed_integrations");
+      assertOk(deliveriesRes, "failed_integrations");
       const webhookPayload = (await webhooksRes.json()) as { items?: WebhookItem[] };
       const deliveryPayload = (await deliveriesRes.json()) as { items?: WebhookDeliveryItem[] };
       setWebhooks(Array.isArray(webhookPayload.items) ? webhookPayload.items : []);
@@ -1396,9 +1428,12 @@ export default function DashboardPage() {
         fetch(`${apiBaseUrl}/api/admin/incident-banner`, { headers }),
         fetch(`${apiBaseUrl}/api/admin/incident-banner/revisions?limit=20`, { headers }),
       ]);
-      if (!diagnosticsRes.ok || !rateLimitRes.ok || !healthRes.ok || !externalHealthRes.ok || !incidentRes.ok || !incidentRevisionsRes.ok) {
-        throw new Error("failed_admin_ops");
-      }
+      assertOk(diagnosticsRes, "failed_admin_ops");
+      assertOk(rateLimitRes, "failed_admin_ops");
+      assertOk(healthRes, "failed_admin_ops");
+      assertOk(externalHealthRes, "failed_admin_ops");
+      assertOk(incidentRes, "failed_admin_ops");
+      assertOk(incidentRevisionsRes, "failed_admin_ops");
       const diagnosticsPayload = (await diagnosticsRes.json()) as { items?: ConnectorDiagnosticItem[] };
       const rateLimitPayload = (await rateLimitRes.json()) as { items?: RateLimitEventItem[] };
       const externalHealthPayload = (await externalHealthRes.json()) as { items?: ExternalHealthItem[] };
@@ -1441,9 +1476,7 @@ export default function DashboardPage() {
           ends_at: incidentEndsAtDraft ? new Date(incidentEndsAtDraft).toISOString() : null,
         }),
       });
-      if (!response.ok) {
-        throw new Error("failed_save_incident_banner");
-      }
+      assertOk(response, "failed_save_incident_banner");
       await fetchAdminOps();
       setAdminError(null);
     } catch {
@@ -1471,9 +1504,7 @@ export default function DashboardPage() {
           ends_at: incidentEndsAtDraft ? new Date(incidentEndsAtDraft).toISOString() : null,
         }),
       });
-      if (!response.ok) {
-        throw new Error("failed_create_incident_banner_revision");
-      }
+      assertOk(response, "failed_create_incident_banner_revision");
       await fetchAdminOps();
       setAdminError(null);
     } catch {
@@ -1495,9 +1526,7 @@ export default function DashboardPage() {
         headers: { ...headers, "Content-Type": "application/json" },
         body: JSON.stringify({ decision }),
       });
-      if (!response.ok) {
-        throw new Error("failed_review_incident_banner_revision");
-      }
+      assertOk(response, "failed_review_incident_banner_revision");
       await fetchAdminOps();
       setAdminError(null);
     } catch {
@@ -1539,6 +1568,7 @@ export default function DashboardPage() {
 
       setProfile(profileData);
       setTimezoneDraft(profileData?.timezone ?? browserTimezone);
+      const permissions = await fetchPermissions();
 
       await Promise.all([
         refreshStatuses(),
@@ -1547,11 +1577,11 @@ export default function DashboardPage() {
         fetchTrendAndBreakdown(),
         fetchToolCalls(),
         fetchAuditEvents(),
-        fetchAuditSettings(),
+        permissions?.permissions?.can_read_audit_settings ? fetchAuditSettings() : Promise.resolve(),
         fetchOrganizations(),
         fetchTeams(),
         fetchIntegrations(),
-        fetchAdminOps(),
+        permissions?.permissions?.can_read_admin_ops ? fetchAdminOps() : Promise.resolve(),
       ]);
       setLoading(false);
     };
@@ -1573,6 +1603,7 @@ export default function DashboardPage() {
     fetchTeams,
     fetchIntegrations,
     fetchAdminOps,
+    fetchPermissions,
     fetchUserProfile,
     refreshStatuses,
     router,
@@ -1593,8 +1624,9 @@ export default function DashboardPage() {
         headers
       });
 
+      assertOk(response, `failed_${provider}_start`);
       const payload = (await response.json()) as { auth_url?: string };
-      if (!response.ok || !payload.auth_url) {
+      if (!payload.auth_url) {
         throw new Error(`failed_${provider}_start`);
       }
       window.location.href = payload.auth_url;
@@ -1621,9 +1653,7 @@ export default function DashboardPage() {
         headers
       });
 
-      if (!response.ok) {
-        throw new Error(`failed_${provider}_disconnect`);
-      }
+      assertOk(response, `failed_${provider}_disconnect`);
 
       await refreshStatuses();
     } catch {
@@ -1693,13 +1723,22 @@ export default function DashboardPage() {
           policy_json: parsedPolicy,
         })
       });
-      if (!response.ok) {
-        throw new Error("failed_create_api_key");
-      }
+      assertOk(response, "failed_create_api_key");
       const payload = (await response.json()) as { api_key?: string };
       setCreatedApiKey(payload.api_key ?? null);
       setNewApiKeyTeamId("");
-      await Promise.all([fetchApiKeys(), fetchOverview(), fetchTrendAndBreakdown(), fetchToolCalls(), fetchAuditEvents(), fetchAuditSettings(), fetchOrganizations(), fetchTeams(), fetchIntegrations(), fetchAdminOps()]);
+      await Promise.all([
+        fetchApiKeys(),
+        fetchOverview(),
+        fetchTrendAndBreakdown(),
+        fetchToolCalls(),
+        fetchAuditEvents(),
+        canReadAuditSettings ? fetchAuditSettings() : Promise.resolve(),
+        fetchOrganizations(),
+        fetchTeams(),
+        fetchIntegrations(),
+        canReadAdminOps ? fetchAdminOps() : Promise.resolve(),
+      ]);
     } catch {
       setApiKeysError("Failed to create API key.");
     } finally {
@@ -1718,10 +1757,19 @@ export default function DashboardPage() {
         method: "DELETE",
         headers
       });
-      if (!response.ok) {
-        throw new Error("failed_revoke_api_key");
-      }
-      await Promise.all([fetchApiKeys(), fetchOverview(), fetchTrendAndBreakdown(), fetchToolCalls(), fetchAuditEvents(), fetchAuditSettings(), fetchOrganizations(), fetchTeams(), fetchIntegrations(), fetchAdminOps()]);
+      assertOk(response, "failed_revoke_api_key");
+      await Promise.all([
+        fetchApiKeys(),
+        fetchOverview(),
+        fetchTrendAndBreakdown(),
+        fetchToolCalls(),
+        fetchAuditEvents(),
+        canReadAuditSettings ? fetchAuditSettings() : Promise.resolve(),
+        fetchOrganizations(),
+        fetchTeams(),
+        fetchIntegrations(),
+        canReadAdminOps ? fetchAdminOps() : Promise.resolve(),
+      ]);
     } catch {
       setApiKeysError("Failed to revoke API key.");
     } finally {
@@ -1766,9 +1814,7 @@ export default function DashboardPage() {
           policy_json: policyJson,
         }),
       });
-      if (!response.ok) {
-        throw new Error("failed_update_api_key");
-      }
+      assertOk(response, "failed_update_api_key");
       await fetchApiKeys();
     } catch {
       setApiKeysError("Failed to update API key settings.");
@@ -1789,12 +1835,21 @@ export default function DashboardPage() {
         method: "POST",
         headers,
       });
-      if (!response.ok) {
-        throw new Error("failed_rotate_api_key");
-      }
+      assertOk(response, "failed_rotate_api_key");
       const payload = (await response.json()) as { api_key?: string };
       setCreatedApiKey(payload.api_key ?? null);
-      await Promise.all([fetchApiKeys(), fetchOverview(), fetchTrendAndBreakdown(), fetchToolCalls(), fetchAuditEvents(), fetchAuditSettings(), fetchOrganizations(), fetchTeams(), fetchIntegrations(), fetchAdminOps()]);
+      await Promise.all([
+        fetchApiKeys(),
+        fetchOverview(),
+        fetchTrendAndBreakdown(),
+        fetchToolCalls(),
+        fetchAuditEvents(),
+        canReadAuditSettings ? fetchAuditSettings() : Promise.resolve(),
+        fetchOrganizations(),
+        fetchTeams(),
+        fetchIntegrations(),
+        canReadAdminOps ? fetchAdminOps() : Promise.resolve(),
+      ]);
     } catch {
       setApiKeysError("Failed to rotate API key.");
     } finally {
@@ -1811,9 +1866,7 @@ export default function DashboardPage() {
       try {
         const headers = await getAuthHeaders();
         const response = await fetch(`${apiBaseUrl}/api/api-keys/${keyId}/drilldown?days=7`, { headers });
-        if (!response.ok) {
-          throw new Error("failed_api_key_drilldown");
-        }
+        assertOk(response, "failed_api_key_drilldown");
         const payload = (await response.json()) as ApiKeyDrilldown;
         setApiKeyDrilldown((prev) => ({ ...prev, [keyId]: payload }));
         setApiKeysError(null);
@@ -1851,9 +1904,7 @@ export default function DashboardPage() {
           policy_json: parsedPolicy,
         }),
       });
-      if (!response.ok) {
-        throw new Error("failed_create_team");
-      }
+      assertOk(response, "failed_create_team");
       setNewTeamName("");
       setNewTeamDescription("");
       setNewTeamPolicyJson("");
@@ -1893,9 +1944,7 @@ export default function DashboardPage() {
           policy_json: policyJson,
         }),
       });
-      if (!response.ok) {
-        throw new Error("failed_update_team");
-      }
+      assertOk(response, "failed_update_team");
       await fetchTeams();
       setTeamsError(null);
     } catch {
@@ -1914,9 +1963,7 @@ export default function DashboardPage() {
       try {
         const headers = await getAuthHeaders();
         const response = await fetch(`${apiBaseUrl}/api/teams/${teamId}/policy-revisions?limit=20`, { headers });
-        if (!response.ok) {
-          throw new Error("failed_team_revisions");
-        }
+        assertOk(response, "failed_team_revisions");
         const payload = (await response.json()) as { items?: PolicyRevisionItem[] };
         setTeamRevisions((prev) => ({ ...prev, [teamId]: Array.isArray(payload.items) ? payload.items : [] }));
         setTeamsError(null);
@@ -1940,9 +1987,7 @@ export default function DashboardPage() {
         method: "POST",
         headers,
       });
-      if (!response.ok) {
-        throw new Error("failed_team_policy_rollback");
-      }
+      assertOk(response, "failed_team_policy_rollback");
       await Promise.all([fetchTeams(), fetchTeamRevisions(teamId)]);
       setTeamsError(null);
     } catch {
@@ -1961,9 +2006,7 @@ export default function DashboardPage() {
       try {
         const headers = await getAuthHeaders();
         const response = await fetch(`${apiBaseUrl}/api/teams/${teamId}/members`, { headers });
-        if (!response.ok) {
-          throw new Error("failed_team_members");
-        }
+        assertOk(response, "failed_team_members");
         const payload = (await response.json()) as { items?: TeamMemberItem[] };
         setTeamMembers((prev) => ({ ...prev, [teamId]: Array.isArray(payload.items) ? payload.items : [] }));
         setTeamsError(null);
@@ -1996,9 +2039,7 @@ export default function DashboardPage() {
           role: (teamMemberRoleDraft[teamId] ?? "member").trim() || "member",
         }),
       });
-      if (!response.ok) {
-        throw new Error("failed_team_member_upsert");
-      }
+      assertOk(response, "failed_team_member_upsert");
       setTeamMemberUserDraft((prev) => ({ ...prev, [teamId]: "" }));
       setTeamMemberRoleDraft((prev) => ({ ...prev, [teamId]: "member" }));
       await fetchTeamMembers(teamId);
@@ -2021,9 +2062,7 @@ export default function DashboardPage() {
         method: "DELETE",
         headers,
       });
-      if (!response.ok) {
-        throw new Error("failed_team_member_delete");
-      }
+      assertOk(response, "failed_team_member_delete");
       await fetchTeamMembers(teamId);
       setTeamsError(null);
     } catch {
@@ -2054,9 +2093,7 @@ export default function DashboardPage() {
           event_types: eventTypes,
         }),
       });
-      if (!response.ok) {
-        throw new Error("failed_create_webhook");
-      }
+      assertOk(response, "failed_create_webhook");
       setNewWebhookName("");
       setNewWebhookUrl("");
       setNewWebhookSecret("");
@@ -2080,9 +2117,7 @@ export default function DashboardPage() {
         method: "POST",
         headers,
       });
-      if (!response.ok) {
-        throw new Error("failed_process_webhook_retries");
-      }
+      assertOk(response, "failed_process_webhook_retries");
       await fetchIntegrations();
       setIntegrationsError(null);
     } catch {
@@ -2116,7 +2151,10 @@ export default function DashboardPage() {
       <header className="mb-8 flex items-center justify-between">
         <div>
           <h1 className="text-2xl font-semibold text-gray-900">Dashboard</h1>
-          <p className="text-sm text-gray-600">Execution control platform console for API keys, policy, audit, and ops.</p>
+          <p className="text-sm text-gray-600">
+            Execution control platform console for API keys, policy, audit, and ops.
+            {permissionSnapshot?.role ? ` (role: ${permissionSnapshot.role})` : ""}
+          </p>
         </div>
         <button
           type="button"
@@ -2128,7 +2166,38 @@ export default function DashboardPage() {
         </button>
       </header>
 
-      <section className="mb-8 rounded-xl border border-gray-200 p-5">
+      <nav className="mb-6 rounded-xl border border-gray-200 bg-gray-50 p-3">
+        <p className="mb-2 text-xs font-medium text-gray-700">Menu</p>
+        <div className="flex flex-wrap gap-2">
+          {dashboardMenuItems
+            .filter((item) => item.visible)
+            .map((item) => (
+              <a
+                key={`menu-${item.id}`}
+                href={`#${item.id}`}
+                className="rounded-md border border-gray-300 bg-white px-2.5 py-1 text-xs font-medium text-gray-700 hover:bg-gray-100"
+              >
+                {item.label}
+              </a>
+            ))}
+        </div>
+      </nav>
+      {forbiddenBanner ? (
+        <div className="mb-6 rounded-lg border border-amber-300 bg-amber-50 p-3">
+          <div className="flex items-center justify-between gap-2">
+            <p className="text-sm text-amber-800">{forbiddenBanner}</p>
+            <button
+              type="button"
+              onClick={() => setForbiddenBanner(null)}
+              className="rounded-md border border-amber-300 bg-white px-2 py-1 text-xs font-medium text-amber-800 hover:bg-amber-100"
+            >
+              닫기
+            </button>
+          </div>
+        </div>
+      ) : null}
+
+      <section id="overview" className="mb-8 rounded-xl border border-gray-200 p-5">
         <div className="mb-4 flex items-center justify-between gap-2">
           <div>
             <h2 className="text-base font-semibold text-gray-900">Execution Overview (24h)</h2>
@@ -2219,7 +2288,7 @@ export default function DashboardPage() {
         ) : null}
       </section>
 
-      <section className="mb-8 rounded-xl border border-gray-200 p-5">
+      <section id="profile" className="mb-8 rounded-xl border border-gray-200 p-5">
         <h2 className="text-base font-semibold text-gray-900">Profile</h2>
         <p className="mt-1 text-sm text-gray-600">{profile?.email ?? "Unknown user"}</p>
 
@@ -2248,7 +2317,7 @@ export default function DashboardPage() {
         {timezoneMessage ? <p className="mt-2 text-sm text-gray-700">{timezoneMessage}</p> : null}
       </section>
 
-      <section className="mb-8 rounded-xl border border-gray-200 p-5">
+      <section id="api-keys" className="mb-8 rounded-xl border border-gray-200 p-5">
         <h2 className="text-base font-semibold text-gray-900">API Keys</h2>
         <p className="mt-1 text-sm text-gray-600">Use API keys for MCP authentication (`Authorization: Bearer metel_xxx`).</p>
 
@@ -2472,7 +2541,7 @@ export default function DashboardPage() {
         </div>
       </section>
 
-      <section className="mb-8 rounded-xl border border-gray-200 p-5">
+      <section id="policy-simulator" className="mb-8 rounded-xl border border-gray-200 p-5">
         <h2 className="text-base font-semibold text-gray-900">Policy Simulator</h2>
         <p className="mt-1 text-sm text-gray-600">Preview whether a request is allowed or blocked before execution.</p>
         <div className="mt-4 flex flex-wrap items-center gap-2">
@@ -2520,7 +2589,7 @@ export default function DashboardPage() {
         ) : null}
       </section>
 
-      <section className="mb-8 rounded-xl border border-gray-200 p-5">
+      <section id="mcp-guide" className="mb-8 rounded-xl border border-gray-200 p-5">
         <h2 className="text-base font-semibold text-gray-900">MCP Quick Guide</h2>
         <p className="mt-1 text-sm text-gray-600">Use your API key in `Authorization: Bearer ...` and call JSON-RPC endpoints.</p>
         <div className="mt-3 space-y-3">
@@ -2541,7 +2610,7 @@ export default function DashboardPage() {
         </div>
       </section>
 
-      <section className="mb-8 rounded-xl border border-gray-200 p-5">
+      <section id="mcp-usage" className="mb-8 rounded-xl border border-gray-200 p-5">
         <div className="flex items-center justify-between gap-2">
           <div>
             <h2 className="text-base font-semibold text-gray-900">MCP Usage</h2>
@@ -2703,7 +2772,7 @@ export default function DashboardPage() {
         </div>
       </section>
 
-      <section className="mb-8 rounded-xl border border-gray-200 p-5">
+      <section id="usage-trends" className="mb-8 rounded-xl border border-gray-200 p-5">
         <div className="mb-4 flex items-center justify-between gap-2">
           <div>
             <h2 className="text-base font-semibold text-gray-900">Usage Trends (7d)</h2>
@@ -2764,7 +2833,7 @@ export default function DashboardPage() {
         </div>
       </section>
 
-      <section className="rounded-xl border border-gray-200 p-5">
+      <section id="audit-events" className="rounded-xl border border-gray-200 p-5">
         <div className="mb-4 flex items-center justify-between gap-2">
           <div>
             <h2 className="text-base font-semibold text-gray-900">Audit Events</h2>
@@ -2787,7 +2856,9 @@ export default function DashboardPage() {
             </button>
             <button
               type="button"
-              onClick={() => void Promise.all([fetchAuditEvents(), fetchAuditSettings()])}
+              onClick={() =>
+                void Promise.all([fetchAuditEvents(), canReadAuditSettings ? fetchAuditSettings() : Promise.resolve()])
+              }
               disabled={auditLoading || auditSettingsLoading}
               className="rounded-md border border-gray-300 px-3 py-1.5 text-xs font-medium text-gray-900 hover:bg-gray-100 disabled:opacity-60"
             >
@@ -2805,6 +2876,7 @@ export default function DashboardPage() {
               min={1}
               value={auditRetentionDraft}
               onChange={(event) => setAuditRetentionDraft(event.target.value)}
+              disabled={!canUpdateAuditSettings}
               className="w-24 rounded-md border border-gray-300 px-2 py-1 text-xs"
             />
             <label className="flex items-center gap-1 text-xs text-gray-700">
@@ -2812,13 +2884,14 @@ export default function DashboardPage() {
                 type="checkbox"
                 checked={auditExportEnabledDraft}
                 onChange={(event) => setAuditExportEnabledDraft(event.target.checked)}
+                disabled={!canUpdateAuditSettings}
               />
               export enabled
             </label>
             <button
               type="button"
               onClick={() => void handleSaveAuditSettings()}
-              disabled={auditSettingsSaving}
+              disabled={auditSettingsSaving || !canUpdateAuditSettings}
               className="rounded-md border border-gray-300 px-2 py-1 text-xs font-medium text-gray-900 hover:bg-gray-100 disabled:opacity-60"
             >
               {auditSettingsSaving ? "Saving..." : "Save Settings"}
@@ -2861,9 +2934,13 @@ export default function DashboardPage() {
           <textarea
             value={auditMaskingPolicyDraft}
             onChange={(event) => setAuditMaskingPolicyDraft(event.target.value)}
+            disabled={!canUpdateAuditSettings}
             placeholder='Masking policy JSON, e.g. {"mask_keys":["token","secret"]}'
             className="mt-2 min-h-[74px] w-full rounded-md border border-gray-300 px-2 py-1 text-xs"
           />
+          {!canUpdateAuditSettings ? (
+            <p className="mt-1 text-[11px] text-gray-500">Audit settings update is owner-only.</p>
+          ) : null}
           <p className="mt-1 text-[11px] text-gray-500">
             updated_at: {auditSettings?.updated_at ? new Date(auditSettings.updated_at).toLocaleString() : "n/a"}
           </p>
@@ -2955,7 +3032,7 @@ export default function DashboardPage() {
         ) : null}
       </section>
 
-      <section className="mt-8 rounded-xl border border-gray-200 p-5">
+      <section id="organizations" className="mt-8 rounded-xl border border-gray-200 p-5">
         <div className="mb-4 flex items-center justify-between gap-2">
           <div>
             <h2 className="text-base font-semibold text-gray-900">Organizations</h2>
@@ -2974,13 +3051,14 @@ export default function DashboardPage() {
           <input
             value={newOrganizationName}
             onChange={(event) => setNewOrganizationName(event.target.value)}
+            disabled={!canManageOrganizations}
             placeholder="Organization name"
             className="rounded-md border border-gray-300 px-3 py-2 text-xs"
           />
           <button
             type="button"
             onClick={() => void handleCreateOrganization()}
-            disabled={creatingOrganization}
+            disabled={creatingOrganization || !canManageOrganizations}
             className="rounded-md border border-gray-300 px-3 py-2 text-xs font-medium text-gray-900 hover:bg-gray-100 disabled:opacity-60"
           >
             {creatingOrganization ? "Creating..." : "Create Organization"}
@@ -3000,6 +3078,9 @@ export default function DashboardPage() {
             {organizationInviteAcceptLoading ? "Accepting..." : "Accept Invite"}
           </button>
         </div>
+        {!canManageOrganizations ? (
+          <p className="mt-2 text-xs text-gray-500">Organization management is read-only for your role.</p>
+        ) : null}
         {organizationsError ? <p className="mt-2 text-xs text-red-600">{organizationsError}</p> : null}
         {organizationsLoading ? <p className="mt-2 text-xs text-gray-500">Loading organizations...</p> : null}
         <div className="mt-3 space-y-2">
@@ -3031,6 +3112,7 @@ export default function DashboardPage() {
                         [org.id]: event.target.value,
                       }))
                     }
+                    disabled={!canManageOrganizations}
                     placeholder="member user_id (uuid)"
                     className="min-w-[260px] rounded-md border border-gray-300 px-2 py-1 text-xs"
                   />
@@ -3042,6 +3124,7 @@ export default function DashboardPage() {
                         [org.id]: event.target.value,
                       }))
                     }
+                    disabled={!canManageOrganizations}
                     className="rounded-md border border-gray-300 px-2 py-1 text-xs"
                   >
                     <option value="member">member</option>
@@ -3051,7 +3134,7 @@ export default function DashboardPage() {
                   <button
                     type="button"
                     onClick={() => void handleUpsertOrganizationMember(org.id)}
-                    disabled={organizationMemberLoadingId === org.id}
+                    disabled={organizationMemberLoadingId === org.id || !canManageOrganizations}
                     className="rounded-md border border-gray-300 px-2 py-1 text-xs font-medium text-gray-900 hover:bg-gray-100 disabled:opacity-60"
                   >
                     {organizationMemberLoadingId === org.id ? "Saving..." : "Add / Update Member"}
@@ -3067,7 +3150,7 @@ export default function DashboardPage() {
                         <button
                           type="button"
                           onClick={() => void handleDeleteOrganizationMember(org.id, member.user_id)}
-                          disabled={organizationMemberDeleteLoadingId === `${org.id}:${member.user_id}`}
+                          disabled={organizationMemberDeleteLoadingId === `${org.id}:${member.user_id}` || !canManageOrganizations}
                           className="rounded-md border border-gray-300 px-2 py-1 text-[11px] font-medium text-gray-900 hover:bg-gray-100 disabled:opacity-60"
                         >
                           {organizationMemberDeleteLoadingId === `${org.id}:${member.user_id}` ? "Deleting..." : "Delete"}
@@ -3097,6 +3180,7 @@ export default function DashboardPage() {
                           [org.id]: event.target.value,
                         }))
                       }
+                      disabled={!canManageOrganizations}
                       placeholder="invited email (optional)"
                       className="min-w-[220px] rounded-md border border-gray-300 px-2 py-1 text-xs"
                     />
@@ -3108,6 +3192,7 @@ export default function DashboardPage() {
                           [org.id]: event.target.value,
                         }))
                       }
+                      disabled={!canManageOrganizations}
                       className="rounded-md border border-gray-300 px-2 py-1 text-xs"
                     >
                       <option value="member">member</option>
@@ -3122,13 +3207,14 @@ export default function DashboardPage() {
                           [org.id]: event.target.value,
                         }))
                       }
+                      disabled={!canManageOrganizations}
                       placeholder="expires hours"
                       className="w-[110px] rounded-md border border-gray-300 px-2 py-1 text-xs"
                     />
                     <button
                       type="button"
                       onClick={() => void handleCreateOrganizationInvite(org.id)}
-                      disabled={organizationInvitesLoadingId === org.id}
+                      disabled={organizationInvitesLoadingId === org.id || !canManageOrganizations}
                       className="rounded-md border border-gray-300 px-2 py-1 text-xs font-medium text-gray-900 hover:bg-gray-100 disabled:opacity-60"
                     >
                       {organizationInvitesLoadingId === org.id ? "Creating..." : "Create Invite"}
@@ -3158,7 +3244,7 @@ export default function DashboardPage() {
                                   <button
                                     type="button"
                                     onClick={() => void handleRevokeOrganizationInvite(org.id, invite.id)}
-                                    disabled={organizationInviteActionLoadingId === `${org.id}:${invite.id}:revoke`}
+                                    disabled={organizationInviteActionLoadingId === `${org.id}:${invite.id}:revoke` || !canManageOrganizations}
                                     className="rounded-md border border-rose-300 px-2 py-1 text-[11px] font-medium text-rose-700 hover:bg-rose-50 disabled:opacity-60"
                                   >
                                     Revoke
@@ -3166,7 +3252,7 @@ export default function DashboardPage() {
                                   <button
                                     type="button"
                                     onClick={() => void handleReissueOrganizationInvite(org.id, invite.id)}
-                                    disabled={organizationInviteActionLoadingId === `${org.id}:${invite.id}:reissue`}
+                                    disabled={organizationInviteActionLoadingId === `${org.id}:${invite.id}:reissue` || !canManageOrganizations}
                                     className="rounded-md border border-gray-300 px-2 py-1 text-[11px] font-medium text-gray-900 hover:bg-gray-100 disabled:opacity-60"
                                   >
                                     Reissue
@@ -3201,6 +3287,7 @@ export default function DashboardPage() {
                           [org.id]: event.target.value,
                         }))
                       }
+                      disabled={!canManageOrganizations}
                       placeholder="target user_id"
                       className="min-w-[220px] rounded-md border border-gray-300 px-2 py-1 text-xs"
                     />
@@ -3212,6 +3299,7 @@ export default function DashboardPage() {
                           [org.id]: event.target.value,
                         }))
                       }
+                      disabled={!canManageOrganizations}
                       className="rounded-md border border-gray-300 px-2 py-1 text-xs"
                     >
                       <option value="member">member</option>
@@ -3226,13 +3314,14 @@ export default function DashboardPage() {
                           [org.id]: event.target.value,
                         }))
                       }
+                      disabled={!canManageOrganizations}
                       placeholder="reason (optional)"
                       className="min-w-[180px] rounded-md border border-gray-300 px-2 py-1 text-xs"
                     />
                     <button
                       type="button"
                       onClick={() => void handleCreateOrganizationRoleRequest(org.id)}
-                      disabled={organizationRoleRequestsLoadingId === org.id}
+                      disabled={organizationRoleRequestsLoadingId === org.id || !canManageOrganizations}
                       className="rounded-md border border-gray-300 px-2 py-1 text-xs font-medium text-gray-900 hover:bg-gray-100 disabled:opacity-60"
                     >
                       {organizationRoleRequestsLoadingId === org.id ? "Saving..." : "Create Request"}
@@ -3245,7 +3334,7 @@ export default function DashboardPage() {
                           <p className="text-xs text-gray-700">
                             #{requestItem.id} · {requestItem.target_user_id} {"->"} {requestItem.requested_role} · {requestItem.status}
                           </p>
-                          {requestItem.status === "pending" && requestItem.requested_by !== profile?.id ? (
+                          {requestItem.status === "pending" && requestItem.requested_by !== profile?.id && org.role === "owner" && isOwnerRole ? (
                             <div className="flex items-center gap-1">
                               <button
                                 type="button"
@@ -3264,7 +3353,11 @@ export default function DashboardPage() {
                                 Reject
                               </button>
                             </div>
-                          ) : requestItem.status === "pending" ? <p className="text-[11px] text-gray-500">Self-review blocked</p> : null}
+                          ) : requestItem.status === "pending" && requestItem.requested_by === profile?.id ? (
+                            <p className="text-[11px] text-gray-500">Self-review blocked</p>
+                          ) : requestItem.status === "pending" ? (
+                            <p className="text-[11px] text-gray-500">Review is owner-only.</p>
+                          ) : null}
                         </div>
                       ))}
                     </div>
@@ -3278,7 +3371,7 @@ export default function DashboardPage() {
         </div>
       </section>
 
-      <section className="mt-8 rounded-xl border border-gray-200 p-5">
+      <section id="team-policy" className="mt-8 rounded-xl border border-gray-200 p-5">
         <div className="mb-4 flex items-center justify-between gap-2">
           <div>
             <h2 className="text-base font-semibold text-gray-900">Team Policy</h2>
@@ -3297,19 +3390,21 @@ export default function DashboardPage() {
           <input
             value={newTeamName}
             onChange={(event) => setNewTeamName(event.target.value)}
+            disabled={!canManageTeams}
             placeholder="Team name"
             className="rounded-md border border-gray-300 px-3 py-2 text-xs"
           />
           <input
             value={newTeamDescription}
             onChange={(event) => setNewTeamDescription(event.target.value)}
+            disabled={!canManageTeams}
             placeholder="Description (optional)"
             className="min-w-[220px] rounded-md border border-gray-300 px-3 py-2 text-xs"
           />
           <button
             type="button"
             onClick={() => void handleCreateTeam()}
-            disabled={creatingTeam}
+            disabled={creatingTeam || !canManageTeams}
             className="rounded-md border border-gray-300 px-3 py-2 text-xs font-medium text-gray-900 hover:bg-gray-100 disabled:opacity-60"
           >
             {creatingTeam ? "Creating..." : "Create Team"}
@@ -3318,9 +3413,11 @@ export default function DashboardPage() {
         <textarea
           value={newTeamPolicyJson}
           onChange={(event) => setNewTeamPolicyJson(event.target.value)}
+          disabled={!canManageTeams}
           placeholder='Team policy JSON (optional), e.g. {"allowed_services":["notion"],"deny_tools":["linear_list_issues"]}'
           className="min-h-[72px] w-full rounded-md border border-gray-300 px-3 py-2 text-xs"
         />
+        {!canManageTeams ? <p className="mt-2 text-xs text-gray-500">Team policy and membership are read-only for your role.</p> : null}
         {teamsError ? <p className="mt-2 text-xs text-red-600">{teamsError}</p> : null}
         {teamsLoading ? <p className="mt-2 text-xs text-gray-500">Loading teams...</p> : null}
         <div className="mt-3 space-y-2">
@@ -3341,6 +3438,7 @@ export default function DashboardPage() {
                           [team.id]: event.target.checked,
                         }))
                       }
+                      disabled={!canManageTeams}
                     />
                     active
                   </label>
@@ -3357,6 +3455,7 @@ export default function DashboardPage() {
                         [team.id]: event.target.value,
                       }))
                     }
+                    disabled={!canManageTeams}
                     placeholder="Team name"
                     className="rounded-md border border-gray-300 px-2 py-1 text-xs"
                   />
@@ -3368,6 +3467,7 @@ export default function DashboardPage() {
                         [team.id]: event.target.value,
                       }))
                     }
+                    disabled={!canManageTeams}
                     placeholder="Description"
                     className="rounded-md border border-gray-300 px-2 py-1 text-xs"
                   />
@@ -3380,6 +3480,7 @@ export default function DashboardPage() {
                       [team.id]: event.target.value,
                     }))
                   }
+                  disabled={!canManageTeams}
                   placeholder='Policy JSON, e.g. {"allowed_services":["notion"],"deny_tools":["linear_list_issues"]}'
                   className="mt-2 min-h-[92px] w-full rounded-md border border-gray-300 px-2 py-1 text-xs"
                 />
@@ -3387,7 +3488,7 @@ export default function DashboardPage() {
                   <button
                     type="button"
                     onClick={() => void handleUpdateTeam(team.id)}
-                    disabled={teamUpdateLoadingId === team.id}
+                    disabled={teamUpdateLoadingId === team.id || !canManageTeams}
                     className="rounded-md border border-gray-300 px-2 py-1 text-xs font-medium text-gray-900 hover:bg-gray-100 disabled:opacity-60"
                   >
                     {teamUpdateLoadingId === team.id ? "Saving..." : "Save Team Policy"}
@@ -3414,7 +3515,7 @@ export default function DashboardPage() {
                             <button
                               type="button"
                               onClick={() => void handleRollbackTeamRevision(team.id, revision.id)}
-                              disabled={teamRollbackLoadingId === revision.id}
+                              disabled={teamRollbackLoadingId === revision.id || !canManageTeams}
                               className="rounded-md border border-gray-300 px-2 py-1 text-[11px] font-medium text-gray-900 hover:bg-gray-100 disabled:opacity-60"
                             >
                               {teamRollbackLoadingId === revision.id ? "Rolling back..." : "Rollback to this revision"}
@@ -3443,6 +3544,7 @@ export default function DashboardPage() {
                           [team.id]: event.target.value,
                         }))
                       }
+                      disabled={!canManageTeams}
                       placeholder="member user_id (uuid)"
                       className="min-w-[260px] rounded-md border border-gray-300 px-2 py-1 text-xs"
                     />
@@ -3454,6 +3556,7 @@ export default function DashboardPage() {
                           [team.id]: event.target.value,
                         }))
                       }
+                      disabled={!canManageTeams}
                       className="rounded-md border border-gray-300 px-2 py-1 text-xs"
                     >
                       <option value="member">member</option>
@@ -3462,7 +3565,7 @@ export default function DashboardPage() {
                     <button
                       type="button"
                       onClick={() => void handleUpsertTeamMember(team.id)}
-                      disabled={teamMemberActionLoadingId === team.id}
+                      disabled={teamMemberActionLoadingId === team.id || !canManageTeams}
                       className="rounded-md border border-gray-300 px-2 py-1 text-xs font-medium text-gray-900 hover:bg-gray-100 disabled:opacity-60"
                     >
                       {teamMemberActionLoadingId === team.id ? "Saving..." : "Add / Update Member"}
@@ -3478,7 +3581,7 @@ export default function DashboardPage() {
                           <button
                             type="button"
                             onClick={() => void handleDeleteTeamMember(team.id, member.id)}
-                            disabled={teamMemberDeleteLoadingId === member.id}
+                            disabled={teamMemberDeleteLoadingId === member.id || !canManageTeams}
                             className="rounded-md border border-gray-300 px-2 py-1 text-[11px] font-medium text-gray-900 hover:bg-gray-100 disabled:opacity-60"
                           >
                             {teamMemberDeleteLoadingId === member.id ? "Deleting..." : "Delete"}
@@ -3496,7 +3599,7 @@ export default function DashboardPage() {
         </div>
       </section>
 
-      <section className="mt-8 rounded-xl border border-gray-200 p-5">
+      <section id="integrations" className="mt-8 rounded-xl border border-gray-200 p-5">
         <div className="mb-4 flex items-center justify-between gap-2">
           <div>
             <h2 className="text-base font-semibold text-gray-900">Integrations (Webhook)</h2>
@@ -3506,7 +3609,7 @@ export default function DashboardPage() {
             <button
               type="button"
               onClick={() => void handleProcessWebhookRetries()}
-              disabled={processingWebhookRetries}
+              disabled={processingWebhookRetries || !canManageIntegrations}
               className="rounded-md border border-gray-300 px-3 py-1.5 text-xs font-medium text-gray-900 hover:bg-gray-100 disabled:opacity-60"
             >
               {processingWebhookRetries ? "Processing..." : "Process Retries"}
@@ -3525,24 +3628,28 @@ export default function DashboardPage() {
           <input
             value={newWebhookName}
             onChange={(event) => setNewWebhookName(event.target.value)}
+            disabled={!canManageIntegrations}
             placeholder="Webhook name"
             className="rounded-md border border-gray-300 px-3 py-2 text-xs"
           />
           <input
             value={newWebhookUrl}
             onChange={(event) => setNewWebhookUrl(event.target.value)}
+            disabled={!canManageIntegrations}
             placeholder="Endpoint URL"
             className="rounded-md border border-gray-300 px-3 py-2 text-xs"
           />
           <input
             value={newWebhookSecret}
             onChange={(event) => setNewWebhookSecret(event.target.value)}
+            disabled={!canManageIntegrations}
             placeholder="Secret (optional)"
             className="rounded-md border border-gray-300 px-3 py-2 text-xs"
           />
           <input
             value={newWebhookEvents}
             onChange={(event) => setNewWebhookEvents(event.target.value)}
+            disabled={!canManageIntegrations}
             placeholder="Event types (comma separated)"
             className="rounded-md border border-gray-300 px-3 py-2 text-xs"
           />
@@ -3550,11 +3657,12 @@ export default function DashboardPage() {
         <button
           type="button"
           onClick={() => void handleCreateWebhook()}
-          disabled={creatingWebhook}
+          disabled={creatingWebhook || !canManageIntegrations}
           className="mt-2 rounded-md border border-gray-300 px-3 py-2 text-xs font-medium text-gray-900 hover:bg-gray-100 disabled:opacity-60"
         >
           {creatingWebhook ? "Creating..." : "Create Webhook"}
         </button>
+        {!canManageIntegrations ? <p className="mt-2 text-xs text-gray-500">Integration write actions are read-only for your role.</p> : null}
         {integrationsError ? <p className="mt-2 text-xs text-red-600">{integrationsError}</p> : null}
         {integrationsLoading ? <p className="mt-2 text-xs text-gray-500">Loading webhooks...</p> : null}
         <div className="mt-3 grid gap-2 sm:grid-cols-2">
@@ -3591,7 +3699,8 @@ export default function DashboardPage() {
         </div>
       </section>
 
-      <section className="mt-8 rounded-xl border border-gray-200 p-5">
+      {canReadAdminOps ? (
+      <section id="admin-ops" className="mt-8 rounded-xl border border-gray-200 p-5">
         <div className="mb-4 flex items-center justify-between gap-2">
           <div>
             <h2 className="text-base font-semibold text-gray-900">Admin / Ops</h2>
@@ -3625,12 +3734,14 @@ export default function DashboardPage() {
                   type="checkbox"
                   checked={incidentEnabledDraft}
                   onChange={(event) => setIncidentEnabledDraft(event.target.checked)}
+                  disabled={!canManageIncidentBanner}
                 />
                 enabled
               </label>
               <select
                 value={incidentSeverityDraft}
                 onChange={(event) => setIncidentSeverityDraft(event.target.value as "info" | "warning" | "critical")}
+                disabled={!canManageIncidentBanner}
                 className="rounded-md border border-gray-300 px-2 py-1 text-xs"
               >
                 <option value="info">info</option>
@@ -3640,7 +3751,7 @@ export default function DashboardPage() {
               <button
                 type="button"
                 onClick={() => void handleSaveIncidentBanner()}
-                disabled={incidentSaving}
+                disabled={incidentSaving || !canManageIncidentBanner}
                 className="rounded-md border border-gray-300 px-2 py-1 text-xs font-medium text-gray-900 hover:bg-gray-100 disabled:opacity-60"
               >
                 {incidentSaving ? "Saving..." : "Save Banner"}
@@ -3657,6 +3768,7 @@ export default function DashboardPage() {
             <input
               value={incidentMessageDraft}
               onChange={(event) => setIncidentMessageDraft(event.target.value)}
+              disabled={!canManageIncidentBanner}
               placeholder="Incident message"
               className="mt-2 w-full rounded-md border border-gray-300 px-2 py-1 text-xs"
             />
@@ -3665,15 +3777,20 @@ export default function DashboardPage() {
                 type="datetime-local"
                 value={incidentStartsAtDraft}
                 onChange={(event) => setIncidentStartsAtDraft(event.target.value)}
+                disabled={!canManageIncidentBanner}
                 className="rounded-md border border-gray-300 px-2 py-1 text-xs"
               />
               <input
                 type="datetime-local"
                 value={incidentEndsAtDraft}
                 onChange={(event) => setIncidentEndsAtDraft(event.target.value)}
+                disabled={!canManageIncidentBanner}
                 className="rounded-md border border-gray-300 px-2 py-1 text-xs"
               />
             </div>
+            {!canManageIncidentBanner ? (
+              <p className="mt-1 text-[11px] text-gray-500">Incident banner update/review is owner-only.</p>
+            ) : null}
             <p className="mt-1 text-[11px] text-gray-500">
               updated: {incidentBanner?.updated_at ? new Date(incidentBanner.updated_at).toLocaleString() : "n/a"}
             </p>
@@ -3688,7 +3805,7 @@ export default function DashboardPage() {
                       <p className="text-[11px] text-gray-700">
                         #{rev.id} · {rev.severity} · {rev.status} · {new Date(rev.created_at).toLocaleString()}
                       </p>
-                      {rev.status === "pending" && rev.requested_by !== profile?.id ? (
+                      {rev.status === "pending" && rev.requested_by !== profile?.id && canManageIncidentBanner ? (
                         <div className="flex items-center gap-1">
                           <button
                             type="button"
@@ -3707,7 +3824,11 @@ export default function DashboardPage() {
                             Reject
                           </button>
                         </div>
-                      ) : rev.status === "pending" ? <p className="text-[11px] text-gray-500">Self-review blocked</p> : null}
+                      ) : rev.status === "pending" && rev.requested_by === profile?.id ? (
+                        <p className="text-[11px] text-gray-500">Self-review blocked</p>
+                      ) : rev.status === "pending" ? (
+                        <p className="text-[11px] text-gray-500">Review is owner-only.</p>
+                      ) : null}
                     </div>
                   ))}
                 </div>
@@ -3761,8 +3882,9 @@ export default function DashboardPage() {
           </article>
         </div>
       </section>
+      ) : null}
 
-      <section className="mt-8 rounded-xl border border-gray-200 p-5">
+      <section id="oauth-connections" className="mt-8 rounded-xl border border-gray-200 p-5">
         <h2 className="text-base font-semibold text-gray-900">OAuth Connections</h2>
         <p className="mt-1 text-sm text-gray-600">Connect Notion and Linear to expose MCP tools.</p>
 

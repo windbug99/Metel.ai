@@ -1,9 +1,11 @@
 import asyncio
 from types import SimpleNamespace
 
+import pytest
 from fastapi import HTTPException
 from starlette.requests import Request
 
+from app.core.authz import AuthzContext, Role
 from app.routes.organizations import (
     OrganizationCreateRequest,
     OrganizationInviteCreateRequest,
@@ -30,6 +32,14 @@ from app.routes.organizations import (
 def _request(path: str = "/api/organizations", method: str = "GET") -> Request:
     scope = {"type": "http", "method": method, "path": path, "headers": []}
     return Request(scope)
+
+
+@pytest.fixture(autouse=True)
+def _default_authz_admin(monkeypatch):
+    async def _fake_authz(_request: Request, **_kwargs) -> AuthzContext:
+        return AuthzContext(user_id="owner-user", role=Role.OWNER, org_ids={1}, team_ids={1})
+
+    monkeypatch.setattr("app.routes.organizations.get_authz_context", _fake_authz)
 
 
 def test_list_organizations_returns_memberships(monkeypatch):
@@ -380,6 +390,69 @@ def test_review_role_request_approve_updates_membership(monkeypatch):
     assert client.updated is True
     assert client.membership_upserted is not None
     assert client.membership_upserted.get("role") == "admin"
+
+
+def test_create_role_request_blocks_admin_requesting_owner(monkeypatch):
+    class _Query:
+        def __init__(self, client, table_name: str):
+            self.client = client
+            self.table_name = table_name
+            self.mode = "select"
+            self.payload = None
+
+        def select(self, *_args, **_kwargs):
+            self.mode = "select"
+            return self
+
+        def insert(self, payload: dict):
+            self.mode = "insert"
+            self.payload = payload
+            return self
+
+        def eq(self, *_args, **_kwargs):
+            return self
+
+        def limit(self, *_args, **_kwargs):
+            return self
+
+        def execute(self):
+            if self.mode == "select" and self.table_name == "org_memberships":
+                return SimpleNamespace(data=[{"role": "admin"}])
+            if self.mode == "insert" and self.table_name == "org_role_change_requests":
+                self.client.inserted = True
+                return SimpleNamespace(data=[self.payload])
+            return SimpleNamespace(data=[])
+
+    class _Client:
+        def __init__(self):
+            self.inserted = False
+
+        def table(self, name: str):
+            return _Query(self, name)
+
+    client = _Client()
+
+    async def _fake_user(_request: Request) -> str:
+        return "admin-user"
+
+    monkeypatch.setattr("app.routes.organizations.get_authenticated_user_id", _fake_user)
+    monkeypatch.setattr("app.routes.organizations.create_client", lambda *_args, **_kwargs: client)
+    monkeypatch.setattr("app.routes.organizations.get_settings", lambda: SimpleNamespace(supabase_url="x", supabase_service_role_key="y"))
+
+    try:
+        asyncio.run(
+            create_organization_role_request(
+                _request("/api/organizations/1/role-requests", "POST"),
+                "1",
+                OrganizationRoleRequestCreateRequest(target_user_id="user-2", requested_role="owner"),
+            )
+        )
+    except HTTPException as exc:
+        assert exc.status_code == 403
+        assert exc.detail == "owner_role_request_forbidden"
+    else:
+        assert False, "expected HTTPException"
+    assert client.inserted is False
 
 
 def test_review_role_request_blocks_self_review(monkeypatch):

@@ -231,6 +231,10 @@ Use:
 
 Key runtime flags:
 - `TOOL_SPECS_VALIDATE_ON_STARTUP`
+- RBAC rollout controls:
+  - `RBAC_READ_GUARD_ENABLED`
+  - `RBAC_WRITE_GUARD_ENABLED`
+  - `UI_RBAC_STRICT_ENABLED`
 - OAuth provider envs (Notion / Linear / Google)
 - Supabase service credentials
 - webhook retry and alert controls:
@@ -255,6 +259,18 @@ Recommended regression gates:
 ```bash
 cd backend
 ./scripts/run_phase3_regression.sh
+./scripts/run_phase3_rbac_smoke.sh
+```
+
+RBAC rollout/operations helpers:
+
+```bash
+cd backend
+# staging/prod rollout gate
+MODE=full_guard ./scripts/run_rbac_rollout_stage_gate.sh
+
+# 48h monitoring snapshot
+./scripts/run_rbac_monitoring_snapshot.sh
 ```
 
 Tool spec validation:

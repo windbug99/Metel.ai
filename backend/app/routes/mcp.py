@@ -532,12 +532,66 @@ async def mcp_call_tool(
             return _jsonrpc_error(req_id=req_id, code=4042, message="tool_not_available_in_phase1")
         allowed = _api_key_allowed_set(api_key)
         if allowed is not None and tool_name not in allowed:
+            latency_ms = int((time.perf_counter() - started) * 1000)
+            _log_tool_call(
+                supabase=supabase,
+                request_id=request_id,
+                user_id=api_key["user_id"],
+                api_key_id=api_key["id"],
+                tool_name=tool_name,
+                connector=tool.service,
+                status="fail",
+                error_code=ERR_ACCESS_DENIED,
+                latency_ms=latency_ms,
+                request_payload=masked_request_payload,
+                resolved_payload=None,
+                risk_result=None,
+                retry_count=0,
+                backoff_ms=max(0, int(getattr(settings, "mcp_retry_backoff_ms", 250))),
+                masked_fields=masked_fields,
+            )
             return _jsonrpc_error(req_id=req_id, code=CODE_TOOL_NOT_ALLOWED, message="tool_not_allowed_for_api_key")
         deny_tools = _policy_deny_tools(api_key)
         if tool_name in deny_tools:
+            latency_ms = int((time.perf_counter() - started) * 1000)
+            _log_tool_call(
+                supabase=supabase,
+                request_id=request_id,
+                user_id=api_key["user_id"],
+                api_key_id=api_key["id"],
+                tool_name=tool_name,
+                connector=tool.service,
+                status="fail",
+                error_code=ERR_ACCESS_DENIED,
+                latency_ms=latency_ms,
+                request_payload=masked_request_payload,
+                resolved_payload=None,
+                risk_result=None,
+                retry_count=0,
+                backoff_ms=max(0, int(getattr(settings, "mcp_retry_backoff_ms", 250))),
+                masked_fields=masked_fields,
+            )
             return _jsonrpc_error(req_id=req_id, code=CODE_ACCESS_DENIED, message=ERR_ACCESS_DENIED)
         allowed_services = _policy_allowed_services(api_key)
         if allowed_services is not None and tool.service not in allowed_services:
+            latency_ms = int((time.perf_counter() - started) * 1000)
+            _log_tool_call(
+                supabase=supabase,
+                request_id=request_id,
+                user_id=api_key["user_id"],
+                api_key_id=api_key["id"],
+                tool_name=tool_name,
+                connector=tool.service,
+                status="fail",
+                error_code=ERR_SERVICE_NOT_ALLOWED,
+                latency_ms=latency_ms,
+                request_payload=masked_request_payload,
+                resolved_payload=None,
+                risk_result=None,
+                retry_count=0,
+                backoff_ms=max(0, int(getattr(settings, "mcp_retry_backoff_ms", 250))),
+                masked_fields=masked_fields,
+            )
             return _jsonrpc_error(
                 req_id=req_id,
                 code=CODE_SERVICE_NOT_ALLOWED,

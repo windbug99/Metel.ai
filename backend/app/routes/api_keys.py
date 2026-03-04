@@ -11,11 +11,13 @@ from supabase import create_client
 from agent.registry import load_registry
 from app.core.api_keys import generate_api_key, hash_api_key
 from app.core.auth import get_authenticated_user_id
+from app.core.authz import AuthzContext, Role, get_authz_context, require_min_role
 from app.core.config import get_settings
 from app.core.error_codes import ERR_POLICY_CONFLICT
 
 router = APIRouter(prefix="/api/api-keys", tags=["api-keys"])
 _PHASE1_SERVICES = {"notion", "linear"}
+_MEMBER_ALLOWED_POLICY_KEYS = {"allowed_services", "deny_tools"}
 
 
 class CreateApiKeyRequest(BaseModel):
@@ -211,6 +213,26 @@ def _validate_policy_conflict(
                 )
 
 
+def _enforce_member_api_key_write_policy(
+    *,
+    authz_ctx: AuthzContext,
+    team_id: int | None,
+    policy_json: dict[str, Any] | None,
+) -> None:
+    if authz_ctx.role != Role.MEMBER:
+        return
+    if team_id is not None:
+        raise HTTPException(status_code=403, detail={"code": "access_denied", "reason": "member_team_scope_forbidden"})
+    if policy_json is None:
+        return
+    extra_keys = sorted(set(policy_json.keys()) - _MEMBER_ALLOWED_POLICY_KEYS)
+    if extra_keys:
+        raise HTTPException(
+            status_code=403,
+            detail={"code": "access_denied", "reason": f"member_policy_key_forbidden:{extra_keys[0]}"},
+        )
+
+
 def _ratio(numerator: int, denominator: int) -> float:
     if denominator <= 0:
         return 0.0
@@ -246,6 +268,8 @@ async def list_api_keys(request: Request):
     user_id = await get_authenticated_user_id(request)
     settings = get_settings()
     supabase = create_client(settings.supabase_url, settings.supabase_service_role_key)
+    authz_ctx = await get_authz_context(request, user_id=user_id, supabase=supabase)
+    require_min_role(authz_ctx, Role.MEMBER, method=request.method)
 
     result = (
         supabase.table("api_keys")
@@ -268,6 +292,8 @@ async def api_key_drilldown(
     user_id = await get_authenticated_user_id(request)
     settings = get_settings()
     supabase = create_client(settings.supabase_url, settings.supabase_service_role_key)
+    authz_ctx = await get_authz_context(request, user_id=user_id, supabase=supabase)
+    require_min_role(authz_ctx, Role.MEMBER, method=request.method)
 
     key_rows = (
         supabase.table("api_keys")
@@ -356,6 +382,8 @@ async def create_api_key(request: Request, body: CreateApiKeyRequest):
     user_id = await get_authenticated_user_id(request)
     settings = get_settings()
     supabase = create_client(settings.supabase_url, settings.supabase_service_role_key)
+    authz_ctx = await get_authz_context(request, user_id=user_id, supabase=supabase)
+    require_min_role(authz_ctx, Role.MEMBER, method=request.method)
 
     raw_key = generate_api_key()
     key_hash = hash_api_key(raw_key)
@@ -365,6 +393,7 @@ async def create_api_key(request: Request, body: CreateApiKeyRequest):
     policy_json = _normalize_api_key_policy(body.policy_json)
     memo = _normalize_memo(body.memo)
     tags = _normalize_tags(body.tags)
+    _enforce_member_api_key_write_policy(authz_ctx=authz_ctx, team_id=body.team_id, policy_json=policy_json)
     team_id = _validate_team_id(supabase=supabase, user_id=user_id, team_id=body.team_id)
     _validate_policy_conflict(allowed_tools=allowed_tools, policy_json=policy_json)
 
@@ -410,6 +439,8 @@ async def revoke_api_key(request: Request, key_id: str):
     user_id = await get_authenticated_user_id(request)
     settings = get_settings()
     supabase = create_client(settings.supabase_url, settings.supabase_service_role_key)
+    authz_ctx = await get_authz_context(request, user_id=user_id, supabase=supabase)
+    require_min_role(authz_ctx, Role.MEMBER, method=request.method)
     now = datetime.now(timezone.utc).isoformat()
 
     found = (
@@ -438,6 +469,8 @@ async def update_api_key(request: Request, key_id: str, body: UpdateApiKeyReques
     user_id = await get_authenticated_user_id(request)
     settings = get_settings()
     supabase = create_client(settings.supabase_url, settings.supabase_service_role_key)
+    authz_ctx = await get_authz_context(request, user_id=user_id, supabase=supabase)
+    require_min_role(authz_ctx, Role.MEMBER, method=request.method)
 
     found = (
         supabase.table("api_keys")
@@ -469,7 +502,17 @@ async def update_api_key(request: Request, key_id: str, body: UpdateApiKeyReques
     if "tags" in fields_set:
         payload["tags"] = _normalize_tags(body.tags)
     if "team_id" in fields_set:
+        if authz_ctx.role == Role.MEMBER and body.team_id is not None:
+            raise HTTPException(
+                status_code=403,
+                detail={"code": "access_denied", "reason": "member_team_scope_forbidden"},
+            )
         payload["team_id"] = _validate_team_id(supabase=supabase, user_id=user_id, team_id=body.team_id)
+    _enforce_member_api_key_write_policy(
+        authz_ctx=authz_ctx,
+        team_id=payload.get("team_id") if "team_id" in payload else None,
+        policy_json=next_policy_json if isinstance(next_policy_json, dict) else None,
+    )
     _validate_policy_conflict(
         allowed_tools=next_allowed_tools if isinstance(next_allowed_tools, list) else None,
         policy_json=next_policy_json if isinstance(next_policy_json, dict) else None,
@@ -499,6 +542,8 @@ async def rotate_api_key(request: Request, key_id: str):
     user_id = await get_authenticated_user_id(request)
     settings = get_settings()
     supabase = create_client(settings.supabase_url, settings.supabase_service_role_key)
+    authz_ctx = await get_authz_context(request, user_id=user_id, supabase=supabase)
+    require_min_role(authz_ctx, Role.MEMBER, method=request.method)
 
     found = (
         supabase.table("api_keys")

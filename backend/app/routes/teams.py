@@ -8,6 +8,7 @@ from pydantic import BaseModel, Field
 from supabase import create_client
 
 from app.core.auth import get_authenticated_user_id
+from app.core.authz import Role, get_authz_context, require_min_role
 from app.core.config import get_settings
 
 router = APIRouter(prefix="/api/teams", tags=["teams"])
@@ -69,6 +70,8 @@ async def list_teams(request: Request):
     user_id = await get_authenticated_user_id(request)
     settings = get_settings()
     supabase = create_client(settings.supabase_url, settings.supabase_service_role_key)
+    authz_ctx = await get_authz_context(request, user_id=user_id, supabase=supabase)
+    require_min_role(authz_ctx, Role.MEMBER, method=request.method)
 
     teams = (
         supabase.table("teams")
@@ -103,6 +106,8 @@ async def create_team(request: Request, body: TeamCreateRequest):
     user_id = await get_authenticated_user_id(request)
     settings = get_settings()
     supabase = create_client(settings.supabase_url, settings.supabase_service_role_key)
+    authz_ctx = await get_authz_context(request, user_id=user_id, supabase=supabase)
+    require_min_role(authz_ctx, Role.ADMIN, method=request.method)
     now = datetime.now(timezone.utc).isoformat()
     policy_json = _normalize_policy(body.policy_json)
 
@@ -133,6 +138,8 @@ async def update_team(request: Request, team_id: str, body: TeamUpdateRequest):
     user_id = await get_authenticated_user_id(request)
     settings = get_settings()
     supabase = create_client(settings.supabase_url, settings.supabase_service_role_key)
+    authz_ctx = await get_authz_context(request, user_id=user_id, supabase=supabase)
+    require_min_role(authz_ctx, Role.ADMIN, method=request.method)
 
     team_rows = (
         supabase.table("teams")
@@ -180,6 +187,8 @@ async def list_team_members(request: Request, team_id: str):
     user_id = await get_authenticated_user_id(request)
     settings = get_settings()
     supabase = create_client(settings.supabase_url, settings.supabase_service_role_key)
+    authz_ctx = await get_authz_context(request, user_id=user_id, supabase=supabase)
+    require_min_role(authz_ctx, Role.MEMBER, method=request.method)
 
     team = (
         supabase.table("teams")
@@ -207,6 +216,8 @@ async def add_team_member(request: Request, team_id: str, body: TeamMemberReques
     owner_id = await get_authenticated_user_id(request)
     settings = get_settings()
     supabase = create_client(settings.supabase_url, settings.supabase_service_role_key)
+    authz_ctx = await get_authz_context(request, user_id=owner_id, supabase=supabase)
+    require_min_role(authz_ctx, Role.ADMIN, method=request.method)
     team = (
         supabase.table("teams")
         .select("id")
@@ -234,6 +245,8 @@ async def delete_team_member(request: Request, team_id: str, membership_id: str)
     owner_id = await get_authenticated_user_id(request)
     settings = get_settings()
     supabase = create_client(settings.supabase_url, settings.supabase_service_role_key)
+    authz_ctx = await get_authz_context(request, user_id=owner_id, supabase=supabase)
+    require_min_role(authz_ctx, Role.ADMIN, method=request.method)
 
     team = (
         supabase.table("teams")
@@ -266,6 +279,8 @@ async def list_policy_revisions(request: Request, team_id: str, limit: int = 20)
     user_id = await get_authenticated_user_id(request)
     settings = get_settings()
     supabase = create_client(settings.supabase_url, settings.supabase_service_role_key)
+    authz_ctx = await get_authz_context(request, user_id=user_id, supabase=supabase)
+    require_min_role(authz_ctx, Role.MEMBER, method=request.method)
     team = (
         supabase.table("teams")
         .select("id")
@@ -292,6 +307,8 @@ async def rollback_policy_revision(request: Request, team_id: str, revision_id: 
     user_id = await get_authenticated_user_id(request)
     settings = get_settings()
     supabase = create_client(settings.supabase_url, settings.supabase_service_role_key)
+    authz_ctx = await get_authz_context(request, user_id=user_id, supabase=supabase)
+    require_min_role(authz_ctx, Role.ADMIN, method=request.method)
     team = (
         supabase.table("teams")
         .select("id")

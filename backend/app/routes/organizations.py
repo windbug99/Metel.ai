@@ -9,6 +9,7 @@ from pydantic import BaseModel, Field
 from supabase import create_client
 
 from app.core.auth import get_authenticated_user_id
+from app.core.authz import Role, get_authz_context, require_min_role
 from app.core.config import get_settings
 
 router = APIRouter(prefix="/api/organizations", tags=["organizations"])
@@ -111,6 +112,8 @@ async def list_organizations(request: Request):
     user_id = await get_authenticated_user_id(request)
     settings = get_settings()
     supabase = create_client(settings.supabase_url, settings.supabase_service_role_key)
+    authz_ctx = await get_authz_context(request, user_id=user_id, supabase=supabase)
+    require_min_role(authz_ctx, Role.MEMBER, method=request.method)
 
     membership_rows = (
         supabase.table("org_memberships")
@@ -150,6 +153,8 @@ async def create_organization(request: Request, body: OrganizationCreateRequest)
     user_id = await get_authenticated_user_id(request)
     settings = get_settings()
     supabase = create_client(settings.supabase_url, settings.supabase_service_role_key)
+    authz_ctx = await get_authz_context(request, user_id=user_id, supabase=supabase)
+    require_min_role(authz_ctx, Role.MEMBER, method=request.method)
     now = datetime.now(timezone.utc).isoformat()
 
     created = (
@@ -177,6 +182,8 @@ async def update_organization(request: Request, organization_id: str, body: Orga
     user_id = await get_authenticated_user_id(request)
     settings = get_settings()
     supabase = create_client(settings.supabase_url, settings.supabase_service_role_key)
+    authz_ctx = await get_authz_context(request, user_id=user_id, supabase=supabase)
+    require_min_role(authz_ctx, Role.ADMIN, method=request.method)
     if not _is_org_owner(supabase=supabase, user_id=user_id, organization_id=organization_id):
         raise HTTPException(status_code=404, detail="organization_not_found")
     supabase.table("organizations").update({"name": body.name.strip(), "updated_at": datetime.now(timezone.utc).isoformat()}).eq("id", organization_id).execute()
@@ -188,6 +195,8 @@ async def list_organization_members(request: Request, organization_id: str):
     user_id = await get_authenticated_user_id(request)
     settings = get_settings()
     supabase = create_client(settings.supabase_url, settings.supabase_service_role_key)
+    authz_ctx = await get_authz_context(request, user_id=user_id, supabase=supabase)
+    require_min_role(authz_ctx, Role.MEMBER, method=request.method)
     if not _is_org_member(supabase=supabase, user_id=user_id, organization_id=organization_id):
         raise HTTPException(status_code=404, detail="organization_not_found")
     rows = (
@@ -205,6 +214,8 @@ async def upsert_organization_member(request: Request, organization_id: str, bod
     owner_id = await get_authenticated_user_id(request)
     settings = get_settings()
     supabase = create_client(settings.supabase_url, settings.supabase_service_role_key)
+    authz_ctx = await get_authz_context(request, user_id=owner_id, supabase=supabase)
+    require_min_role(authz_ctx, Role.ADMIN, method=request.method)
     if not _is_org_owner(supabase=supabase, user_id=owner_id, organization_id=organization_id):
         raise HTTPException(status_code=404, detail="organization_not_found")
 
@@ -239,6 +250,8 @@ async def delete_organization_member(request: Request, organization_id: str, mem
     owner_id = await get_authenticated_user_id(request)
     settings = get_settings()
     supabase = create_client(settings.supabase_url, settings.supabase_service_role_key)
+    authz_ctx = await get_authz_context(request, user_id=owner_id, supabase=supabase)
+    require_min_role(authz_ctx, Role.ADMIN, method=request.method)
     if not _is_org_owner(supabase=supabase, user_id=owner_id, organization_id=organization_id):
         raise HTTPException(status_code=404, detail="organization_not_found")
     target_user_id = member_user_id.strip()
@@ -263,6 +276,8 @@ async def list_organization_invites(request: Request, organization_id: str):
     user_id = await get_authenticated_user_id(request)
     settings = get_settings()
     supabase = create_client(settings.supabase_url, settings.supabase_service_role_key)
+    authz_ctx = await get_authz_context(request, user_id=user_id, supabase=supabase)
+    require_min_role(authz_ctx, Role.MEMBER, method=request.method)
     if not _is_org_member(supabase=supabase, user_id=user_id, organization_id=organization_id):
         raise HTTPException(status_code=404, detail="organization_not_found")
     rows = (
@@ -280,6 +295,8 @@ async def create_organization_invite(request: Request, organization_id: str, bod
     invited_by = await get_authenticated_user_id(request)
     settings = get_settings()
     supabase = create_client(settings.supabase_url, settings.supabase_service_role_key)
+    authz_ctx = await get_authz_context(request, user_id=invited_by, supabase=supabase)
+    require_min_role(authz_ctx, Role.ADMIN, method=request.method)
     if not _is_org_owner(supabase=supabase, user_id=invited_by, organization_id=organization_id):
         raise HTTPException(status_code=404, detail="organization_not_found")
     role = str(body.role or "").strip().lower()
@@ -305,6 +322,8 @@ async def revoke_organization_invite(request: Request, organization_id: str, inv
     user_id = await get_authenticated_user_id(request)
     settings = get_settings()
     supabase = create_client(settings.supabase_url, settings.supabase_service_role_key)
+    authz_ctx = await get_authz_context(request, user_id=user_id, supabase=supabase)
+    require_min_role(authz_ctx, Role.ADMIN, method=request.method)
     if not _is_org_owner(supabase=supabase, user_id=user_id, organization_id=organization_id):
         raise HTTPException(status_code=404, detail="organization_not_found")
     rows = (
@@ -332,6 +351,8 @@ async def reissue_organization_invite(request: Request, organization_id: str, in
     user_id = await get_authenticated_user_id(request)
     settings = get_settings()
     supabase = create_client(settings.supabase_url, settings.supabase_service_role_key)
+    authz_ctx = await get_authz_context(request, user_id=user_id, supabase=supabase)
+    require_min_role(authz_ctx, Role.ADMIN, method=request.method)
     if not _is_org_owner(supabase=supabase, user_id=user_id, organization_id=organization_id):
         raise HTTPException(status_code=404, detail="organization_not_found")
     rows = (
@@ -368,6 +389,8 @@ async def accept_organization_invite(request: Request, body: OrganizationInviteA
     user_id = await get_authenticated_user_id(request)
     settings = get_settings()
     supabase = create_client(settings.supabase_url, settings.supabase_service_role_key)
+    authz_ctx = await get_authz_context(request, user_id=user_id, supabase=supabase)
+    require_min_role(authz_ctx, Role.MEMBER, method=request.method)
     token = body.token.strip()
     rows = (
         supabase.table("org_invites")
@@ -421,6 +444,8 @@ async def list_organization_role_requests(request: Request, organization_id: str
     user_id = await get_authenticated_user_id(request)
     settings = get_settings()
     supabase = create_client(settings.supabase_url, settings.supabase_service_role_key)
+    authz_ctx = await get_authz_context(request, user_id=user_id, supabase=supabase)
+    require_min_role(authz_ctx, Role.MEMBER, method=request.method)
     if not _is_org_member(supabase=supabase, user_id=user_id, organization_id=organization_id):
         raise HTTPException(status_code=404, detail="organization_not_found")
     rows = (
@@ -438,11 +463,16 @@ async def create_organization_role_request(request: Request, organization_id: st
     requested_by = await get_authenticated_user_id(request)
     settings = get_settings()
     supabase = create_client(settings.supabase_url, settings.supabase_service_role_key)
-    if not _is_org_admin_or_owner(supabase=supabase, user_id=requested_by, organization_id=organization_id):
+    authz_ctx = await get_authz_context(request, user_id=requested_by, supabase=supabase)
+    require_min_role(authz_ctx, Role.ADMIN, method=request.method)
+    requester_role = _org_member_role(supabase=supabase, user_id=requested_by, organization_id=organization_id)
+    if requester_role not in {"owner", "admin"}:
         raise HTTPException(status_code=404, detail="organization_not_found")
     requested_role = str(body.requested_role or "").strip().lower()
     if requested_role not in _ALLOWED_MEMBER_ROLES:
         raise HTTPException(status_code=400, detail="invalid_member_role")
+    if requested_role == "owner" and requester_role != "owner":
+        raise HTTPException(status_code=403, detail="owner_role_request_forbidden")
     now = datetime.now(timezone.utc).isoformat()
     payload = {
         "organization_id": organization_id,
@@ -465,6 +495,8 @@ async def review_organization_role_request(
     reviewer_id = await get_authenticated_user_id(request)
     settings = get_settings()
     supabase = create_client(settings.supabase_url, settings.supabase_service_role_key)
+    authz_ctx = await get_authz_context(request, user_id=reviewer_id, supabase=supabase)
+    require_min_role(authz_ctx, Role.OWNER, method=request.method)
     if not _is_org_owner(supabase=supabase, user_id=reviewer_id, organization_id=organization_id):
         raise HTTPException(status_code=404, detail="organization_not_found")
     decision = str(body.decision or "").strip().lower()

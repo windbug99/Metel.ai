@@ -8,6 +8,7 @@ from pydantic import BaseModel, Field
 from supabase import create_client
 
 from app.core.auth import get_authenticated_user_id
+from app.core.authz import Role, get_authz_context, require_min_role
 from app.core.config import get_settings
 from app.core.dead_letter_alert import send_dead_letter_alert
 from app.core.event_hooks import emit_webhook_event, process_pending_webhook_retries, retry_webhook_delivery
@@ -60,6 +61,8 @@ async def list_webhooks(request: Request):
     user_id = await get_authenticated_user_id(request)
     settings = get_settings()
     supabase = create_client(settings.supabase_url, settings.supabase_service_role_key)
+    authz_ctx = await get_authz_context(request, user_id=user_id, supabase=supabase)
+    require_min_role(authz_ctx, Role.MEMBER, method=request.method)
     rows = (
         supabase.table("webhook_subscriptions")
         .select("id,name,endpoint_url,event_types,is_active,last_delivery_at,created_at,updated_at")
@@ -75,6 +78,8 @@ async def create_webhook(request: Request, body: WebhookCreateRequest):
     user_id = await get_authenticated_user_id(request)
     settings = get_settings()
     supabase = create_client(settings.supabase_url, settings.supabase_service_role_key)
+    authz_ctx = await get_authz_context(request, user_id=user_id, supabase=supabase)
+    require_min_role(authz_ctx, Role.ADMIN, method=request.method)
     now = datetime.now(timezone.utc).isoformat()
     event_types = _normalize_event_types(body.event_types)
     row = (
@@ -101,6 +106,8 @@ async def update_webhook(request: Request, webhook_id: str, body: WebhookUpdateR
     user_id = await get_authenticated_user_id(request)
     settings = get_settings()
     supabase = create_client(settings.supabase_url, settings.supabase_service_role_key)
+    authz_ctx = await get_authz_context(request, user_id=user_id, supabase=supabase)
+    require_min_role(authz_ctx, Role.ADMIN, method=request.method)
     exists = (
         supabase.table("webhook_subscriptions")
         .select("id")
@@ -132,6 +139,8 @@ async def delete_webhook(request: Request, webhook_id: str):
     user_id = await get_authenticated_user_id(request)
     settings = get_settings()
     supabase = create_client(settings.supabase_url, settings.supabase_service_role_key)
+    authz_ctx = await get_authz_context(request, user_id=user_id, supabase=supabase)
+    require_min_role(authz_ctx, Role.ADMIN, method=request.method)
     supabase.table("webhook_subscriptions").update({"is_active": False, "updated_at": datetime.now(timezone.utc).isoformat()}).eq("id", webhook_id).eq("user_id", user_id).execute()
     return {"ok": True}
 
@@ -141,6 +150,8 @@ async def send_test_event(request: Request, webhook_id: str):
     user_id = await get_authenticated_user_id(request)
     settings = get_settings()
     supabase = create_client(settings.supabase_url, settings.supabase_service_role_key)
+    authz_ctx = await get_authz_context(request, user_id=user_id, supabase=supabase)
+    require_min_role(authz_ctx, Role.ADMIN, method=request.method)
     exists = (
         supabase.table("webhook_subscriptions")
         .select("id")
@@ -174,6 +185,8 @@ async def list_deliveries(
     user_id = await get_authenticated_user_id(request)
     settings = get_settings()
     supabase = create_client(settings.supabase_url, settings.supabase_service_role_key)
+    authz_ctx = await get_authz_context(request, user_id=user_id, supabase=supabase)
+    require_min_role(authz_ctx, Role.MEMBER, method=request.method)
     normalized_status = status.strip().lower()
     query = (
         supabase.table("webhook_deliveries")
@@ -195,6 +208,8 @@ async def retry_delivery(request: Request, delivery_id: str):
     user_id = await get_authenticated_user_id(request)
     settings = get_settings()
     supabase = create_client(settings.supabase_url, settings.supabase_service_role_key)
+    authz_ctx = await get_authz_context(request, user_id=user_id, supabase=supabase)
+    require_min_role(authz_ctx, Role.ADMIN, method=request.method)
     result = await retry_webhook_delivery(
         supabase=supabase,
         user_id=user_id,
@@ -229,6 +244,8 @@ async def process_deliveries(request: Request, limit: int = Query(100, ge=1, le=
     user_id = await get_authenticated_user_id(request)
     settings = get_settings()
     supabase = create_client(settings.supabase_url, settings.supabase_service_role_key)
+    authz_ctx = await get_authz_context(request, user_id=user_id, supabase=supabase)
+    require_min_role(authz_ctx, Role.ADMIN, method=request.method)
     result = await process_pending_webhook_retries(
         supabase=supabase,
         user_id=user_id,

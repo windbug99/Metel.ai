@@ -120,6 +120,9 @@ class Settings(BaseSettings):
     dead_letter_alert_min_count: int = 1
     dead_letter_alert_dedupe_seconds: int = 300
     alert_ticket_webhook_url: str | None = None
+    rbac_read_guard_enabled: bool = True
+    rbac_write_guard_enabled: bool = True
+    ui_rbac_strict_enabled: bool = True
 
 
 @lru_cache

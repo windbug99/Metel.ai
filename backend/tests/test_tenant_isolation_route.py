@@ -3,6 +3,7 @@ from types import SimpleNamespace
 
 from starlette.requests import Request
 
+from app.core.authz import AuthzContext, Role
 from app.routes.api_keys import list_api_keys
 from app.routes.audit import export_audit_events, list_audit_events
 from app.routes.tool_calls import list_tool_calls
@@ -175,7 +176,11 @@ def test_list_audit_events_enforces_user_scope(monkeypatch):
     async def _fake_user(_request: Request) -> str:
         return "user-a"
 
+    async def _fake_authz(_request: Request, **_kwargs) -> AuthzContext:
+        return AuthzContext(user_id="user-a", role=Role.ADMIN, org_ids={1}, team_ids=set())
+
     monkeypatch.setattr("app.routes.audit.get_authenticated_user_id", _fake_user)
+    monkeypatch.setattr("app.routes.audit.get_authz_context", _fake_authz)
     monkeypatch.setattr("app.routes.audit.create_client", lambda *_args, **_kwargs: client)
     monkeypatch.setattr(
         "app.routes.audit.get_settings",
@@ -247,7 +252,11 @@ def test_export_audit_events_enforces_user_scope(monkeypatch):
     async def _fake_user(_request: Request) -> str:
         return "user-a"
 
+    async def _fake_authz(_request: Request, **_kwargs) -> AuthzContext:
+        return AuthzContext(user_id="user-a", role=Role.ADMIN, org_ids={1}, team_ids=set())
+
     monkeypatch.setattr("app.routes.audit.get_authenticated_user_id", _fake_user)
+    monkeypatch.setattr("app.routes.audit.get_authz_context", _fake_authz)
     monkeypatch.setattr("app.routes.audit.create_client", lambda *_args, **_kwargs: client)
     monkeypatch.setattr(
         "app.routes.audit.get_settings",
@@ -272,3 +281,171 @@ def test_export_audit_events_enforces_user_scope(monkeypatch):
     api_keys_scoped = [item for item in client.logs if item[0] == "api_keys"]
     assert any(("eq", "user_id", "user-a") in ops for _, _, ops in tool_calls_scoped)
     assert any(("eq", "user_id", "user-a") in ops for _, _, ops in api_keys_scoped)
+
+
+def test_list_audit_events_member_ignores_team_org_filters(monkeypatch):
+    class _Query:
+        def __init__(self, client, table_name: str):
+            self.client = client
+            self.table_name = table_name
+            self.selected = ""
+            self.ops: list[tuple[str, str, object]] = []
+
+        def select(self, fields: str, **_kwargs):
+            self.selected = fields
+            return self
+
+        def eq(self, field: str, value):
+            self.ops.append(("eq", field, value))
+            return self
+
+        def gte(self, field: str, value):
+            self.ops.append(("gte", field, value))
+            return self
+
+        def lte(self, field: str, value):
+            self.ops.append(("lte", field, value))
+            return self
+
+        def in_(self, field: str, values):
+            self.ops.append(("in", field, tuple(values)))
+            return self
+
+        def order(self, *_args, **_kwargs):
+            return self
+
+        def limit(self, *_args, **_kwargs):
+            return self
+
+        def execute(self):
+            self.client.logs.append((self.table_name, self.selected, list(self.ops)))
+            return SimpleNamespace(data=[])
+
+    class _Client:
+        def __init__(self):
+            self.logs: list[tuple[str, str, list[tuple[str, str, object]]]] = []
+
+        def table(self, name: str):
+            return _Query(self, name)
+
+    client = _Client()
+
+    async def _fake_user(_request: Request) -> str:
+        return "user-member"
+
+    async def _fake_authz(_request: Request, **_kwargs) -> AuthzContext:
+        return AuthzContext(user_id="user-member", role=Role.MEMBER, org_ids={9}, team_ids={99})
+
+    monkeypatch.setattr("app.routes.audit.get_authenticated_user_id", _fake_user)
+    monkeypatch.setattr("app.routes.audit.get_authz_context", _fake_authz)
+    monkeypatch.setattr("app.routes.audit.create_client", lambda *_args, **_kwargs: client)
+    monkeypatch.setattr(
+        "app.routes.audit.get_settings",
+        lambda: SimpleNamespace(supabase_url="https://example.supabase.co", supabase_service_role_key="service-role-key"),
+    )
+
+    out = asyncio.run(
+        list_audit_events(
+            _request("/api/audit/events"),
+            limit=20,
+            status="all",
+            tool_name="",
+            api_key_id=None,
+            team_id=777,
+            organization_id=888,
+            error_code="",
+            connector="",
+            decision="all",
+            from_="",
+            to="",
+        )
+    )
+    assert out["count"] == 0
+    assert all(table != "org_memberships" for table, _, _ in client.logs)
+    tool_calls_scoped = [item for item in client.logs if item[0] == "tool_calls"]
+    assert any(("eq", "user_id", "user-member") in ops for _, _, ops in tool_calls_scoped)
+    assert all(("eq", "api_key_id", 777) not in ops for _, _, ops in tool_calls_scoped)
+
+
+def test_export_audit_events_admin_blocks_out_of_scope_org_filter(monkeypatch):
+    class _Query:
+        def __init__(self, client, table_name: str):
+            self.client = client
+            self.table_name = table_name
+            self.selected = ""
+            self.ops: list[tuple[str, str, object]] = []
+
+        def select(self, fields: str, **_kwargs):
+            self.selected = fields
+            return self
+
+        def eq(self, field: str, value):
+            self.ops.append(("eq", field, value))
+            return self
+
+        def gte(self, field: str, value):
+            self.ops.append(("gte", field, value))
+            return self
+
+        def lte(self, field: str, value):
+            self.ops.append(("lte", field, value))
+            return self
+
+        def in_(self, field: str, values):
+            self.ops.append(("in", field, tuple(values)))
+            return self
+
+        def order(self, *_args, **_kwargs):
+            return self
+
+        def limit(self, *_args, **_kwargs):
+            return self
+
+        def execute(self):
+            self.client.logs.append((self.table_name, self.selected, list(self.ops)))
+            return SimpleNamespace(data=[])
+
+    class _Client:
+        def __init__(self):
+            self.logs: list[tuple[str, str, list[tuple[str, str, object]]]] = []
+
+        def table(self, name: str):
+            return _Query(self, name)
+
+    client = _Client()
+
+    async def _fake_user(_request: Request) -> str:
+        return "user-member"
+
+    async def _fake_authz(_request: Request, **_kwargs) -> AuthzContext:
+        return AuthzContext(user_id="user-member", role=Role.ADMIN, org_ids={9}, team_ids={99})
+
+    monkeypatch.setattr("app.routes.audit.get_authenticated_user_id", _fake_user)
+    monkeypatch.setattr("app.routes.audit.get_authz_context", _fake_authz)
+    monkeypatch.setattr("app.routes.audit.create_client", lambda *_args, **_kwargs: client)
+    monkeypatch.setattr(
+        "app.routes.audit.get_settings",
+        lambda: SimpleNamespace(supabase_url="https://example.supabase.co", supabase_service_role_key="service-role-key"),
+    )
+
+    response = asyncio.run(
+        export_audit_events(
+            _request("/api/audit/export"),
+            format="jsonl",
+            limit=20,
+            status="all",
+            tool_name="",
+            api_key_id=None,
+            team_id=777,
+            organization_id=888,
+            error_code="",
+            connector="",
+            decision="all",
+            from_="",
+            to="",
+        )
+    )
+    assert response.media_type == "application/x-ndjson"
+    queried_tables = [table for table, _, _ in client.logs]
+    assert "org_memberships" in queried_tables
+    assert "tool_calls" not in queried_tables

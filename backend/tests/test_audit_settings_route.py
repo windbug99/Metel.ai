@@ -4,6 +4,7 @@ from types import SimpleNamespace
 from fastapi import HTTPException
 from starlette.requests import Request
 
+from app.core.authz import AuthzContext, Role
 from app.routes.audit import AuditSettingsUpdateRequest, export_audit_events, get_audit_settings, update_audit_settings
 
 
@@ -33,7 +34,11 @@ def test_get_audit_settings_defaults(monkeypatch):
     async def _fake_user(_request: Request) -> str:
         return "user-1"
 
+    async def _fake_authz(_request: Request, **_kwargs) -> AuthzContext:
+        return AuthzContext(user_id="user-1", role=Role.ADMIN, org_ids=set(), team_ids=set())
+
     monkeypatch.setattr("app.routes.audit.get_authenticated_user_id", _fake_user)
+    monkeypatch.setattr("app.routes.audit.get_authz_context", _fake_authz)
     monkeypatch.setattr("app.routes.audit.create_client", lambda *_args, **_kwargs: _Client())
     monkeypatch.setattr("app.routes.audit.get_settings", lambda: SimpleNamespace(supabase_url="x", supabase_service_role_key="y"))
 
@@ -84,7 +89,11 @@ def test_update_audit_settings_upsert(monkeypatch):
     async def _fake_user(_request: Request) -> str:
         return "user-1"
 
+    async def _fake_authz(_request: Request, **_kwargs) -> AuthzContext:
+        return AuthzContext(user_id="user-1", role=Role.OWNER, org_ids={1}, team_ids=set())
+
     monkeypatch.setattr("app.routes.audit.get_authenticated_user_id", _fake_user)
+    monkeypatch.setattr("app.routes.audit.get_authz_context", _fake_authz)
     monkeypatch.setattr("app.routes.audit.create_client", lambda *_args, **_kwargs: client)
     monkeypatch.setattr("app.routes.audit.get_settings", lambda: SimpleNamespace(supabase_url="x", supabase_service_role_key="y"))
 
@@ -125,7 +134,11 @@ def test_export_audit_events_blocked_by_settings(monkeypatch):
     async def _fake_user(_request: Request) -> str:
         return "user-1"
 
+    async def _fake_authz(_request: Request, **_kwargs) -> AuthzContext:
+        return AuthzContext(user_id="user-1", role=Role.ADMIN, org_ids={1}, team_ids=set())
+
     monkeypatch.setattr("app.routes.audit.get_authenticated_user_id", _fake_user)
+    monkeypatch.setattr("app.routes.audit.get_authz_context", _fake_authz)
     monkeypatch.setattr("app.routes.audit.create_client", lambda *_args, **_kwargs: _Client())
     monkeypatch.setattr("app.routes.audit.get_settings", lambda: SimpleNamespace(supabase_url="x", supabase_service_role_key="y"))
 

@@ -1,14 +1,20 @@
 import asyncio
 from types import SimpleNamespace
 
+import pytest
 from fastapi import HTTPException
 from starlette.requests import Request
 
+from app.core.authz import AuthzContext, Role
 from app.routes.admin import (
     IncidentBannerRevisionCreateRequest,
     IncidentBannerRevisionReviewRequest,
     IncidentBannerUpdateRequest,
+    connector_diagnostics,
     create_incident_banner_revision,
+    list_incident_banner_revisions,
+    rate_limit_events,
+    system_health,
     external_health,
     get_incident_banner,
     review_incident_banner_revision,
@@ -19,6 +25,14 @@ from app.routes.admin import (
 def _request(path: str, method: str = "GET") -> Request:
     scope = {"type": "http", "method": method, "path": path, "headers": []}
     return Request(scope)
+
+
+@pytest.fixture(autouse=True)
+def _default_authz_owner(monkeypatch):
+    async def _fake_authz(_request: Request, **_kwargs) -> AuthzContext:
+        return AuthzContext(user_id="user-1", role=Role.OWNER, org_ids={1}, team_ids={1})
+
+    monkeypatch.setattr("app.routes.admin.get_authz_context", _fake_authz)
 
 
 def test_external_health_aggregates_connectors(monkeypatch):
@@ -48,7 +62,11 @@ def test_external_health_aggregates_connectors(monkeypatch):
     async def _fake_user(_request: Request) -> str:
         return "user-1"
 
+    async def _fake_authz(_request: Request, **_kwargs) -> AuthzContext:
+        return AuthzContext(user_id="user-1", role=Role.ADMIN, org_ids={1}, team_ids=set())
+
     monkeypatch.setattr("app.routes.admin.get_authenticated_user_id", _fake_user)
+    monkeypatch.setattr("app.routes.admin.get_authz_context", _fake_authz)
     monkeypatch.setattr("app.routes.admin.create_client", lambda *_args, **_kwargs: _Client())
     monkeypatch.setattr("app.routes.admin.get_settings", lambda: SimpleNamespace(supabase_url="x", supabase_service_role_key="y"))
 
@@ -56,6 +74,81 @@ def test_external_health_aggregates_connectors(monkeypatch):
     assert out["window_days"] == 1
     assert any(item["connector"] == "notion" for item in out["items"])
     assert any(item["connector"] == "linear" for item in out["items"])
+
+
+@pytest.mark.parametrize(
+    ("path", "callable_name"),
+    [
+        ("/api/admin/connectors/diagnostics", "connector_diagnostics"),
+        ("/api/admin/rate-limit-events", "rate_limit_events"),
+        ("/api/admin/system-health", "system_health"),
+        ("/api/admin/external-health", "external_health"),
+        ("/api/admin/incident-banner/revisions", "list_incident_banner_revisions"),
+    ],
+)
+def test_admin_read_endpoints_block_member(monkeypatch, path: str, callable_name: str):
+    async def _fake_user(_request: Request) -> str:
+        return "user-1"
+
+    async def _fake_authz(_request: Request, **_kwargs) -> AuthzContext:
+        return AuthzContext(user_id="user-1", role=Role.MEMBER, org_ids={1}, team_ids={1})
+
+    monkeypatch.setattr("app.routes.admin.get_authenticated_user_id", _fake_user)
+    monkeypatch.setattr("app.routes.admin.get_authz_context", _fake_authz)
+    monkeypatch.setattr("app.routes.admin.create_client", lambda *_args, **_kwargs: SimpleNamespace())
+    monkeypatch.setattr("app.routes.admin.get_settings", lambda: SimpleNamespace(supabase_url="x", supabase_service_role_key="y"))
+
+    fn_map = {
+        "connector_diagnostics": lambda: connector_diagnostics(_request(path)),
+        "rate_limit_events": lambda: rate_limit_events(_request(path), days=1, limit=20),
+        "system_health": lambda: system_health(_request(path)),
+        "external_health": lambda: external_health(_request(path), days=1),
+        "list_incident_banner_revisions": lambda: list_incident_banner_revisions(_request(path), limit=20),
+    }
+
+    try:
+        asyncio.run(fn_map[callable_name]())
+    except HTTPException as exc:
+        assert exc.status_code == 403
+        assert isinstance(exc.detail, dict)
+        assert exc.detail.get("code") == "access_denied"
+        assert exc.detail.get("reason") == "insufficient_role"
+    else:
+        assert False, "expected HTTPException"
+
+
+def test_get_incident_banner_allows_member(monkeypatch):
+    class _Query:
+        def select(self, *_args, **_kwargs):
+            return self
+
+        def eq(self, *_args, **_kwargs):
+            return self
+
+        def limit(self, *_args, **_kwargs):
+            return self
+
+        def execute(self):
+            return SimpleNamespace(data=[])
+
+    class _Client:
+        def table(self, _name: str):
+            return _Query()
+
+    async def _fake_user(_request: Request) -> str:
+        return "user-1"
+
+    async def _fake_authz(_request: Request, **_kwargs) -> AuthzContext:
+        return AuthzContext(user_id="user-1", role=Role.MEMBER, org_ids={1}, team_ids={1})
+
+    monkeypatch.setattr("app.routes.admin.get_authenticated_user_id", _fake_user)
+    monkeypatch.setattr("app.routes.admin.get_authz_context", _fake_authz)
+    monkeypatch.setattr("app.routes.admin.create_client", lambda *_args, **_kwargs: _Client())
+    monkeypatch.setattr("app.routes.admin.get_settings", lambda: SimpleNamespace(supabase_url="x", supabase_service_role_key="y"))
+
+    out = asyncio.run(get_incident_banner(_request("/api/admin/incident-banner")))
+    assert out["enabled"] is False
+    assert out["severity"] == "info"
 
 
 def test_get_incident_banner_defaults_when_missing(monkeypatch):

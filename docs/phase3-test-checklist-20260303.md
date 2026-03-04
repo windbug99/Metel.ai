@@ -20,7 +20,7 @@
   - dashboard consistency: `pass=11 fail=0`
 - GitHub Actions `backend-phase3-regression`: PASS
   - workflow_dispatch run: `22613604511` (main, success)
-  - 구성 잡: `phase3-backend-policy-audit`, `phase3-frontend-typecheck`
+  - 구성 잡: `phase3-backend-policy-audit`, `phase3-backend-rbac-smoke`, `phase3-frontend-typecheck`
 
 원클릭 실행:
 ```bash
@@ -43,7 +43,9 @@ RUN_DASHBOARD_CONSISTENCY=1 \
 RUN_STRICT_HIGH_RISK=1 \
 API_BASE_URL=https://<your-api-domain> \
 API_KEY=metel_xxx \
-USER_JWT=<user_jwt> \
+OWNER_JWT=<owner_jwt> \
+ADMIN_JWT=<admin_jwt> \
+MEMBER_JWT=<member_jwt> \
 ./scripts/run_phase3_full_check.sh
 ```
 
@@ -83,6 +85,15 @@ pnpm -s tsc --noEmit
 기대 결과:
 - 타입 오류 없음
 
+### 1-4. RBAC 스모크 테스트
+```bash
+cd backend
+./scripts/run_phase3_rbac_smoke.sh
+```
+
+기대 결과:
+- 역할/범위 권한 핵심 테스트 pass
+
 ---
 
 ## 2) 원격 CI 테스트
@@ -96,6 +107,7 @@ gh run watch <run_id>
 
 기대 결과:
 - `phase3-backend-policy-audit` 성공
+- `phase3-backend-rbac-smoke` 성공
 - `phase3-frontend-typecheck` 성공
 
 ---
@@ -199,6 +211,16 @@ curl -L -H "Authorization: Bearer <user_jwt>" \
 API 기반 자동검증:
 ```bash
 cd backend
+API_BASE_URL=https://<your-api-domain> \
+OWNER_JWT=<owner_jwt> \
+ADMIN_JWT=<admin_jwt> \
+MEMBER_JWT=<member_jwt> \
+./scripts/run_phase3_dashboard_consistency.sh
+```
+
+레거시 호환(단일 토큰):
+```bash
+cd backend
 API_BASE_URL=https://<your-api-domain> USER_JWT=<user_jwt> ./scripts/run_phase3_dashboard_consistency.sh
 ```
 
@@ -243,3 +265,71 @@ Go 조건:
 
 No-Go 조건:
 - 하나라도 실패하거나 로그/지표 불일치 발생
+
+---
+
+## 9) RBAC 롤아웃 단계 검증 (Staging)
+
+read_guard only 단계:
+```bash
+cd backend
+API_BASE_URL=https://<staging-api-domain> \
+OWNER_JWT=<owner_jwt> \
+ADMIN_JWT=<admin_jwt> \
+MEMBER_JWT=<member_jwt> \
+EXPECT_READ_GUARD=1 \
+EXPECT_WRITE_GUARD=0 \
+EXPECT_UI_STRICT=0 \
+./scripts/run_rbac_rollout_smoke.sh
+```
+
+통합 게이트:
+```bash
+cd backend
+MODE=read_only \
+API_BASE_URL=https://<staging-api-domain> \
+OWNER_JWT=<owner_jwt> \
+ADMIN_JWT=<admin_jwt> \
+MEMBER_JWT=<member_jwt> \
+./scripts/run_rbac_rollout_stage_gate.sh
+```
+
+full guard 단계:
+```bash
+cd backend
+API_BASE_URL=https://<staging-api-domain> \
+OWNER_JWT=<owner_jwt> \
+ADMIN_JWT=<admin_jwt> \
+MEMBER_JWT=<member_jwt> \
+EXPECT_READ_GUARD=1 \
+EXPECT_WRITE_GUARD=1 \
+EXPECT_UI_STRICT=1 \
+./scripts/run_rbac_rollout_smoke.sh
+```
+
+통합 게이트:
+```bash
+cd backend
+MODE=full_guard \
+API_BASE_URL=https://<staging-api-domain> \
+OWNER_JWT=<owner_jwt> \
+ADMIN_JWT=<admin_jwt> \
+MEMBER_JWT=<member_jwt> \
+./scripts/run_rbac_rollout_stage_gate.sh
+```
+
+---
+
+## 10) RBAC 운영 모니터링 스냅샷 (Production 48h)
+
+```bash
+cd backend
+API_BASE_URL=https://<prod-api-domain> \
+OWNER_JWT=<owner_jwt> \
+ADMIN_JWT=<admin_jwt> \
+MEMBER_JWT=<member_jwt> \
+ALERT_ACCESS_DENIED_24H=50 \
+ALERT_FAIL_RATE_24H=0.2 \
+ALERT_POLICY_BLOCK_RATE=0.4 \
+./scripts/run_rbac_monitoring_snapshot.sh
+```

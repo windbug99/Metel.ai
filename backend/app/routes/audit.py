@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import csv
 import json
+from copy import deepcopy
 from datetime import datetime, timezone
 from io import StringIO
 from typing import Any
@@ -12,6 +13,7 @@ from pydantic import BaseModel, Field
 from supabase import create_client
 
 from app.core.auth import get_authenticated_user_id
+from app.core.authz import Role, get_authz_context, require_min_role
 from app.core.config import get_settings
 
 router = APIRouter(prefix="/api/audit", tags=["audit"])
@@ -182,6 +184,21 @@ def _default_audit_settings(*, user_id: str) -> dict[str, Any]:
     }
 
 
+def _mask_payload(value: Any, *, mask_keys: set[str]) -> Any:
+    if isinstance(value, dict):
+        out: dict[str, Any] = {}
+        for key, item in value.items():
+            key_text = str(key or "")
+            if key_text.lower() in mask_keys:
+                out[key_text] = "***"
+            else:
+                out[key_text] = _mask_payload(item, mask_keys=mask_keys)
+        return out
+    if isinstance(value, list):
+        return [_mask_payload(item, mask_keys=mask_keys) for item in value]
+    return value
+
+
 def _load_audit_settings(*, supabase, user_id: str) -> dict[str, Any]:
     rows = (
         supabase.table("audit_settings")
@@ -216,6 +233,8 @@ async def list_audit_events(
     user_id = await get_authenticated_user_id(request)
     settings = get_settings()
     supabase = create_client(settings.supabase_url, settings.supabase_service_role_key)
+    authz_ctx = await get_authz_context(request, user_id=user_id, supabase=supabase)
+    require_min_role(authz_ctx, Role.MEMBER, method=request.method)
 
     normalized_status = status.strip().lower()
     if normalized_status not in {"all", "success", "fail"}:
@@ -223,6 +242,9 @@ async def list_audit_events(
     normalized_tool_name = tool_name.strip()
     normalized_team_id = _normalize_optional_int(team_id)
     normalized_organization_id = _normalize_optional_int(organization_id)
+    if authz_ctx.role == Role.MEMBER:
+        normalized_team_id = None
+        normalized_organization_id = None
     normalized_error_code = error_code.strip()
     normalized_connector = str(connector or "").strip().lower()
     normalized_decision = str(decision or "").strip().lower()
@@ -324,6 +346,8 @@ async def export_audit_events(
     user_id = await get_authenticated_user_id(request)
     settings = get_settings()
     supabase = create_client(settings.supabase_url, settings.supabase_service_role_key)
+    authz_ctx = await get_authz_context(request, user_id=user_id, supabase=supabase)
+    require_min_role(authz_ctx, Role.ADMIN, method=request.method)
 
     export_format = format.strip().lower()
     if export_format not in {"jsonl", "csv"}:
@@ -338,6 +362,9 @@ async def export_audit_events(
     normalized_tool_name = tool_name.strip()
     normalized_team_id = _normalize_optional_int(team_id)
     normalized_organization_id = _normalize_optional_int(organization_id)
+    if authz_ctx.role == Role.MEMBER:
+        normalized_team_id = None
+        normalized_organization_id = None
     normalized_error_code = error_code.strip()
     normalized_connector = str(connector or "").strip().lower()
     normalized_decision = str(decision or "").strip().lower()
@@ -432,6 +459,8 @@ async def get_audit_settings(request: Request):
     user_id = await get_authenticated_user_id(request)
     settings = get_settings()
     supabase = create_client(settings.supabase_url, settings.supabase_service_role_key)
+    authz_ctx = await get_authz_context(request, user_id=user_id, supabase=supabase)
+    require_min_role(authz_ctx, Role.ADMIN, method=request.method)
     row = _load_audit_settings(supabase=supabase, user_id=user_id)
     return {
         "retention_days": int(row.get("retention_days") or 90),
@@ -446,6 +475,8 @@ async def update_audit_settings(request: Request, body: AuditSettingsUpdateReque
     user_id = await get_authenticated_user_id(request)
     settings = get_settings()
     supabase = create_client(settings.supabase_url, settings.supabase_service_role_key)
+    authz_ctx = await get_authz_context(request, user_id=user_id, supabase=supabase)
+    require_min_role(authz_ctx, Role.OWNER, method=request.method)
 
     current = _load_audit_settings(supabase=supabase, user_id=user_id)
     payload = {
@@ -476,6 +507,8 @@ async def get_audit_event_detail(
     user_id = await get_authenticated_user_id(request)
     settings = get_settings()
     supabase = create_client(settings.supabase_url, settings.supabase_service_role_key)
+    authz_ctx = await get_authz_context(request, user_id=user_id, supabase=supabase)
+    require_min_role(authz_ctx, Role.MEMBER, method=request.method)
 
     row = (
         supabase.table("tool_calls")
@@ -491,6 +524,8 @@ async def get_audit_event_detail(
         raise HTTPException(status_code=404, detail="audit_event_not_found")
     item = row[0]
     owner_user_id = str(item.get("user_id") or "").strip()
+    if authz_ctx.role == Role.MEMBER and owner_user_id and owner_user_id != user_id:
+        raise HTTPException(status_code=404, detail="audit_event_not_found")
     if owner_user_id and owner_user_id != user_id:
         my_org_rows = (
             supabase.table("org_memberships")
@@ -522,6 +557,29 @@ async def get_audit_event_detail(
     ).data or []
     key = api_key_row[0] if api_key_row else None
     decision = _decision(str(item.get("status") or ""), item.get("error_code"))
+
+    raw_request_payload = item.get("request_payload")
+    raw_resolved_payload = item.get("resolved_payload")
+    raw_risk_result = item.get("risk_result")
+    masked_fields = item.get("masked_fields") or []
+
+    if authz_ctx.role == Role.MEMBER:
+        request_payload: Any = None
+        resolved_payload: Any = None
+        risk_result: Any = None
+    elif authz_ctx.role == Role.ADMIN:
+        settings_row = _load_audit_settings(supabase=supabase, user_id=user_id)
+        policy = settings_row.get("masking_policy") if isinstance(settings_row.get("masking_policy"), dict) else {}
+        mask_keys = {str(k).strip().lower() for k in (policy.get("mask_keys") or []) if str(k).strip()}
+        mask_keys.update({"token", "access_token", "authorization", "password", "secret", "api_key"})
+        request_payload = _mask_payload(deepcopy(raw_request_payload), mask_keys=mask_keys)
+        resolved_payload = _mask_payload(deepcopy(raw_resolved_payload), mask_keys=mask_keys)
+        risk_result = _mask_payload(deepcopy(raw_risk_result), mask_keys=mask_keys)
+    else:
+        request_payload = raw_request_payload
+        resolved_payload = raw_resolved_payload
+        risk_result = raw_risk_result
+
     return {
         "id": item.get("id"),
         "request_id": item.get("request_id"),
@@ -549,9 +607,9 @@ async def get_audit_event_detail(
             "backoff_ms": item.get("backoff_ms"),
         },
         "execution": {
-            "request_payload": item.get("request_payload"),
-            "resolved_payload": item.get("resolved_payload"),
-            "risk_result": item.get("risk_result"),
-            "masked_fields": item.get("masked_fields") or [],
+            "request_payload": request_payload,
+            "resolved_payload": resolved_payload,
+            "risk_result": risk_result,
+            "masked_fields": masked_fields,
         },
     }

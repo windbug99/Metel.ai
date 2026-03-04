@@ -1,15 +1,25 @@
 import asyncio
 from types import SimpleNamespace
 
+import pytest
 from fastapi import HTTPException
 from starlette.requests import Request
 
-from app.routes.api_keys import UpdateApiKeyRequest, rotate_api_key, update_api_key
+from app.core.authz import AuthzContext, Role
+from app.routes.api_keys import CreateApiKeyRequest, UpdateApiKeyRequest, create_api_key, rotate_api_key, update_api_key
 
 
 def _request() -> Request:
     scope = {"type": "http", "method": "PATCH", "path": "/api/api-keys/1", "headers": []}
     return Request(scope)
+
+
+@pytest.fixture(autouse=True)
+def _default_authz_admin(monkeypatch):
+    async def _fake_authz(_request: Request, **_kwargs) -> AuthzContext:
+        return AuthzContext(user_id="user-1", role=Role.ADMIN, org_ids={1}, team_ids={1})
+
+    monkeypatch.setattr("app.routes.api_keys.get_authz_context", _fake_authz)
 
 
 def test_update_api_key_updates_allowed_tools_and_name(monkeypatch):
@@ -511,3 +521,104 @@ def test_rotate_api_key_creates_new_key_and_revokes_old(monkeypatch):
     assert client.insert_payload["is_active"] is True
     assert client.update_payload is not None
     assert client.update_payload["is_active"] is False
+
+
+def test_create_api_key_blocks_member_team_scope(monkeypatch):
+    class _Query:
+        def select(self, *_args, **_kwargs):
+            return self
+
+        def eq(self, *_args, **_kwargs):
+            return self
+
+        def limit(self, *_args, **_kwargs):
+            return self
+
+        def insert(self, *_args, **_kwargs):
+            return self
+
+        def execute(self):
+            return SimpleNamespace(data=[])
+
+    class _Client:
+        def table(self, _name: str):
+            return _Query()
+
+    async def _fake_user(_request: Request) -> str:
+        return "user-1"
+
+    async def _fake_authz(_request: Request, **_kwargs) -> AuthzContext:
+        return AuthzContext(user_id="user-1", role=Role.MEMBER, org_ids=set(), team_ids={1})
+
+    monkeypatch.setattr("app.routes.api_keys.get_authenticated_user_id", _fake_user)
+    monkeypatch.setattr("app.routes.api_keys.get_authz_context", _fake_authz)
+    monkeypatch.setattr("app.routes.api_keys.create_client", lambda *_args, **_kwargs: _Client())
+    monkeypatch.setattr(
+        "app.routes.api_keys.get_settings",
+        lambda: SimpleNamespace(supabase_url="https://example.supabase.co", supabase_service_role_key="service-role-key"),
+    )
+    monkeypatch.setattr("app.routes.api_keys.generate_api_key", lambda: "metel_member_abcdefghijklmnopqrstuvwxyz")
+    monkeypatch.setattr("app.routes.api_keys.hash_api_key", lambda _value: "hash-value")
+
+    try:
+        asyncio.run(
+            create_api_key(
+                _request(),
+                CreateApiKeyRequest(name="k", team_id=1, policy_json={"deny_tools": ["linear_list_issues"]}),
+            )
+        )
+    except HTTPException as exc:
+        assert exc.status_code == 403
+        assert isinstance(exc.detail, dict)
+        assert exc.detail.get("reason") == "member_team_scope_forbidden"
+    else:
+        assert False, "expected HTTPException"
+
+
+def test_update_api_key_blocks_member_policy_key_outside_whitelist(monkeypatch):
+    class _Query:
+        def __init__(self):
+            self._mode = ""
+
+        def select(self, *_args, **_kwargs):
+            self._mode = "select"
+            return self
+
+        def eq(self, *_args, **_kwargs):
+            return self
+
+        def limit(self, *_args, **_kwargs):
+            return self
+
+        def execute(self):
+            if self._mode == "select":
+                return SimpleNamespace(data=[{"id": 1, "allowed_tools": None, "policy_json": None}])
+            return SimpleNamespace(data=[])
+
+    class _Client:
+        def table(self, _name: str):
+            return _Query()
+
+    async def _fake_user(_request: Request) -> str:
+        return "user-1"
+
+    async def _fake_authz(_request: Request, **_kwargs) -> AuthzContext:
+        return AuthzContext(user_id="user-1", role=Role.MEMBER, org_ids=set(), team_ids=set())
+
+    monkeypatch.setattr("app.routes.api_keys.get_authenticated_user_id", _fake_user)
+    monkeypatch.setattr("app.routes.api_keys.get_authz_context", _fake_authz)
+    monkeypatch.setattr("app.routes.api_keys.create_client", lambda *_args, **_kwargs: _Client())
+    monkeypatch.setattr(
+        "app.routes.api_keys.get_settings",
+        lambda: SimpleNamespace(supabase_url="https://example.supabase.co", supabase_service_role_key="service-role-key"),
+    )
+
+    body = UpdateApiKeyRequest(policy_json={"allow_high_risk": True})
+    try:
+        asyncio.run(update_api_key(_request(), "1", body))
+    except HTTPException as exc:
+        assert exc.status_code == 403
+        assert isinstance(exc.detail, dict)
+        assert str(exc.detail.get("reason", "")).startswith("member_policy_key_forbidden:")
+    else:
+        assert False, "expected HTTPException"

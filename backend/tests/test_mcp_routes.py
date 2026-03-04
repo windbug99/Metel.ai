@@ -208,11 +208,17 @@ def test_mcp_call_tool_denied_by_api_key_allowed_tools(monkeypatch):
         def get_tool(self, _name: str):
             return _Tool()
 
+    captured = {"error_code": None}
+
+    def _fake_log_tool_call(**kwargs):
+        captured["error_code"] = kwargs.get("error_code")
+
     monkeypatch.setattr("app.routes.mcp._authenticate_api_key", _fake_auth)
     monkeypatch.setattr("app.routes.mcp._is_rate_limited", lambda **_kwargs: False)
     monkeypatch.setattr("app.routes.mcp.get_settings", lambda: SimpleNamespace(supabase_url="x", supabase_service_role_key="y"))
     monkeypatch.setattr("app.routes.mcp.create_client", lambda *_args, **_kwargs: _Supabase())
     monkeypatch.setattr("app.routes.mcp.load_registry", lambda: _Registry())
+    monkeypatch.setattr("app.routes.mcp._log_tool_call", _fake_log_tool_call)
 
     req = _Request(
         {
@@ -225,6 +231,7 @@ def test_mcp_call_tool_denied_by_api_key_allowed_tools(monkeypatch):
     response = asyncio.run(mcp.mcp_call_tool(req, authorization="Bearer metel_xxx"))
     payload = response.body.decode("utf-8")
     assert "tool_not_allowed_for_api_key" in payload
+    assert captured["error_code"] == "access_denied"
 
 
 def test_mcp_call_tool_maps_validation_error(monkeypatch):
@@ -753,11 +760,17 @@ def test_mcp_call_tool_denied_by_policy_deny_tools(monkeypatch):
         def get_tool(self, _name: str):
             return _Tool()
 
+    captured = {"error_code": None}
+
+    def _fake_log_tool_call(**kwargs):
+        captured["error_code"] = kwargs.get("error_code")
+
     monkeypatch.setattr("app.routes.mcp._authenticate_api_key", _fake_auth)
     monkeypatch.setattr("app.routes.mcp._is_rate_limited", lambda **_kwargs: False)
     monkeypatch.setattr("app.routes.mcp.get_settings", lambda: SimpleNamespace(supabase_url="x", supabase_service_role_key="y"))
     monkeypatch.setattr("app.routes.mcp.create_client", lambda *_args, **_kwargs: _Supabase())
     monkeypatch.setattr("app.routes.mcp.load_registry", lambda: _Registry())
+    monkeypatch.setattr("app.routes.mcp._log_tool_call", _fake_log_tool_call)
 
     req = _Request(
         {
@@ -770,6 +783,7 @@ def test_mcp_call_tool_denied_by_policy_deny_tools(monkeypatch):
     response = asyncio.run(mcp.mcp_call_tool(req, authorization="Bearer metel_xxx"))
     payload = response.body.decode("utf-8")
     assert "access_denied" in payload
+    assert captured["error_code"] == "access_denied"
 
 
 def test_mcp_call_tool_denied_by_policy_allowed_services(monkeypatch):
@@ -788,11 +802,17 @@ def test_mcp_call_tool_denied_by_policy_allowed_services(monkeypatch):
         def get_tool(self, _name: str):
             return _Tool()
 
+    captured = {"error_code": None}
+
+    def _fake_log_tool_call(**kwargs):
+        captured["error_code"] = kwargs.get("error_code")
+
     monkeypatch.setattr("app.routes.mcp._authenticate_api_key", _fake_auth)
     monkeypatch.setattr("app.routes.mcp._is_rate_limited", lambda **_kwargs: False)
     monkeypatch.setattr("app.routes.mcp.get_settings", lambda: SimpleNamespace(supabase_url="x", supabase_service_role_key="y"))
     monkeypatch.setattr("app.routes.mcp.create_client", lambda *_args, **_kwargs: _Supabase())
     monkeypatch.setattr("app.routes.mcp.load_registry", lambda: _Registry())
+    monkeypatch.setattr("app.routes.mcp._log_tool_call", _fake_log_tool_call)
 
     req = _Request(
         {
@@ -805,6 +825,7 @@ def test_mcp_call_tool_denied_by_policy_allowed_services(monkeypatch):
     response = asyncio.run(mcp.mcp_call_tool(req, authorization="Bearer metel_xxx"))
     payload = response.body.decode("utf-8")
     assert "service_not_allowed" in payload
+    assert captured["error_code"] == "service_not_allowed"
 
 
 def test_mcp_call_tool_denied_by_policy_allowed_linear_team_ids(monkeypatch):

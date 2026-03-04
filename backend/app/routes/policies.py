@@ -8,6 +8,7 @@ from supabase import create_client
 
 from agent.registry import load_registry
 from app.core.auth import get_authenticated_user_id
+from app.core.authz import Role, get_authz_context, require_min_role
 from app.core.config import get_settings
 from app.core.error_codes import ERR_ACCESS_DENIED, ERR_POLICY_BLOCKED, ERR_SERVICE_NOT_ALLOWED
 from app.core.risk_gate import evaluate_risk_with_policy
@@ -88,14 +89,41 @@ def _merge_team_and_key_policy(team_policy: dict[str, Any] | None, key_policy: d
     return merged
 
 
+def _enforce_member_simulation_scope(*, role: Role, team_ids: set[int], arguments: dict[str, Any]) -> None:
+    if role != Role.MEMBER:
+        return
+    raw_org_id = arguments.get("organization_id")
+    if raw_org_id not in (None, "", 0, "0"):
+        raise HTTPException(
+            status_code=403,
+            detail={"code": "access_denied", "reason": "member_organization_scope_forbidden"},
+        )
+
+    raw_team_id = arguments.get("team_id")
+    if raw_team_id in (None, ""):
+        return
+    team_id_text = str(raw_team_id).strip()
+    if not team_id_text:
+        return
+    allowed_team_ids = {str(item) for item in team_ids}
+    if team_id_text not in allowed_team_ids:
+        raise HTTPException(
+            status_code=403,
+            detail={"code": "access_denied", "reason": "member_team_scope_mismatch"},
+        )
+
+
 @router.post("/simulate")
 async def simulate_policy(request: Request, body: SimulatePolicyRequest):
     user_id = await get_authenticated_user_id(request)
     settings = get_settings()
     supabase = create_client(settings.supabase_url, settings.supabase_service_role_key)
+    authz_ctx = await get_authz_context(request, user_id=user_id, supabase=supabase)
+    require_min_role(authz_ctx, Role.MEMBER, method=request.method)
 
     tool_name = body.tool_name.strip()
     arguments = body.arguments if isinstance(body.arguments, dict) else {}
+    _enforce_member_simulation_scope(role=authz_ctx.role, team_ids=authz_ctx.team_ids, arguments=arguments)
     tool = load_registry().get_tool(tool_name)
     if tool.service not in _PHASE1_SERVICES:
         raise HTTPException(status_code=400, detail="tool_not_available_in_phase1")

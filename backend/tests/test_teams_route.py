@@ -1,15 +1,25 @@
 import asyncio
 from types import SimpleNamespace
 
+import pytest
 from fastapi import HTTPException
 from starlette.requests import Request
 
+from app.core.authz import AuthzContext, Role
 from app.routes.teams import delete_team_member
 
 
 def _request(path: str) -> Request:
     scope = {"type": "http", "method": "DELETE", "path": path, "headers": []}
     return Request(scope)
+
+
+@pytest.fixture(autouse=True)
+def _default_authz_admin(monkeypatch):
+    async def _fake_authz(_request: Request, **_kwargs) -> AuthzContext:
+        return AuthzContext(user_id="user-1", role=Role.ADMIN, org_ids={1}, team_ids={1})
+
+    monkeypatch.setattr("app.routes.teams.get_authz_context", _fake_authz)
 
 
 def test_delete_team_member_success(monkeypatch):

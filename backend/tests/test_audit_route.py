@@ -4,6 +4,7 @@ from types import SimpleNamespace
 from fastapi import HTTPException
 from starlette.requests import Request
 
+from app.core.authz import AuthzContext, Role
 from app.routes.audit import export_audit_events, get_audit_event_detail, list_audit_events
 
 
@@ -87,7 +88,11 @@ def test_list_audit_events_filters_and_maps_decisions(monkeypatch):
     async def _fake_user(_request: Request) -> str:
         return "user-1"
 
+    async def _fake_authz(_request: Request, **_kwargs) -> AuthzContext:
+        return AuthzContext(user_id="user-1", role=Role.ADMIN, org_ids={1}, team_ids=set())
+
     monkeypatch.setattr("app.routes.audit.get_authenticated_user_id", _fake_user)
+    monkeypatch.setattr("app.routes.audit.get_authz_context", _fake_authz)
     monkeypatch.setattr("app.routes.audit.create_client", lambda *_args, **_kwargs: client)
     monkeypatch.setattr(
         "app.routes.audit.get_settings",
@@ -128,7 +133,11 @@ def test_list_audit_events_invalid_datetime_raises(monkeypatch):
     async def _fake_user(_request: Request) -> str:
         return "user-1"
 
+    async def _fake_authz(_request: Request, **_kwargs) -> AuthzContext:
+        return AuthzContext(user_id="user-1", role=Role.ADMIN, org_ids={1}, team_ids=set())
+
     monkeypatch.setattr("app.routes.audit.get_authenticated_user_id", _fake_user)
+    monkeypatch.setattr("app.routes.audit.get_authz_context", _fake_authz)
     monkeypatch.setattr(
         "app.routes.audit.get_settings",
         lambda: SimpleNamespace(supabase_url="https://example.supabase.co", supabase_service_role_key="service-role-key"),
@@ -205,7 +214,11 @@ def test_export_audit_events_jsonl(monkeypatch):
     async def _fake_user(_request: Request) -> str:
         return "user-1"
 
+    async def _fake_authz(_request: Request, **_kwargs) -> AuthzContext:
+        return AuthzContext(user_id="user-1", role=Role.ADMIN, org_ids={1}, team_ids=set())
+
     monkeypatch.setattr("app.routes.audit.get_authenticated_user_id", _fake_user)
+    monkeypatch.setattr("app.routes.audit.get_authz_context", _fake_authz)
     monkeypatch.setattr("app.routes.audit.create_client", lambda *_args, **_kwargs: _Client())
     monkeypatch.setattr(
         "app.routes.audit.get_settings",
@@ -282,7 +295,11 @@ def test_export_audit_events_csv(monkeypatch):
     async def _fake_user(_request: Request) -> str:
         return "user-1"
 
+    async def _fake_authz(_request: Request, **_kwargs) -> AuthzContext:
+        return AuthzContext(user_id="user-1", role=Role.ADMIN, org_ids={1}, team_ids=set())
+
     monkeypatch.setattr("app.routes.audit.get_authenticated_user_id", _fake_user)
+    monkeypatch.setattr("app.routes.audit.get_authz_context", _fake_authz)
     monkeypatch.setattr("app.routes.audit.create_client", lambda *_args, **_kwargs: _Client())
     monkeypatch.setattr(
         "app.routes.audit.get_settings",
@@ -313,7 +330,11 @@ def test_export_audit_events_invalid_format_raises(monkeypatch):
     async def _fake_user(_request: Request) -> str:
         return "user-1"
 
+    async def _fake_authz(_request: Request, **_kwargs) -> AuthzContext:
+        return AuthzContext(user_id="user-1", role=Role.ADMIN, org_ids={1}, team_ids=set())
+
     monkeypatch.setattr("app.routes.audit.get_authenticated_user_id", _fake_user)
+    monkeypatch.setattr("app.routes.audit.get_authz_context", _fake_authz)
     monkeypatch.setattr(
         "app.routes.audit.get_settings",
         lambda: SimpleNamespace(supabase_url="https://example.supabase.co", supabase_service_role_key="service-role-key"),
@@ -372,7 +393,11 @@ def test_list_audit_events_team_filter_without_keys_returns_empty(monkeypatch):
     async def _fake_user(_request: Request) -> str:
         return "user-1"
 
+    async def _fake_authz(_request: Request, **_kwargs) -> AuthzContext:
+        return AuthzContext(user_id="user-1", role=Role.ADMIN, org_ids={1}, team_ids={999})
+
     monkeypatch.setattr("app.routes.audit.get_authenticated_user_id", _fake_user)
+    monkeypatch.setattr("app.routes.audit.get_authz_context", _fake_authz)
     monkeypatch.setattr("app.routes.audit.create_client", lambda *_args, **_kwargs: client)
     monkeypatch.setattr(
         "app.routes.audit.get_settings",
@@ -449,7 +474,11 @@ def test_list_audit_events_organization_filter_scopes_to_org_members(monkeypatch
     async def _fake_user(_request: Request) -> str:
         return "user-1"
 
+    async def _fake_authz(_request: Request, **_kwargs) -> AuthzContext:
+        return AuthzContext(user_id="user-1", role=Role.ADMIN, org_ids={1}, team_ids=set())
+
     monkeypatch.setattr("app.routes.audit.get_authenticated_user_id", _fake_user)
+    monkeypatch.setattr("app.routes.audit.get_authz_context", _fake_authz)
     monkeypatch.setattr("app.routes.audit.create_client", lambda *_args, **_kwargs: client)
     monkeypatch.setattr(
         "app.routes.audit.get_settings",
@@ -527,7 +556,11 @@ def test_get_audit_event_detail(monkeypatch):
     async def _fake_user(_request: Request) -> str:
         return "user-1"
 
+    async def _fake_authz(_request: Request, **_kwargs) -> AuthzContext:
+        return AuthzContext(user_id="user-1", role=Role.MEMBER, org_ids=set(), team_ids=set())
+
     monkeypatch.setattr("app.routes.audit.get_authenticated_user_id", _fake_user)
+    monkeypatch.setattr("app.routes.audit.get_authz_context", _fake_authz)
     monkeypatch.setattr("app.routes.audit.create_client", lambda *_args, **_kwargs: _Client())
     monkeypatch.setattr(
         "app.routes.audit.get_settings",
@@ -538,4 +571,88 @@ def test_get_audit_event_detail(monkeypatch):
     assert out["id"] == 7
     assert out["trace_id"] == "trace-7"
     assert out["action"]["connector"] == "linear"
+    assert out["execution"]["request_payload"] is None
+    assert out["execution"]["resolved_payload"] is None
+    assert out["execution"]["risk_result"] is None
     assert out["execution"]["masked_fields"] == ["token"]
+
+
+def test_get_audit_event_detail_admin_masks_sensitive_fields(monkeypatch):
+    class _Query:
+        def __init__(self, table_name: str):
+            self.table_name = table_name
+
+        def select(self, *_args, **_kwargs):
+            return self
+
+        def eq(self, *_args, **_kwargs):
+            return self
+
+        def limit(self, *_args, **_kwargs):
+            return self
+
+        def execute(self):
+            if self.table_name == "tool_calls":
+                return SimpleNamespace(
+                    data=[
+                        {
+                            "id": 8,
+                            "user_id": "user-1",
+                            "request_id": "req-8",
+                            "trace_id": "trace-8",
+                            "api_key_id": 10,
+                            "tool_name": "notion_search",
+                            "connector": "notion",
+                            "status": "success",
+                            "error_code": None,
+                            "latency_ms": 10,
+                            "request_payload": {"token": "abc", "query": "x"},
+                            "resolved_payload": {"authorization": "Bearer y", "nested": {"secret": "z"}},
+                            "risk_result": {"api_key": "k", "allowed": True},
+                            "upstream_status": 200,
+                            "retry_count": 0,
+                            "backoff_ms": 0,
+                            "masked_fields": ["token"],
+                            "created_at": "2026-03-03T00:01:00+00:00",
+                        }
+                    ]
+                )
+            if self.table_name == "api_keys":
+                return SimpleNamespace(data=[{"id": 10, "name": "prod", "key_prefix": "metel_prod"}])
+            if self.table_name == "audit_settings":
+                return SimpleNamespace(
+                    data=[
+                        {
+                            "user_id": "user-1",
+                            "retention_days": 30,
+                            "export_enabled": True,
+                            "masking_policy": {"mask_keys": ["token", "authorization", "secret", "api_key"]},
+                            "updated_at": "2026-03-03T00:00:00+00:00",
+                        }
+                    ]
+                )
+            return SimpleNamespace(data=[])
+
+    class _Client:
+        def table(self, name: str):
+            return _Query(name)
+
+    async def _fake_user(_request: Request) -> str:
+        return "user-1"
+
+    async def _fake_authz(_request: Request, **_kwargs) -> AuthzContext:
+        return AuthzContext(user_id="user-1", role=Role.ADMIN, org_ids={1}, team_ids=set())
+
+    monkeypatch.setattr("app.routes.audit.get_authenticated_user_id", _fake_user)
+    monkeypatch.setattr("app.routes.audit.get_authz_context", _fake_authz)
+    monkeypatch.setattr("app.routes.audit.create_client", lambda *_args, **_kwargs: _Client())
+    monkeypatch.setattr(
+        "app.routes.audit.get_settings",
+        lambda: SimpleNamespace(supabase_url="x", supabase_service_role_key="y"),
+    )
+
+    out = asyncio.run(get_audit_event_detail(_request(), event_id=8))
+    assert out["execution"]["request_payload"]["token"] == "***"
+    assert out["execution"]["resolved_payload"]["authorization"] == "***"
+    assert out["execution"]["resolved_payload"]["nested"]["secret"] == "***"
+    assert out["execution"]["risk_result"]["api_key"] == "***"

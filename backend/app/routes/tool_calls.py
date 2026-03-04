@@ -8,6 +8,7 @@ from fastapi import APIRouter, HTTPException, Query, Request
 from supabase import create_client
 
 from app.core.auth import get_authenticated_user_id
+from app.core.authz import Role, get_authz_context, require_min_role
 from app.core.config import get_settings
 
 router = APIRouter(prefix="/api/tool-calls", tags=["tool-calls"])
@@ -240,6 +241,8 @@ async def list_tool_calls(
     user_id = await get_authenticated_user_id(request)
     settings = get_settings()
     supabase = create_client(settings.supabase_url, settings.supabase_service_role_key)
+    authz_ctx = await get_authz_context(request, user_id=user_id, supabase=supabase)
+    require_min_role(authz_ctx, Role.MEMBER, method=request.method)
 
     normalized_status = status.strip().lower()
     if normalized_status not in {"all", "success", "fail"}:
@@ -377,6 +380,8 @@ async def tool_calls_overview(
     user_id = await get_authenticated_user_id(request)
     settings = get_settings()
     supabase = create_client(settings.supabase_url, settings.supabase_service_role_key)
+    authz_ctx = await get_authz_context(request, user_id=user_id, supabase=supabase)
+    require_min_role(authz_ctx, Role.MEMBER, method=request.method)
 
     now = datetime.now(timezone.utc)
     current_from = (now - timedelta(hours=hours)).isoformat()
@@ -415,6 +420,8 @@ async def tool_calls_trends(
     user_id = await get_authenticated_user_id(request)
     settings = get_settings()
     supabase = create_client(settings.supabase_url, settings.supabase_service_role_key)
+    authz_ctx = await get_authz_context(request, user_id=user_id, supabase=supabase)
+    require_min_role(authz_ctx, Role.MEMBER, method=request.method)
 
     normalized_bucket = bucket.strip().lower()
     if normalized_bucket not in {"hour", "day"}:
@@ -484,6 +491,8 @@ async def tool_calls_failure_breakdown(
     user_id = await get_authenticated_user_id(request)
     settings = get_settings()
     supabase = create_client(settings.supabase_url, settings.supabase_service_role_key)
+    authz_ctx = await get_authz_context(request, user_id=user_id, supabase=supabase)
+    require_min_role(authz_ctx, Role.MEMBER, method=request.method)
 
     since = (datetime.now(timezone.utc) - timedelta(days=days)).isoformat()
     rows = _query_tool_call_rows(supabase=supabase, user_id=user_id, from_iso=since)
@@ -518,6 +527,8 @@ async def tool_calls_connectors(
     user_id = await get_authenticated_user_id(request)
     settings = get_settings()
     supabase = create_client(settings.supabase_url, settings.supabase_service_role_key)
+    authz_ctx = await get_authz_context(request, user_id=user_id, supabase=supabase)
+    require_min_role(authz_ctx, Role.MEMBER, method=request.method)
 
     since = (datetime.now(timezone.utc) - timedelta(days=days)).isoformat()
     rows = _query_tool_call_rows(supabase=supabase, user_id=user_id, from_iso=since)

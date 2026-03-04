@@ -8,6 +8,7 @@ from pydantic import BaseModel, Field
 from supabase import create_client
 
 from app.core.auth import get_authenticated_user_id
+from app.core.authz import Role, get_authz_context, require_min_role
 from app.core.config import get_settings
 
 router = APIRouter(prefix="/api/admin", tags=["admin"])
@@ -66,6 +67,8 @@ async def connector_diagnostics(request: Request):
     user_id = await get_authenticated_user_id(request)
     settings = get_settings()
     supabase = create_client(settings.supabase_url, settings.supabase_service_role_key)
+    authz_ctx = await get_authz_context(request, user_id=user_id, supabase=supabase)
+    require_min_role(authz_ctx, Role.ADMIN, method=request.method)
     rows = (
         supabase.table("oauth_tokens")
         .select("provider,workspace_id,workspace_name,granted_scopes,updated_at")
@@ -101,6 +104,8 @@ async def rate_limit_events(request: Request, days: int = Query(7, ge=1, le=30),
     user_id = await get_authenticated_user_id(request)
     settings = get_settings()
     supabase = create_client(settings.supabase_url, settings.supabase_service_role_key)
+    authz_ctx = await get_authz_context(request, user_id=user_id, supabase=supabase)
+    require_min_role(authz_ctx, Role.ADMIN, method=request.method)
     since = (datetime.now(timezone.utc) - timedelta(days=days)).isoformat()
     rows = (
         supabase.table("tool_calls")
@@ -117,9 +122,11 @@ async def rate_limit_events(request: Request, days: int = Query(7, ge=1, le=30),
 
 @router.get("/system-health")
 async def system_health(request: Request):
-    _ = await get_authenticated_user_id(request)
+    user_id = await get_authenticated_user_id(request)
     settings = get_settings()
     supabase = create_client(settings.supabase_url, settings.supabase_service_role_key)
+    authz_ctx = await get_authz_context(request, user_id=user_id, supabase=supabase)
+    require_min_role(authz_ctx, Role.ADMIN, method=request.method)
     db_ok = True
     error_message = None
     try:
@@ -139,6 +146,8 @@ async def external_health(request: Request, days: int = Query(1, ge=1, le=14)):
     user_id = await get_authenticated_user_id(request)
     settings = get_settings()
     supabase = create_client(settings.supabase_url, settings.supabase_service_role_key)
+    authz_ctx = await get_authz_context(request, user_id=user_id, supabase=supabase)
+    require_min_role(authz_ctx, Role.ADMIN, method=request.method)
     since = (datetime.now(timezone.utc) - timedelta(days=days)).isoformat()
     rows = (
         supabase.table("tool_calls")
@@ -236,6 +245,8 @@ async def update_incident_banner(request: Request, body: IncidentBannerUpdateReq
     user_id = await get_authenticated_user_id(request)
     settings = get_settings()
     supabase = create_client(settings.supabase_url, settings.supabase_service_role_key)
+    authz_ctx = await get_authz_context(request, user_id=user_id, supabase=supabase)
+    require_min_role(authz_ctx, Role.OWNER, method=request.method)
     severity = str(body.severity or "info").strip().lower()
     if severity not in {"info", "warning", "critical"}:
         raise HTTPException(status_code=400, detail="invalid_severity")
@@ -259,6 +270,8 @@ async def list_incident_banner_revisions(request: Request, limit: int = Query(50
     user_id = await get_authenticated_user_id(request)
     settings = get_settings()
     supabase = create_client(settings.supabase_url, settings.supabase_service_role_key)
+    authz_ctx = await get_authz_context(request, user_id=user_id, supabase=supabase)
+    require_min_role(authz_ctx, Role.ADMIN, method=request.method)
     rows = (
         supabase.table("incident_banner_revisions")
         .select("id,user_id,enabled,message,severity,starts_at,ends_at,status,requested_by,approved_by,approved_at,created_at,updated_at")
@@ -275,6 +288,8 @@ async def create_incident_banner_revision(request: Request, body: IncidentBanner
     user_id = await get_authenticated_user_id(request)
     settings = get_settings()
     supabase = create_client(settings.supabase_url, settings.supabase_service_role_key)
+    authz_ctx = await get_authz_context(request, user_id=user_id, supabase=supabase)
+    require_min_role(authz_ctx, Role.ADMIN, method=request.method)
     severity = str(body.severity or "info").strip().lower()
     if severity not in {"info", "warning", "critical"}:
         raise HTTPException(status_code=400, detail="invalid_severity")
@@ -302,6 +317,8 @@ async def review_incident_banner_revision(request: Request, revision_id: str, bo
     user_id = await get_authenticated_user_id(request)
     settings = get_settings()
     supabase = create_client(settings.supabase_url, settings.supabase_service_role_key)
+    authz_ctx = await get_authz_context(request, user_id=user_id, supabase=supabase)
+    require_min_role(authz_ctx, Role.OWNER, method=request.method)
     decision = str(body.decision or "").strip().lower()
     if decision not in {"approve", "reject"}:
         raise HTTPException(status_code=400, detail="invalid_decision")
