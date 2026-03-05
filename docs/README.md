@@ -8,6 +8,9 @@
 - `phase3-kickoff-backlog-20260303.md`: Phase 3 kickoff minimum backlog (policy, audit, dashboard)
 - `phase3-gap-closing-backlog-20260303.md`: Phase 3 missing scope close plan (team policy, audit detail, integrations, ops)
 - `phase3-test-checklist-20260303.md`: Phase 3 end-to-end test checklist and execution evidence
+- `dashboard-ia-navigation-proposal-20260305.md`: dashboard IA/navigation UX proposal (sidebar + topbar + route pages)
+- `dashboard-design-system-draft-20260305.md`: dashboard design system draft (tokens, typography, components, RBAC UX)
+- `dashboard-mobile-manual-qa-log-20260305.md`: dashboard mobile manual QA log (320/375/768, touch target, sticky top bar)
 - `db-legacy-table-cleanup-20260303.md`: legacy DB table removal plan and cautions
 - `mcp_smoke_test_checklist.md`: deploy smoke test for MCP endpoints and usage logs
 - `claude_desktop_mcp_connection.md`: Claude Desktop MCP bridge setup guide

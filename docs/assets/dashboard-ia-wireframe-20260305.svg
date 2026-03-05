@@ -1,0 +1,107 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1440" height="900" viewBox="0 0 1440 900">
+  <defs>
+    <style>
+      .bg { fill: #f4f6f8; }
+      .panel { fill: #ffffff; stroke: #c9d1d9; stroke-width: 1.5; }
+      .muted { fill: #eef2f6; stroke: #c9d1d9; stroke-width: 1; }
+      .title { font: 700 26px 'Arial', sans-serif; fill: #1f2937; }
+      .h { font: 700 16px 'Arial', sans-serif; fill: #111827; }
+      .t { font: 500 13px 'Arial', sans-serif; fill: #374151; }
+      .small { font: 500 12px 'Arial', sans-serif; fill: #6b7280; }
+      .chip { fill: #e6edf5; stroke: #b8c3d1; stroke-width: 1; }
+    </style>
+  </defs>
+
+  <rect class="bg" x="0" y="0" width="1440" height="900"/>
+
+  <!-- App shell -->
+  <rect class="panel" x="24" y="24" width="1392" height="852" rx="14"/>
+
+  <!-- Sidebar -->
+  <rect class="panel" x="40" y="40" width="256" height="820" rx="12"/>
+  <text class="title" x="64" y="82">metel</text>
+  <text class="small" x="64" y="104">Execution Control Platform</text>
+
+  <rect class="chip" x="56" y="128" width="224" height="34" rx="8"/>
+  <text class="t" x="72" y="150">Overview</text>
+
+  <text class="small" x="64" y="192">ACCESS</text>
+  <rect class="muted" x="56" y="204" width="224" height="30" rx="7"/>
+  <text class="t" x="72" y="224">API Keys</text>
+  <rect class="muted" x="56" y="240" width="224" height="30" rx="7"/>
+  <text class="t" x="72" y="260">Organizations</text>
+  <rect class="muted" x="56" y="276" width="224" height="30" rx="7"/>
+  <text class="t" x="72" y="296">Team Policy</text>
+
+  <text class="small" x="64" y="336">CONTROL</text>
+  <rect class="muted" x="56" y="348" width="224" height="30" rx="7"/>
+  <text class="t" x="72" y="368">Policy Simulator</text>
+  <rect class="muted" x="56" y="384" width="224" height="30" rx="7"/>
+  <text class="t" x="72" y="404">Audit Events</text>
+
+  <text class="small" x="64" y="444">INTEGRATIONS</text>
+  <rect class="muted" x="56" y="456" width="224" height="30" rx="7"/>
+  <text class="t" x="72" y="476">Webhooks / Deliveries</text>
+  <rect class="muted" x="56" y="492" width="224" height="30" rx="7"/>
+  <text class="t" x="72" y="512">OAuth Connections</text>
+
+  <text class="small" x="64" y="552">ADMIN / OPS (ROLE-GATED)</text>
+  <rect class="muted" x="56" y="564" width="224" height="30" rx="7"/>
+  <text class="t" x="72" y="584">System Health</text>
+  <rect class="muted" x="56" y="600" width="224" height="30" rx="7"/>
+  <text class="t" x="72" y="620">Incident Banner</text>
+
+  <text class="small" x="64" y="820">Help  ·  System Status</text>
+
+  <!-- Content area -->
+  <rect class="panel" x="312" y="40" width="1088" height="820" rx="12"/>
+
+  <!-- Top bar -->
+  <rect class="panel" x="328" y="56" width="1056" height="72" rx="10"/>
+  <text class="small" x="348" y="82">Dashboard / Overview</text>
+  <text class="h" x="348" y="104">Execution Overview</text>
+
+  <rect class="muted" x="700" y="72" width="210" height="38" rx="8"/>
+  <text class="small" x="716" y="95">Search request_id / api_key</text>
+
+  <rect class="muted" x="920" y="72" width="110" height="38" rx="8"/>
+  <text class="small" x="944" y="95">Org A</text>
+  <rect class="muted" x="1040" y="72" width="110" height="38" rx="8"/>
+  <text class="small" x="1066" y="95">24h</text>
+  <rect class="muted" x="1160" y="72" width="96" height="38" rx="8"/>
+  <text class="small" x="1188" y="95">Refresh</text>
+  <rect class="muted" x="1266" y="72" width="102" height="38" rx="8"/>
+  <text class="small" x="1292" y="95">User</text>
+
+  <!-- Page content -->
+  <rect class="panel" x="328" y="144" width="1056" height="700" rx="10"/>
+  <text class="h" x="352" y="178">Overview</text>
+  <text class="small" x="352" y="198">Summary + analytics for selected org/team and time range</text>
+
+  <!-- KPI cards -->
+  <rect class="muted" x="352" y="222" width="238" height="108" rx="10"/>
+  <text class="small" x="368" y="248">Total Calls</text>
+  <text class="h" x="368" y="286">12,840</text>
+
+  <rect class="muted" x="606" y="222" width="238" height="108" rx="10"/>
+  <text class="small" x="622" y="248">Success Rate</text>
+  <text class="h" x="622" y="286">98.2%</text>
+
+  <rect class="muted" x="860" y="222" width="238" height="108" rx="10"/>
+  <text class="small" x="876" y="248">Policy Block Rate</text>
+  <text class="h" x="876" y="286">1.4%</text>
+
+  <rect class="muted" x="1114" y="222" width="246" height="108" rx="10"/>
+  <text class="small" x="1130" y="248">P95 Latency</text>
+  <text class="h" x="1130" y="286">420ms</text>
+
+  <!-- Main chart/list blocks -->
+  <rect class="muted" x="352" y="348" width="680" height="220" rx="10"/>
+  <text class="small" x="368" y="372">Traffic & error trend chart</text>
+
+  <rect class="muted" x="1048" y="348" width="312" height="220" rx="10"/>
+  <text class="small" x="1064" y="372">Top failure codes</text>
+
+  <rect class="muted" x="352" y="584" width="1008" height="236" rx="10"/>
+  <text class="small" x="368" y="608">Recent audit events table</text>
+</svg>

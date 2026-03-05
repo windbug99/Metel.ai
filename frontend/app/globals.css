@@ -3,11 +3,43 @@
 @tailwind utilities;
 
 :root {
-  --background: #f4f2f4;
-  --foreground: #222326;
-  --card: #ffffff;
-  --border: #e5e7eb;
-  --muted: #6b7280;
+  --background: #f5f7fa;
+  --foreground: #111827;
+  --surface: #ffffff;
+  --surface-subtle: #eef2f7;
+  --border: #d3dae6;
+  --muted: #667085;
+  --text-secondary: #475467;
+  --brand-500: #1f6feb;
+  --brand-600: #1558c0;
+  --brand-100: #dcebff;
+  --success-500: #1f9d63;
+  --warning-500: #d97706;
+  --danger-500: #d92d20;
+  --status-ok: #1f9d63;
+  --status-warn: #d97706;
+  --status-critical: #d92d20;
+  --status-unknown: #98a2b3;
+}
+
+.theme-dark {
+  --background: #0b1117;
+  --foreground: #e6edf3;
+  --surface: #111927;
+  --surface-subtle: #162131;
+  --border: #2a3444;
+  --muted: #96a2b2;
+  --text-secondary: #c3cdd8;
+  --brand-500: #5ea4ff;
+  --brand-600: #7cb7ff;
+  --brand-100: #1a2c44;
+  --success-500: #3ccb86;
+  --warning-500: #f3a73d;
+  --danger-500: #ff6b5f;
+  --status-ok: #3ccb86;
+  --status-warn: #f3a73d;
+  --status-critical: #ff6b5f;
+  --status-unknown: #8b9bb0;
 }
 
 body {
@@ -20,4 +52,42 @@ code,
 pre,
 .font-mono {
   font-family: var(--font-geist-mono), "SFMono-Regular", Menlo, monospace;
+}
+
+.ds-surface {
+  background: var(--surface);
+  border: 1px solid var(--border);
+}
+
+.ds-card {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 12px;
+}
+
+.ds-input {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  color: var(--foreground);
+}
+
+.ds-input::placeholder {
+  color: var(--muted);
+}
+
+.ds-btn {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  color: var(--foreground);
+}
+
+.ds-badge {
+  display: inline-flex;
+  align-items: center;
+  border-radius: 999px;
+  border: 1px solid transparent;
+  padding: 2px 8px;
+  font-size: 11px;
+  line-height: 1.35;
+  font-weight: 600;
 }
