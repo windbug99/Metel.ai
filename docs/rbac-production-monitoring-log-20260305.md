@@ -3,6 +3,11 @@
 목적:
 - production full guard 활성 이후 48시간 동안 권한 이상 징후를 관측한다.
 
+현재 요약(2026-03-05):
+- `MODE=full_guard run_rbac_rollout_stage_gate.sh` PASS
+- `run_rbac_monitoring_snapshot.sh` PASS
+- probe 결과: `owner=200 admin=403 member=403` (정상 매트릭스)
+
 환경:
 - API: `https://metel-production.up.railway.app`
 - mode: `full_guard`
@@ -279,5 +284,4 @@ ok
 [rbac-monitor] probe expected authorization matrix (full guard assumption)
 [rbac-monitor] probe OK owner=200 admin=403 member=403
 [rbac-monitor] done
-
 

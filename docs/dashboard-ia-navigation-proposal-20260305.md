@@ -401,34 +401,34 @@ Shell:
 
 ### A. 일반 사용자 기능
 - 프로필 관리(타임존 조회/수정): `완료`
-- OAuth 연결/해제(Notion/Linear): `미이관`
-- MCP 사용 시작 가이드(list_tools/call_tool curl 예시): `미이관`
-- 사용량 조회(최근 호출 목록/필터/24h 요약/7일 추세): `미이관`
-- 로그아웃: `미이관` (V2 UI 버튼 기준)
+- OAuth 연결/해제(Notion/Linear): `완료`
+- MCP 사용 시작 가이드(list_tools/call_tool curl 예시): `완료`
+- 사용량 조회(최근 호출 목록/필터/24h 요약/7일 추세): `완료`
+- 로그아웃 (V2 UI 버튼): `완료`
 
 ### B. 개발자/통합 담당 기능
-- API Key 생성(팀 스코프, 1회 노출/복사): `부분`
-- API Key 고급 필드(allowed tools, tags, policy JSON): `미이관`
-- API Key 수정/회전/폐기/7일 drill-down: `미이관`
-- Policy Simulator: `미이관`
-- Webhook 구독/Delivery 조회/Retry: `미이관`
+- API Key 생성(팀 스코프, 1회 노출/복사): `완료`
+- API Key 고급 필드(allowed tools, tags, policy JSON): `완료`
+- API Key 수정/회전/폐기/7일 drill-down: `완료`
+- Policy Simulator: `완료`
+- Webhook 구독/Delivery 조회/Retry: `완료`
 
 ### C. 팀/조직 관리자 기능
 - Team 생성/수정/정책 저장/리비전 조회/롤백/멤버 관리: `완료`
 - Organization 생성/멤버 관리/초대 생성·수락·재발급·철회: `완료`
-- Organization 역할 변경 요청 생성/승인/거절: `미이관`
+- Organization 역할 변경 요청 생성/승인/거절: `완료`
 
 ### D. 보안/감사 담당 기능
-- Audit 이벤트 목록 조회(기본): `부분`
-- Audit 요약/팀·조직 필터/상세 조회: `미이관`
-- Audit 설정(retention/export/masking): `미이관`
-- 감사 내보내기(JSONL/CSV): `미이관`
+- Audit 이벤트 목록 조회(기본): `완료`
+- Audit 요약/팀·조직 필터/상세 조회: `완료`
+- Audit 설정(retention/export/masking): `완료`
+- 감사 내보내기(JSONL/CSV): `완료`
 
 ### E. 운영/플랫폼 관리자 기능
-- Execution KPI(기본 KPI 카드): `부분`
-- Top tools/anomalies/추세형 시각화: `미이관`
-- Admin/Ops 실모듈(시스템헬스/진단/외부헬스/rate-limit): `미이관`
-- Incident Banner 저장 + revision 승인 워크플로우: `미이관`
+- Execution KPI(기본 KPI 카드): `완료`
+- Top tools/anomalies/추세형 시각화: `완료`
+- Admin/Ops 실모듈(시스템헬스/진단/외부헬스/rate-limit): `완료`
+- Incident Banner 저장 + revision 승인 워크플로우: `완료`
 
 ## 12) 구현 착수 체크리스트 (미이관 항목)
 
@@ -463,6 +463,56 @@ Shell:
 - [ ] legacy 대비 기능 동등성 체크리스트(입력/출력/에러코드) 작성
 - [ ] 자동 테스트 스크립트 확장 계획 수립(각 Wave 완료 시 smoke 추가)
 - [ ] 문서 체크포인트: 본 문서 12번 체크리스트에 작업 후 즉시 반영
+
+## 14) 배포 후 남은 테스트 / 실행 방법
+
+현재 상태:
+- 코드 이관/정적 검증은 완료.
+- 남은 작업은 `운영 모니터링(48h)` + `최종 수동 회귀 스팟 점검`.
+
+사전 준비(backend 디렉토리):
+```bash
+export API_BASE_URL="https://metel-production.up.railway.app"
+export OWNER_JWT='...'
+export ADMIN_JWT='...'
+export MEMBER_JWT='...'
+echo ${#OWNER_JWT} ${#ADMIN_JWT} ${#MEMBER_JWT}
+```
+
+1) 자동 게이트(배포 직후/변경 직후)
+```bash
+cd backend
+./scripts/run_dashboard_v2_qa_stage_gate.sh
+MODE=full_guard ./scripts/run_rbac_rollout_stage_gate.sh
+./scripts/run_rbac_monitoring_snapshot.sh
+```
+기대 결과:
+- `dashboard-v2-qa-gate`: `pass`, `fail=0`
+- `rbac-rollout`: `pass=5 fail=0`
+- `rbac-monitor`: `probe OK owner=200 admin=403 member=403`
+
+2) 운영 모니터링(48h)
+- `docs/rbac-production-monitoring-log-20260305.md` 체크포인트(1h/2h/6h/12h/24h/36h/48h) 갱신
+- 각 체크포인트마다 아래 실행:
+```bash
+MODE=full_guard ./scripts/run_rbac_rollout_stage_gate.sh
+./scripts/run_rbac_monitoring_snapshot.sh
+```
+
+3) 수동 회귀 스팟 점검(최소 세션당 1회)
+- owner/admin/member 로그인 후 메뉴/권한/액션 확인
+- 고위험 액션:
+  - owner: audit settings PATCH 가능
+  - admin/member: audit settings PATCH 403
+  - incident revision: self-review blocked
+  - org role request: owner review만 가능
+
+4) 선택 테스트(읽기 전용 모드 드릴)
+- 운영 플래그를 실제 `read_only`로 바꾼 뒤에만 실행:
+```bash
+MODE=read_only ./scripts/run_rbac_rollout_stage_gate.sh
+```
+- `full_guard` 상태에서 `MODE=read_only` 실행 시 실패가 정상.
 
 진행 메모 (2026-03-05, 미이관 Wave 1):
 - V2 API Keys 고도화 완료:
