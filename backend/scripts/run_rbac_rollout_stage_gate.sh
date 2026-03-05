@@ -29,9 +29,13 @@ case "${MODE}" in
     "${SCRIPT_DIR}/run_rbac_rollout_smoke.sh"
 
     echo "[rbac-stage-gate] 2/2 dashboard summary consistency (member baseline)"
-    API_BASE_URL="${API_BASE_URL}" \
-    USER_JWT="${MEMBER_JWT}" \
-    "${SCRIPT_DIR}/run_phase3_dashboard_consistency.sh"
+    # In read_only mode we only validate member baseline formulas.
+    # Explicitly clear role-matrix tokens to prevent full-guard-only assertions.
+    env -u OWNER_JWT -u ADMIN_JWT -u MEMBER_JWT \
+      API_BASE_URL="${API_BASE_URL}" \
+      ENABLE_ROLE_MATRIX=0 \
+      USER_JWT="${MEMBER_JWT}" \
+      "${SCRIPT_DIR}/run_phase3_dashboard_consistency.sh"
     ;;
   full_guard)
     echo "[rbac-stage-gate] 1/2 rollout smoke (full_guard: read=1 write=1 ui=1)"

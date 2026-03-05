@@ -11,16 +11,21 @@ OWNER_JWT="${OWNER_JWT:-}"
 ADMIN_JWT="${ADMIN_JWT:-}"
 MEMBER_JWT="${MEMBER_JWT:-}"
 LEGACY_USER_JWT="${USER_JWT:-}"
+ENABLE_ROLE_MATRIX="${ENABLE_ROLE_MATRIX:-1}"
 
 if [[ -z "${OWNER_JWT}" && -z "${ADMIN_JWT}" && -z "${MEMBER_JWT}" ]]; then
   if [[ -z "${LEGACY_USER_JWT}" ]]; then
     echo "[phase3-dashboard] ERROR: provide USER_JWT or one of OWNER_JWT/ADMIN_JWT/MEMBER_JWT"
     exit 1
   fi
-  OWNER_JWT="${LEGACY_USER_JWT}"
-  ADMIN_JWT="${LEGACY_USER_JWT}"
   MEMBER_JWT="${LEGACY_USER_JWT}"
-  echo "[phase3-dashboard] role matrix tokens missing -> fallback to USER_JWT for all roles"
+  if [[ "${ENABLE_ROLE_MATRIX}" == "1" ]]; then
+    OWNER_JWT="${LEGACY_USER_JWT}"
+    ADMIN_JWT="${LEGACY_USER_JWT}"
+    echo "[phase3-dashboard] role matrix tokens missing -> fallback to USER_JWT for all roles"
+  else
+    echo "[phase3-dashboard] role matrix disabled -> use USER_JWT for member baseline only"
+  fi
 fi
 
 echo "[phase3-dashboard] API_BASE_URL=${API_BASE_URL}"
@@ -166,7 +171,7 @@ else
   record_fail "dashboard summary formula consistency (member baseline)"
 fi
 
-if [[ -n "${OWNER_JWT}" && -n "${ADMIN_JWT}" && -n "${MEMBER_JWT}" ]]; then
+if [[ "${ENABLE_ROLE_MATRIX}" == "1" && -n "${OWNER_JWT}" && -n "${ADMIN_JWT}" && -n "${MEMBER_JWT}" ]]; then
   echo "[phase3-dashboard] role matrix checks enabled"
 
   owner_perm="$(
@@ -255,7 +260,7 @@ PY
   [[ "${admin_audit_patch_status}" == "403" ]] && record_pass "admin audit-settings patch denied" || record_fail "admin audit-settings patch expected 403 got ${admin_audit_patch_status}"
   [[ "${member_audit_patch_status}" == "403" ]] && record_pass "member audit-settings patch denied" || record_fail "member audit-settings patch expected 403 got ${member_audit_patch_status}"
 else
-  record_skip "role matrix checks skipped (OWNER_JWT/ADMIN_JWT/MEMBER_JWT not all set)"
+  record_skip "role matrix checks skipped (disabled or OWNER_JWT/ADMIN_JWT/MEMBER_JWT not all set)"
 fi
 
 echo "[phase3-dashboard] pass=${PASS_COUNT} fail=${FAIL_COUNT} skip=${SKIP_COUNT}"
