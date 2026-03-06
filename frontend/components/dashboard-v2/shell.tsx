@@ -197,8 +197,8 @@ export default function DashboardV2Shell({ children }: { children: React.ReactNo
   }, [router]);
 
   return (
-    <div className={`${theme === "dark" ? "theme-dark" : "theme-light"} min-h-screen bg-background text-foreground`}>
-      <SidebarProvider>
+    <div className={`${theme === "dark" ? "dark" : ""} min-h-screen bg-background text-foreground`}>
+      <SidebarProvider style={{ "--sidebar-width": "15rem" } as React.CSSProperties}>
         <DashboardAppSidebar
           pathname={pathname}
           navItems={navItems}
@@ -234,7 +234,7 @@ export default function DashboardV2Shell({ children }: { children: React.ReactNo
               />
             ) : null}
             {permissionError ? <AlertBanner message={permissionError} tone="danger" /> : null}
-            {permissionLoading ? <p className="mb-3 text-sm text-[var(--muted)]">Loading permissions...</p> : null}
+            {permissionLoading ? <p className="mb-3 text-sm text-muted-foreground">Loading permissions...</p> : null}
             {children}
           </div>
         </SidebarInset>

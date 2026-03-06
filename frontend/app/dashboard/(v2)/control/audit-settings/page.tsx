@@ -291,27 +291,27 @@ export default function DashboardAuditSettingsPage() {
   }, [fetchAuditSettings, pathname]);
 
   return (
-    <section className="space-y-4">
-      <h1 className="text-2xl font-semibold">Audit Settings</h1>
-      <p className="text-sm text-[var(--text-secondary)]">Manage retention, export policy, masking JSON, and audit export downloads.</p>
+    <section className="space-y-5">
+      <h1 className="text-2xl font-bold tracking-tight leading-8">Audit Settings</h1>
+      <p className="text-[13px] leading-5 text-muted-foreground">Manage retention, export policy, masking JSON, and audit export downloads.</p>
 
       {error ? <AlertBanner message={error} tone="danger" /> : null}
-      {message ? <p className="text-sm text-[var(--success-600)]">{message}</p> : null}
+      {message ? <p className="text-sm text-chart-2">{message}</p> : null}
 
-      {loading ? <p className="text-sm text-[var(--muted)]">Loading audit settings...</p> : null}
+      {loading ? <p className="text-sm text-muted-foreground">Loading audit settings...</p> : null}
 
       {!loading && !canReadSettings ? (
         <div className="ds-card p-4">
-          <p className="text-sm text-[var(--muted)]">Your role does not have permission to read audit settings.</p>
+          <p className="text-sm text-muted-foreground">Your role does not have permission to read audit settings.</p>
         </div>
       ) : null}
 
       {!loading && canReadSettings ? (
         <>
           <div className="ds-card p-4">
-            <p className="mb-3 text-sm font-medium">Settings</p>
+            <p className="mb-3 text-sm font-semibold">Settings</p>
             <div className="flex flex-wrap items-center gap-2">
-              <label className="text-sm text-[var(--text-secondary)]">Retention days</label>
+              <label className="text-sm text-muted-foreground">Retention days</label>
               <input
                 type="number"
                 min={1}
@@ -320,7 +320,7 @@ export default function DashboardAuditSettingsPage() {
                 disabled={!canUpdateSettings}
                 className="ds-input h-11 w-28 rounded-md px-3 text-sm md:h-9"
               />
-              <label className="inline-flex items-center gap-2 text-sm text-[var(--text-secondary)]">
+              <label className="inline-flex items-center gap-2 text-sm text-muted-foreground">
                 <input
                   type="checkbox"
                   checked={exportEnabledDraft}
@@ -347,12 +347,12 @@ export default function DashboardAuditSettingsPage() {
               placeholder='Masking policy JSON, e.g. {"mask_keys":["token","secret"]}'
             />
 
-            {!canUpdateSettings ? <p className="mt-2 text-xs text-[var(--muted)]">Audit settings update is owner-only.</p> : null}
-            <p className="mt-2 text-xs text-[var(--muted)]">updated_at: {asDate(settings?.updated_at)}</p>
+            {!canUpdateSettings ? <p className="mt-2 text-xs text-muted-foreground">Audit settings update is owner-only.</p> : null}
+            <p className="mt-2 text-xs text-muted-foreground">updated_at: {asDate(settings?.updated_at)}</p>
           </div>
 
           <div className="ds-card p-4">
-            <p className="mb-3 text-sm font-medium">Audit Export (JSONL/CSV)</p>
+            <p className="mb-3 text-sm font-semibold">Audit Export (JSONL/CSV)</p>
             <div className="flex flex-wrap items-center gap-2">
               <select
                 value={organizationFilter}

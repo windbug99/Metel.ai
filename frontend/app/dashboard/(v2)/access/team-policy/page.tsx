@@ -409,15 +409,15 @@ export default function DashboardTeamPolicyPage() {
   }, [fetchTeams, pathname]);
 
   return (
-    <section className="space-y-4">
-      <h1 className="text-2xl font-semibold">Team Policy</h1>
-      <p className="text-sm text-[var(--text-secondary)]">Create teams, manage memberships, and control team policy revisions.</p>
+    <section className="space-y-5">
+      <h1 className="text-2xl font-bold tracking-tight leading-8">Team Policy</h1>
+      <p className="text-[13px] leading-5 text-muted-foreground">Create teams, manage memberships, and control team policy revisions.</p>
 
       {error ? <AlertBanner message={error} tone="danger" /> : null}
-      {loading ? <p className="text-sm text-[var(--muted)]">Loading teams...</p> : null}
+      {loading ? <p className="text-sm text-muted-foreground">Loading teams...</p> : null}
 
       <div className="ds-card p-4">
-        <p className="mb-2 text-sm font-medium">Create team</p>
+        <p className="mb-2 text-sm font-semibold">Create team</p>
         <div className="space-y-2">
           <input
             value={createName}
@@ -445,7 +445,7 @@ export default function DashboardTeamPolicyPage() {
           >
             {creating ? "Creating..." : "Create Team"}
           </button>
-          {!canManageTeams ? <p className="text-xs text-[var(--muted)]">Admin role required.</p> : null}
+          {!canManageTeams ? <p className="text-xs text-muted-foreground">Admin role required.</p> : null}
         </div>
       </div>
 
@@ -453,8 +453,8 @@ export default function DashboardTeamPolicyPage() {
         <article key={team.id} className="ds-card space-y-3 p-4">
           <div className="flex flex-wrap items-center justify-between gap-2">
             <div>
-              <p className="text-base font-semibold">Team #{team.id}</p>
-              <p className="text-xs text-[var(--muted)]">policy updated {asDate(team.policy_updated_at)}</p>
+              <p className="text-base font-semibold tabular-nums">Team #{team.id}</p>
+              <p className="text-xs text-muted-foreground">policy updated {asDate(team.policy_updated_at)}</p>
             </div>
             <label className="flex items-center gap-2 text-xs">
               <input
@@ -515,15 +515,15 @@ export default function DashboardTeamPolicyPage() {
           </div>
 
           {(teamRevisions[team.id] ?? []).length > 0 ? (
-            <div className="rounded-md border border-[var(--border)] p-3">
-              <p className="mb-2 text-sm font-medium">Policy revisions</p>
+            <div className="rounded-md border border-border p-3">
+              <p className="mb-2 text-sm font-semibold">Policy revisions</p>
               <div className="space-y-2">
                 {(teamRevisions[team.id] ?? []).slice(0, 10).map((revision) => (
-                  <div key={`team-revision-${revision.id}`} className="rounded-md border border-[var(--border)] p-2">
+                  <div key={`team-revision-${revision.id}`} className="rounded-md border border-border p-2">
                     <p className="text-xs">
                       #{revision.id} · {revision.source} · {asDate(revision.created_at)}
                     </p>
-                    <pre className="mt-1 overflow-x-auto rounded bg-[var(--surface-subtle)] p-2 text-[11px]">
+                    <pre className="mt-1 overflow-x-auto rounded bg-muted/50 p-2 text-[11px]">
                       {jsonText(revision.policy_json ?? {})}
                     </pre>
                     <button
@@ -541,8 +541,8 @@ export default function DashboardTeamPolicyPage() {
             </div>
           ) : null}
 
-          <div className="rounded-md border border-[var(--border)] p-3">
-            <p className="mb-2 text-sm font-medium">Members</p>
+          <div className="rounded-md border border-border p-3">
+              <p className="mb-2 text-sm font-semibold">Members</p>
             <div className="mb-2 flex flex-wrap items-center gap-2">
               <input
                 value={teamMemberUserDraft[team.id] ?? ""}
@@ -572,7 +572,7 @@ export default function DashboardTeamPolicyPage() {
 
             <div className="space-y-2">
               {(teamMembers[team.id] ?? []).map((member) => (
-                <div key={`team-${team.id}-member-${member.id}`} className="flex flex-wrap items-center justify-between gap-2 rounded-md border border-[var(--border)] px-3 py-2">
+                <div key={`team-${team.id}-member-${member.id}`} className="flex flex-wrap items-center justify-between gap-2 rounded-md border border-border px-3 py-2">
                   <p className="text-xs">
                     #{member.id} · {member.user_id} · {member.role} · {asDate(member.created_at)}
                   </p>
@@ -587,13 +587,13 @@ export default function DashboardTeamPolicyPage() {
                   </button>
                 </div>
               ))}
-              {(teamMembers[team.id] ?? []).length === 0 ? <p className="text-xs text-[var(--muted)]">No members loaded.</p> : null}
+              {(teamMembers[team.id] ?? []).length === 0 ? <p className="text-xs text-muted-foreground">No members loaded.</p> : null}
             </div>
           </div>
         </article>
       ))}
 
-      {!loading && teams.length === 0 ? <p className="text-sm text-[var(--muted)]">No teams found.</p> : null}
+      {!loading && teams.length === 0 ? <p className="text-sm text-muted-foreground">No teams found.</p> : null}
     </section>
   );
 }

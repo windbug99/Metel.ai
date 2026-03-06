@@ -120,9 +120,9 @@ export default function DashboardPolicySimulatorPage() {
   }, [fetchApiKeys, pathname]);
 
   return (
-    <section className="space-y-4">
-      <h1 className="text-2xl font-semibold">Policy Simulator</h1>
-      <p className="text-sm text-[var(--text-secondary)]">Preview whether a request is allowed or blocked before execution.</p>
+    <section className="space-y-5">
+      <h1 className="text-2xl font-bold tracking-tight leading-8">Policy Simulator</h1>
+      <p className="text-[13px] leading-5 text-muted-foreground">Preview whether a request is allowed or blocked before execution.</p>
 
       <div className="ds-card space-y-3 p-4">
         <div className="flex flex-wrap items-center gap-2">
@@ -158,18 +158,18 @@ export default function DashboardPolicySimulatorPage() {
       </div>
 
       {error ? (
-        <div className="rounded-md border border-[var(--danger-500)]/40 bg-[color-mix(in_srgb,var(--danger-500)_12%,white)] px-3 py-2 text-sm text-[var(--danger-500)]">
+        <div className="rounded-md border border-destructive/40 bg-destructive/10 px-3 py-2 text-sm text-destructive">
           {error}
         </div>
       ) : null}
 
       {result ? (
         <div className="ds-card p-4">
-          <p className="text-sm font-medium">
+          <p className="text-sm font-semibold">
             Decision:{" "}
-            <span className={result.decision === "allowed" ? "text-[var(--success-600)]" : "text-[var(--danger-500)]"}>{result.decision}</span>
+            <span className={result.decision === "allowed" ? "text-chart-2" : "text-destructive"}>{result.decision}</span>
           </p>
-          <pre className="mt-2 overflow-x-auto rounded bg-[var(--surface-subtle)] p-3 text-[11px] text-[var(--text-secondary)]">
+          <pre className="mt-2 overflow-x-auto rounded bg-muted/50 p-3 text-[11px] text-muted-foreground">
             {JSON.stringify(result, null, 2)}
           </pre>
         </div>

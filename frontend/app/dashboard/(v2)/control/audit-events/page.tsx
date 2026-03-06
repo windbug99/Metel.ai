@@ -226,9 +226,9 @@ export default function DashboardAuditEventsPage() {
   }, [fetchAuditEvents, pathname]);
 
   return (
-    <section className="space-y-4">
-      <h1 className="text-2xl font-semibold">Audit Events</h1>
-      <p className="text-sm text-[var(--text-secondary)]">Who ran what, and whether it was allowed or blocked.</p>
+    <section className="space-y-5">
+      <h1 className="text-2xl font-bold tracking-tight leading-8">Audit Events</h1>
+      <p className="text-[13px] leading-5 text-muted-foreground">Who ran what, and whether it was allowed or blocked.</p>
 
       <div className="ds-card p-4">
         <div className="flex flex-wrap items-center gap-2">
@@ -305,45 +305,45 @@ export default function DashboardAuditEventsPage() {
 
       <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
         <article className="ds-card p-4">
-          <p className="text-xs text-[var(--muted)]">Allowed</p>
-          <p className="mt-1 text-xl font-semibold text-[var(--success-600)]">{summary?.allowed_count ?? 0}</p>
+          <p className="text-xs text-muted-foreground">Allowed</p>
+          <p className="mt-1 text-xl font-semibold text-chart-2">{summary?.allowed_count ?? 0}</p>
         </article>
         <article className="ds-card p-4">
-          <p className="text-xs text-[var(--muted)]">Policy Blocked</p>
-          <p className="mt-1 text-xl font-semibold text-[var(--warning-500)]">{summary?.policy_blocked_count ?? 0}</p>
+          <p className="text-xs text-muted-foreground">Policy Blocked</p>
+          <p className="mt-1 text-xl font-semibold text-chart-4">{summary?.policy_blocked_count ?? 0}</p>
         </article>
         <article className="ds-card p-4">
-          <p className="text-xs text-[var(--muted)]">Access Denied</p>
-          <p className="mt-1 text-xl font-semibold text-[var(--warning-500)]">{summary?.access_denied_count ?? 0}</p>
+          <p className="text-xs text-muted-foreground">Access Denied</p>
+          <p className="mt-1 text-xl font-semibold text-chart-4">{summary?.access_denied_count ?? 0}</p>
         </article>
         <article className="ds-card p-4">
-          <p className="text-xs text-[var(--muted)]">Failed</p>
-          <p className="mt-1 text-xl font-semibold text-[var(--danger-500)]">{summary?.failed_count ?? 0}</p>
+          <p className="text-xs text-muted-foreground">Failed</p>
+          <p className="mt-1 text-xl font-semibold text-destructive">{summary?.failed_count ?? 0}</p>
         </article>
         <article className="ds-card p-4">
-          <p className="text-xs text-[var(--muted)]">High Risk Allowed</p>
-          <p className="mt-1 text-xl font-semibold text-[var(--brand-500)]">{summary?.high_risk_allowed_count ?? 0}</p>
+          <p className="text-xs text-muted-foreground">High Risk Allowed</p>
+          <p className="mt-1 text-xl font-semibold text-primary">{summary?.high_risk_allowed_count ?? 0}</p>
         </article>
         <article className="ds-card p-4">
-          <p className="text-xs text-[var(--muted)]">Policy Override Usage</p>
-          <p className="mt-1 text-xl font-semibold text-[var(--brand-500)]">{((summary?.policy_override_usage ?? 0) * 100).toFixed(1)}%</p>
+          <p className="text-xs text-muted-foreground">Policy Override Usage</p>
+          <p className="mt-1 text-xl font-semibold text-primary">{((summary?.policy_override_usage ?? 0) * 100).toFixed(1)}%</p>
         </article>
       </div>
 
       {error ? (
-        <div className="rounded-md border border-[var(--danger-500)]/40 bg-[color-mix(in_srgb,var(--danger-500)_12%,white)] px-3 py-2 text-sm text-[var(--danger-500)]">
+        <div className="rounded-md border border-destructive/40 bg-destructive/10 px-3 py-2 text-sm text-destructive">
           {error}
         </div>
       ) : null}
 
       <div className="ds-card overflow-x-auto">
-        {loading ? <p className="px-4 py-3 text-sm text-[var(--muted)]">Loading audit events...</p> : null}
-        {!loading && items.length === 0 ? <p className="px-4 py-3 text-sm text-[var(--muted)]">No audit events found.</p> : null}
+        {loading ? <p className="px-4 py-3 text-sm text-muted-foreground">Loading audit events...</p> : null}
+        {!loading && items.length === 0 ? <p className="px-4 py-3 text-sm text-muted-foreground">No audit events found.</p> : null}
         {items.length > 0 ? (
-          <table className="min-w-[640px] text-sm">
-            <thead className="bg-[var(--surface-subtle)] text-left text-xs text-[var(--muted)]">
+          <table className="min-w-[640px] text-sm tabular-nums">
+            <thead className="sticky top-16 z-10 bg-muted/80 text-left text-xs text-muted-foreground backdrop-blur supports-[backdrop-filter]:bg-background/85">
               <tr>
-                <th className="px-4 py-3">Time</th>
+                <th className="px-4 py-3 text-right">Time</th>
                 <th className="px-4 py-3">Tool</th>
                 <th className="px-4 py-3">Decision</th>
                 <th className="px-4 py-3">Error</th>
@@ -352,8 +352,8 @@ export default function DashboardAuditEventsPage() {
             </thead>
             <tbody>
               {items.map((item) => (
-                <tr key={item.id} className="border-t border-[var(--border)]">
-                  <td className="px-4 py-3">{new Date(item.timestamp).toLocaleString()}</td>
+                <tr key={item.id} className="border-t border-border">
+                  <td className="px-4 py-3 text-right">{new Date(item.timestamp).toLocaleString()}</td>
                   <td className="px-4 py-3">{item.action?.tool_name ?? "-"}</td>
                   <td className="px-4 py-3">
                     <StatusBadge kind="decision" value={item.outcome?.decision} />
@@ -378,8 +378,8 @@ export default function DashboardAuditEventsPage() {
 
       {detail ? (
         <div className="ds-card p-4">
-          <p className="text-sm font-medium">Selected Audit Detail: #{detail.id}</p>
-          <pre className="mt-2 overflow-x-auto rounded bg-[var(--surface-subtle)] p-3 text-[11px] text-[var(--text-secondary)]">
+          <p className="text-sm font-semibold">Selected Audit Detail: #{detail.id}</p>
+          <pre className="mt-2 overflow-x-auto rounded bg-muted/50 p-3 text-[11px] text-muted-foreground">
             {JSON.stringify(detail, null, 2)}
           </pre>
         </div>

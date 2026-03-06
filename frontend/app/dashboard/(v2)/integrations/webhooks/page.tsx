@@ -215,9 +215,9 @@ export default function DashboardIntegrationsWebhooksPage() {
   }, [fetchIntegrations, pathname]);
 
   return (
-    <section className="space-y-4">
-      <h1 className="text-2xl font-semibold">Integrations (Webhook)</h1>
-      <p className="text-sm text-[var(--text-secondary)]">Manage event subscriptions, delivery status, and retry processing.</p>
+    <section className="space-y-5">
+      <h1 className="text-2xl font-bold tracking-tight leading-8">Integrations (Webhook)</h1>
+      <p className="text-[13px] leading-5 text-muted-foreground">Manage event subscriptions, delivery status, and retry processing.</p>
 
       <div className="ds-card p-4">
         <div className="mb-2 flex flex-wrap items-center gap-2">
@@ -229,7 +229,7 @@ export default function DashboardIntegrationsWebhooksPage() {
           >
             {processingRetries ? "Processing..." : "Process Retries"}
           </button>
-          {!canManage ? <p className="text-xs text-[var(--muted)]">Integration write actions are read-only for your role.</p> : null}
+          {!canManage ? <p className="text-xs text-muted-foreground">Integration write actions are read-only for your role.</p> : null}
         </div>
 
         <div className="grid gap-2 sm:grid-cols-2">
@@ -272,18 +272,18 @@ export default function DashboardIntegrationsWebhooksPage() {
         </button>
       </div>
 
-      {loading ? <p className="text-sm text-[var(--muted)]">Loading webhooks...</p> : null}
+      {loading ? <p className="text-sm text-muted-foreground">Loading webhooks...</p> : null}
       {error ? (
-        <div className="rounded-md border border-[var(--danger-500)]/40 bg-[color-mix(in_srgb,var(--danger-500)_12%,white)] px-3 py-2 text-sm text-[var(--danger-500)]">
+        <div className="rounded-md border border-destructive/40 bg-destructive/10 px-3 py-2 text-sm text-destructive">
           {error}
         </div>
       ) : null}
 
       <div className="grid gap-3 sm:grid-cols-2">
         <article className="ds-card p-4">
-          <p className="text-sm font-medium">Subscriptions</p>
+          <p className="text-sm font-semibold">Subscriptions</p>
           <div className="mt-2 space-y-1">
-            {webhooks.length === 0 ? <p className="text-xs text-[var(--muted)]">No subscriptions.</p> : null}
+            {webhooks.length === 0 ? <p className="text-xs text-muted-foreground">No subscriptions.</p> : null}
             {webhooks.slice(0, 12).map((hook) => (
               <p key={`hook-${hook.id}`} className="text-xs">
                 {hook.name} ({hook.is_active ? "active" : "disabled"}) · {hook.event_types.join(", ")}
@@ -293,19 +293,19 @@ export default function DashboardIntegrationsWebhooksPage() {
         </article>
 
         <article className="ds-card p-4">
-          <p className="text-sm font-medium">Recent Deliveries</p>
+          <p className="text-sm font-semibold">Recent Deliveries</p>
           <div className="mt-2 space-y-2">
-            {deliveries.length === 0 ? <p className="text-xs text-[var(--muted)]">No deliveries.</p> : null}
+            {deliveries.length === 0 ? <p className="text-xs text-muted-foreground">No deliveries.</p> : null}
             {deliveries.slice(0, 20).map((delivery) => (
-              <div key={`delivery-${delivery.id}`} className="rounded-md border border-[var(--border)] px-2 py-2">
+              <div key={`delivery-${delivery.id}`} className="rounded-md border border-border px-2 py-2">
                 <p className="text-xs">
                   #{delivery.id} {delivery.event_type} · {delivery.status}
                   {delivery.http_status ? ` (${delivery.http_status})` : ""} · retry {delivery.retry_count}
                 </p>
-                <p className="text-[11px] text-[var(--muted)]">
+                <p className="text-[11px] text-muted-foreground">
                   next: {formatDate(delivery.next_retry_at)} · created: {formatDate(delivery.created_at)}
                 </p>
-                {delivery.error_message ? <p className="text-[11px] text-[var(--danger-500)]">{delivery.error_message}</p> : null}
+                {delivery.error_message ? <p className="text-[11px] text-destructive">{delivery.error_message}</p> : null}
                 <div className="mt-1">
                   <button
                     type="button"

@@ -3,6 +3,7 @@
 import { Breadcrumb, BreadcrumbItem, BreadcrumbList, BreadcrumbPage, BreadcrumbSeparator } from "@/components/ui/breadcrumb";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
+import { Separator } from "@/components/ui/separator";
 import { SidebarTrigger } from "@/components/ui/sidebar";
 
 type TopbarProps = {
@@ -29,10 +30,11 @@ export default function DashboardTopbar({
   theme,
 }: TopbarProps) {
   return (
-    <header className="sticky top-0 z-20 border-b border-border bg-background/95 backdrop-blur">
-      <div className="flex flex-col gap-3 px-4 py-3 md:flex-row md:items-center md:justify-between md:px-6">
+    <header className="sticky top-0 z-20 border-b border-border bg-background/95 backdrop-blur supports-[backdrop-filter]:bg-background/70">
+      <div className="flex h-16 flex-col justify-center gap-3 px-4 py-3 md:flex-row md:items-center md:justify-between md:px-6 md:py-0">
         <div className="flex items-center gap-2">
-          <SidebarTrigger className="md:hidden" />
+          <SidebarTrigger />
+          <Separator orientation="vertical" className="mr-2 h-4" />
           <Breadcrumb>
             <BreadcrumbList>
               <BreadcrumbItem>Dashboard</BreadcrumbItem>
@@ -50,7 +52,7 @@ export default function DashboardTopbar({
             placeholder={
               globalSearchEnabled ? "Search request_id / api_key / user_id / tool_name" : "Global search (coming soon)"
             }
-            className="hidden h-10 w-64 text-xs md:block"
+            className="hidden h-8 w-64 text-xs md:block"
           />
           <select
             value={currentTeam}

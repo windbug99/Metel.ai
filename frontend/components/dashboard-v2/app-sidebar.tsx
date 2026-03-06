@@ -18,6 +18,7 @@ import {
   SidebarContent,
   SidebarFooter,
   SidebarHeader,
+  SidebarSeparator,
 } from "@/components/ui/sidebar";
 
 type AppSidebarProps = {
@@ -47,9 +48,9 @@ export default function DashboardAppSidebar({
 }: AppSidebarProps) {
   return (
     <Sidebar collapsible="offcanvas">
-      <SidebarHeader>
-        <p className="px-2 pt-1 text-sm font-semibold">metel Dashboard</p>
-        <p className="px-2 text-[11px] text-muted-foreground">role: {roleLabel}</p>
+      <SidebarHeader className="border-b border-sidebar-border">
+        <p className="px-2 pt-1 text-sm font-semibold tracking-tight">metel Dashboard</p>
+        <p className="px-2 text-[11px] text-sidebar-foreground/70">role: {roleLabel}</p>
         <DropdownMenu>
           <DropdownMenuTrigger asChild>
             <Button variant="outline" className="w-full justify-between">
@@ -70,11 +71,12 @@ export default function DashboardAppSidebar({
           </DropdownMenuContent>
         </DropdownMenu>
       </SidebarHeader>
-      <SidebarContent>
-        <nav className="space-y-1 px-2">
+      <SidebarContent className="px-2 py-2">
+        <nav className="space-y-1">
           <DashboardNavList pathname={pathname} navItems={navItems} buildNavHref={buildNavHref} />
         </nav>
       </SidebarContent>
+      <SidebarSeparator />
       <SidebarFooter>
         <DropdownMenu>
           <DropdownMenuTrigger asChild>
@@ -98,7 +100,7 @@ export default function DashboardAppSidebar({
             </DropdownMenuItem>
           </DropdownMenuContent>
         </DropdownMenu>
-        <Link href="/dashboard/legacy" className="px-2 text-xs text-muted-foreground underline">
+        <Link href="/dashboard/legacy" className="px-2 text-xs text-sidebar-foreground/70 underline">
           Go to legacy single-page dashboard
         </Link>
       </SidebarFooter>

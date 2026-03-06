@@ -46,11 +46,11 @@ function ServiceRow({
   onDisconnect: () => void;
 }) {
   return (
-    <article className="rounded-md border border-[var(--border)] p-3">
+    <article className="rounded-md border border-border p-3">
       <div className="flex items-center justify-between gap-3">
         <div>
-          <p className="text-sm font-medium">{name}</p>
-          <p className="text-xs text-[var(--muted)]">{status?.connected ? "Connected" : "Not connected"}</p>
+          <p className="text-sm font-semibold">{name}</p>
+          <p className="text-xs text-muted-foreground">{status?.connected ? "Connected" : "Not connected"}</p>
         </div>
 
         {status?.connected ? (
@@ -75,12 +75,12 @@ function ServiceRow({
       </div>
 
       {status?.integration?.workspace_name ? (
-        <p className="mt-2 text-xs text-[var(--muted)]">Workspace: {status.integration.workspace_name}</p>
+        <p className="mt-2 text-xs text-muted-foreground">Workspace: {status.integration.workspace_name}</p>
       ) : null}
       {status?.integration?.updated_at ? (
-        <p className="mt-1 text-xs text-[var(--muted)]">Updated: {formatDate(status.integration.updated_at)}</p>
+        <p className="mt-1 text-xs text-muted-foreground">Updated: {formatDate(status.integration.updated_at)}</p>
       ) : null}
-      {error ? <p className="mt-2 text-xs text-[var(--danger-500)]">{error}</p> : null}
+      {error ? <p className="mt-2 text-xs text-destructive">{error}</p> : null}
     </article>
   );
 }
@@ -200,9 +200,9 @@ export default function DashboardOAuthConnectionsPage() {
   }, [fetchStatus, pathname]);
 
   return (
-    <section className="space-y-4">
-      <h1 className="text-2xl font-semibold">OAuth Connections</h1>
-      <p className="text-sm text-[var(--text-secondary)]">Connect Notion and Linear to expose MCP tools.</p>
+    <section className="space-y-5">
+      <h1 className="text-2xl font-bold tracking-tight leading-8">OAuth Connections</h1>
+      <p className="text-[13px] leading-5 text-muted-foreground">Connect Notion and Linear to expose MCP tools.</p>
 
       <div className="ds-card space-y-3 p-4">
         <ServiceRow

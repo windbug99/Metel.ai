@@ -31,29 +31,29 @@ function labelFor(kind: StatusBadgeProps["kind"], value: string | null | undefin
 
 function toneClass(kind: StatusBadgeProps["kind"], value: string | null | undefined): string {
   if (!value) {
-    return "border-[var(--status-unknown)]/35 text-[var(--status-unknown)] bg-[color-mix(in_srgb,var(--status-unknown)_12%,transparent)]";
+    return "border-muted-foreground/30 bg-muted/40 text-muted-foreground";
   }
 
   if (kind === "decision") {
     if (value === "allowed") {
-      return "border-[var(--status-ok)]/35 text-[var(--status-ok)] bg-[color-mix(in_srgb,var(--status-ok)_12%,transparent)]";
+      return "border-chart-2/35 bg-chart-2/10 text-chart-2";
     }
     if (value === "policy_blocked") {
-      return "border-[var(--status-warn)]/35 text-[var(--status-warn)] bg-[color-mix(in_srgb,var(--status-warn)_12%,transparent)]";
+      return "border-chart-4/35 bg-chart-4/10 text-chart-4";
     }
     if (value === "access_denied" || value === "failed") {
-      return "border-[var(--status-critical)]/35 text-[var(--status-critical)] bg-[color-mix(in_srgb,var(--status-critical)_12%,transparent)]";
+      return "border-destructive/35 bg-destructive/10 text-destructive";
     }
-    return "border-[var(--status-unknown)]/35 text-[var(--status-unknown)] bg-[color-mix(in_srgb,var(--status-unknown)_12%,transparent)]";
+    return "border-muted-foreground/30 bg-muted/40 text-muted-foreground";
   }
 
   if (value === "active") {
-    return "border-[var(--status-ok)]/35 text-[var(--status-ok)] bg-[color-mix(in_srgb,var(--status-ok)_12%,transparent)]";
+    return "border-chart-2/35 bg-chart-2/10 text-chart-2";
   }
   if (value === "revoked") {
-    return "border-[var(--status-critical)]/35 text-[var(--status-critical)] bg-[color-mix(in_srgb,var(--status-critical)_12%,transparent)]";
+    return "border-destructive/35 bg-destructive/10 text-destructive";
   }
-  return "border-[var(--status-unknown)]/35 text-[var(--status-unknown)] bg-[color-mix(in_srgb,var(--status-unknown)_12%,transparent)]";
+  return "border-muted-foreground/30 bg-muted/40 text-muted-foreground";
 }
 
 export default function StatusBadge(props: StatusBadgeProps) {

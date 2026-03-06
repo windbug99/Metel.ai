@@ -398,12 +398,12 @@ export default function DashboardApiKeysPage() {
   }, [fetchApiKeys, pathname]);
 
   return (
-    <section className="space-y-4">
-      <h1 className="text-2xl font-semibold">API Keys</h1>
-      <p className="text-sm text-[var(--text-secondary)]">Create, update, rotate, revoke, and drill down API key activity.</p>
+    <section className="space-y-5">
+      <h1 className="text-2xl font-bold tracking-tight leading-8">API Keys</h1>
+      <p className="text-[13px] leading-5 text-muted-foreground">Create, update, rotate, revoke, and drill down API key activity.</p>
 
       <div className="ds-card p-4">
-        <p className="mb-3 text-sm font-medium">Create API key</p>
+        <p className="mb-3 text-sm font-semibold">Create API key</p>
         <div className="grid gap-2 lg:grid-cols-2">
           <input
             value={createName}
@@ -458,10 +458,10 @@ export default function DashboardApiKeysPage() {
         </div>
 
         {createdApiKey ? (
-          <div className="mt-3 rounded-md border border-[var(--warning-500)]/40 bg-[color-mix(in_srgb,var(--warning-500)_12%,white)] p-3">
-            <p className="text-xs font-medium text-[var(--warning-500)]">Copy now. This key is shown only once.</p>
+          <div className="mt-3 rounded-md border border-chart-4/40 bg-chart-4/10 p-3">
+            <p className="text-xs font-medium text-chart-4">Copy now. This key is shown only once.</p>
             <div className="mt-2 flex items-center gap-2">
-              <code className="block flex-1 overflow-x-auto rounded bg-[var(--surface)] px-2 py-1 text-xs">{createdApiKey}</code>
+              <code className="block flex-1 overflow-x-auto rounded bg-background px-2 py-1 text-xs">{createdApiKey}</code>
               <button type="button" onClick={() => void copyApiKey()} className="ds-btn h-9 rounded-md px-3 text-xs">
                 Copy
               </button>
@@ -470,9 +470,9 @@ export default function DashboardApiKeysPage() {
         ) : null}
       </div>
 
-      {loading ? <p className="text-sm text-[var(--muted)]">Loading API keys...</p> : null}
+      {loading ? <p className="text-sm text-muted-foreground">Loading API keys...</p> : null}
       {error ? (
-        <div className="rounded-md border border-[var(--danger-500)]/40 bg-[color-mix(in_srgb,var(--danger-500)_12%,white)] px-3 py-2 text-sm text-[var(--danger-500)]">
+        <div className="rounded-md border border-destructive/40 bg-destructive/10 px-3 py-2 text-sm text-destructive">
           {error}
         </div>
       ) : null}
@@ -486,7 +486,7 @@ export default function DashboardApiKeysPage() {
                 <div className="flex flex-wrap items-center justify-between gap-2">
                   <div>
                     <p className="text-sm font-semibold">{item.name}</p>
-                    <p className="font-mono text-xs text-[var(--muted)]">{item.key_prefix}</p>
+                    <p className="font-mono text-xs text-muted-foreground">{item.key_prefix}</p>
                   </div>
                   <StatusBadge kind="key" value={item.is_active ? "active" : "revoked"} />
                 </div>
@@ -569,33 +569,33 @@ export default function DashboardApiKeysPage() {
                   </button>
                 </div>
 
-                <p className="text-xs text-[var(--muted)]">
+                <p className="text-xs text-muted-foreground">
                   created: {item.created_at ? new Date(item.created_at).toLocaleString() : "-"} · last used: {item.last_used_at ? new Date(item.last_used_at).toLocaleString() : "-"} · revoked: {item.revoked_at ? new Date(item.revoked_at).toLocaleString() : "-"}
                 </p>
 
                 {drilldown ? (
-                  <div className="rounded-md border border-[var(--border)] p-3">
-                    <p className="mb-2 text-sm font-medium">7-day Drill-down</p>
+                  <div className="rounded-md border border-border p-3">
+                    <p className="mb-2 text-sm font-semibold">7-day Drill-down</p>
                     <div className="grid gap-2 sm:grid-cols-2 lg:grid-cols-4">
-                      <div className="rounded border border-[var(--border)] p-2 text-xs">Calls: {drilldown.summary.total_calls}</div>
-                      <div className="rounded border border-[var(--border)] p-2 text-xs">Success: {drilldown.summary.success_count}</div>
-                      <div className="rounded border border-[var(--border)] p-2 text-xs">Fail: {drilldown.summary.fail_count}</div>
-                      <div className="rounded border border-[var(--border)] p-2 text-xs">P95: {drilldown.summary.p95_latency_ms} ms</div>
+                      <div className="rounded border border-border p-2 text-xs">Calls: {drilldown.summary.total_calls}</div>
+                      <div className="rounded border border-border p-2 text-xs">Success: {drilldown.summary.success_count}</div>
+                      <div className="rounded border border-border p-2 text-xs">Fail: {drilldown.summary.fail_count}</div>
+                      <div className="rounded border border-border p-2 text-xs">P95: {drilldown.summary.p95_latency_ms} ms</div>
                     </div>
 
                     <div className="mt-3 grid gap-2 lg:grid-cols-2">
-                      <div className="rounded border border-[var(--border)] p-2">
+                      <div className="rounded border border-border p-2">
                         <p className="mb-1 text-xs font-medium">Top error codes</p>
-                        {(drilldown.top_error_codes ?? []).length === 0 ? <p className="text-xs text-[var(--muted)]">No errors.</p> : null}
+                        {(drilldown.top_error_codes ?? []).length === 0 ? <p className="text-xs text-muted-foreground">No errors.</p> : null}
                         {(drilldown.top_error_codes ?? []).map((entry) => (
                           <p key={`err-${item.id}-${entry.error_code}`} className="text-xs">
                             {entry.error_code}: {entry.count}
                           </p>
                         ))}
                       </div>
-                      <div className="rounded border border-[var(--border)] p-2">
+                      <div className="rounded border border-border p-2">
                         <p className="mb-1 text-xs font-medium">Top tools</p>
-                        {(drilldown.top_tools ?? []).length === 0 ? <p className="text-xs text-[var(--muted)]">No calls.</p> : null}
+                        {(drilldown.top_tools ?? []).length === 0 ? <p className="text-xs text-muted-foreground">No calls.</p> : null}
                         {(drilldown.top_tools ?? []).map((entry) => (
                           <p key={`tool-${item.id}-${entry.tool_name}`} className="text-xs">
                             {entry.tool_name}: {entry.count}
@@ -604,30 +604,30 @@ export default function DashboardApiKeysPage() {
                       </div>
                     </div>
 
-                    <div className="mt-3 overflow-x-auto rounded border border-[var(--border)]">
-                      <table className="min-w-[640px] text-xs">
-                        <thead className="bg-[var(--surface-subtle)] text-left text-[11px] text-[var(--muted)]">
+                    <div className="mt-3 overflow-x-auto rounded border border-border">
+                      <table className="min-w-[640px] text-xs tabular-nums">
+                        <thead className="sticky top-16 z-10 bg-muted/80 text-left text-[11px] text-muted-foreground backdrop-blur supports-[backdrop-filter]:bg-background/85">
                           <tr>
                             <th className="px-2 py-2">Day</th>
-                            <th className="px-2 py-2">Calls</th>
-                            <th className="px-2 py-2">Success</th>
-                            <th className="px-2 py-2">Fail</th>
-                            <th className="px-2 py-2">Success Rate</th>
+                            <th className="px-2 py-2 text-right">Calls</th>
+                            <th className="px-2 py-2 text-right">Success</th>
+                            <th className="px-2 py-2 text-right">Fail</th>
+                            <th className="px-2 py-2 text-right">Success Rate</th>
                           </tr>
                         </thead>
                         <tbody>
                           {(drilldown.trend ?? []).map((row) => (
-                            <tr key={`trend-${item.id}-${row.day}`} className="border-t border-[var(--border)]">
+                            <tr key={`trend-${item.id}-${row.day}`} className="border-t border-border">
                               <td className="px-2 py-2">{row.day}</td>
-                              <td className="px-2 py-2">{row.calls}</td>
-                              <td className="px-2 py-2">{row.success}</td>
-                              <td className="px-2 py-2">{row.fail}</td>
-                              <td className="px-2 py-2">{(row.success_rate * 100).toFixed(1)}%</td>
+                              <td className="px-2 py-2 text-right">{row.calls}</td>
+                              <td className="px-2 py-2 text-right">{row.success}</td>
+                              <td className="px-2 py-2 text-right">{row.fail}</td>
+                              <td className="px-2 py-2 text-right">{(row.success_rate * 100).toFixed(1)}%</td>
                             </tr>
                           ))}
                           {(drilldown.trend ?? []).length === 0 ? (
                             <tr>
-                              <td className="px-2 py-3 text-[var(--muted)]" colSpan={5}>
+                              <td className="px-2 py-3 text-muted-foreground" colSpan={5}>
                                 No trend rows.
                               </td>
                             </tr>
@@ -641,7 +641,7 @@ export default function DashboardApiKeysPage() {
             );
           })}
 
-          {items.length === 0 ? <p className="text-sm text-[var(--muted)]">No API keys found.</p> : null}
+          {items.length === 0 ? <p className="text-sm text-muted-foreground">No API keys found.</p> : null}
         </div>
       ) : null}
     </section>

@@ -128,34 +128,34 @@ export default function DashboardProfilePage() {
   }, [loadProfile, pathname]);
 
   return (
-    <section className="space-y-4">
-      <h1 className="text-2xl font-semibold">Profile</h1>
-      <p className="text-sm text-[var(--text-secondary)]">Manage your profile and timezone preference.</p>
+    <section className="space-y-5">
+      <h1 className="text-2xl font-bold tracking-tight leading-8">Profile</h1>
+      <p className="text-[13px] leading-5 text-muted-foreground">Manage your profile and timezone preference.</p>
 
       {error ? <AlertBanner message={error} tone="danger" /> : null}
-      {loading ? <p className="text-sm text-[var(--muted)]">Loading profile...</p> : null}
+      {loading ? <p className="text-sm text-muted-foreground">Loading profile...</p> : null}
 
       {!loading && profile ? (
         <div className="ds-card space-y-4 p-4">
           <div className="space-y-1">
-            <p className="text-xs text-[var(--muted)]">User ID</p>
+            <p className="text-xs text-muted-foreground">User ID</p>
             <p className="font-mono text-xs">{profile.id}</p>
           </div>
           <div className="space-y-1">
-            <p className="text-xs text-[var(--muted)]">Email</p>
+            <p className="text-xs text-muted-foreground">Email</p>
             <p className="text-sm">{profile.email ?? "-"}</p>
           </div>
           <div className="space-y-1">
-            <p className="text-xs text-[var(--muted)]">Full name</p>
+            <p className="text-xs text-muted-foreground">Full name</p>
             <p className="text-sm">{profile.full_name ?? "-"}</p>
           </div>
           <div className="space-y-1">
-            <p className="text-xs text-[var(--muted)]">Joined at</p>
+            <p className="text-xs text-muted-foreground">Joined at</p>
             <p className="text-sm">{asDate(profile.created_at)}</p>
           </div>
 
-          <div className="border-t border-[var(--border)] pt-4">
-            <p className="mb-2 text-sm font-medium">Timezone</p>
+          <div className="border-t border-border pt-4">
+            <p className="mb-2 text-sm font-semibold">Timezone</p>
             <div className="flex flex-wrap items-center gap-2">
               <select
                 value={timezoneDraft}
@@ -176,9 +176,9 @@ export default function DashboardProfilePage() {
               >
                 {timezoneSaving ? "Saving..." : "Save timezone"}
               </button>
-              <span className="text-xs text-[var(--muted)]">Browser: {browserTimezone}</span>
+              <span className="text-xs text-muted-foreground">Browser: {browserTimezone}</span>
             </div>
-            {timezoneMessage ? <p className="mt-2 text-sm text-[var(--text-secondary)]">{timezoneMessage}</p> : null}
+            {timezoneMessage ? <p className="mt-2 text-sm text-muted-foreground">{timezoneMessage}</p> : null}
           </div>
         </div>
       ) : null}

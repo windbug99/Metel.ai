@@ -522,17 +522,17 @@ export default function DashboardOrganizationsPage() {
   }, [loadOrganizations, pathname]);
 
   return (
-    <section className="space-y-4">
-      <h1 className="text-2xl font-semibold">Organizations</h1>
-      <p className="text-sm text-[var(--text-secondary)]">
+    <section className="space-y-5">
+      <h1 className="text-2xl font-bold tracking-tight leading-8">Organizations</h1>
+      <p className="text-[13px] leading-5 text-muted-foreground">
         Organization creation, member role updates, and invite actions are available in route-based V2.
       </p>
 
       {error ? <AlertBanner message={error} tone="danger" /> : null}
-      {loading ? <p className="text-sm text-[var(--muted)]">Loading organizations...</p> : null}
+      {loading ? <p className="text-sm text-muted-foreground">Loading organizations...</p> : null}
 
       <div className="ds-card p-4">
-        <p className="mb-2 text-sm font-medium">Create organization</p>
+        <p className="mb-2 text-sm font-semibold">Create organization</p>
         <div className="flex flex-wrap items-center gap-2">
           <input
             value={createOrgName}
@@ -552,7 +552,7 @@ export default function DashboardOrganizationsPage() {
       </div>
 
       <div className="ds-card p-4">
-        <p className="mb-2 text-sm font-medium">Accept invite token</p>
+        <p className="mb-2 text-sm font-semibold">Accept invite token</p>
         <div className="flex flex-wrap items-center gap-2">
           <input
             value={acceptToken}
@@ -573,7 +573,7 @@ export default function DashboardOrganizationsPage() {
 
       <div className="ds-card p-4">
         <div className="flex flex-wrap items-center gap-2">
-          <label className="text-sm text-[var(--muted)]">Organization</label>
+          <label className="text-sm text-muted-foreground">Organization</label>
           <select
             value={selectedOrgId}
             onChange={(event) => setSelectedOrgId(event.target.value)}
@@ -596,13 +596,13 @@ export default function DashboardOrganizationsPage() {
             Load Requests
           </button>
         </div>
-        <p className="mt-2 text-xs text-[var(--muted)]">
+        <p className="mt-2 text-xs text-muted-foreground">
           signed-in user: {me?.user_id ?? "-"} / selected org role: {selectedOrg?.role ?? "-"}
         </p>
       </div>
 
       <div className="ds-card p-4">
-        <p className="mb-2 text-sm font-medium">Add / update member</p>
+        <p className="mb-2 text-sm font-semibold">Add / update member</p>
         <div className="flex flex-wrap items-center gap-2">
           <input
             value={memberUserId}
@@ -629,25 +629,25 @@ export default function DashboardOrganizationsPage() {
             {savingMember ? "Saving..." : "Add / Update Member"}
           </button>
         </div>
-        {!ownerActionsEnabled ? <p className="mt-2 text-xs text-[var(--muted)]">Owner role required.</p> : null}
+        {!ownerActionsEnabled ? <p className="mt-2 text-xs text-muted-foreground">Owner role required.</p> : null}
       </div>
 
       <div className="ds-card overflow-x-auto">
-        <table className="min-w-[640px] text-sm">
-          <thead className="bg-[var(--surface-subtle)] text-left text-xs text-[var(--muted)]">
+        <table className="min-w-[640px] text-sm tabular-nums">
+          <thead className="sticky top-16 z-10 bg-muted/80 text-left text-xs text-muted-foreground backdrop-blur supports-[backdrop-filter]:bg-background/85">
             <tr>
               <th className="px-4 py-3">User ID</th>
               <th className="px-4 py-3">Role</th>
-              <th className="px-4 py-3">Created At</th>
+              <th className="px-4 py-3 text-right">Created At</th>
               <th className="px-4 py-3">Action</th>
             </tr>
           </thead>
           <tbody>
             {members.map((item) => (
-              <tr key={`member-${item.user_id}`} className="border-t border-[var(--border)]">
+              <tr key={`member-${item.user_id}`} className="border-t border-border">
                 <td className="px-4 py-3 font-mono text-xs">{item.user_id}</td>
                 <td className="px-4 py-3">{item.role}</td>
-                <td className="px-4 py-3">{formatDate(item.created_at)}</td>
+                <td className="px-4 py-3 text-right">{formatDate(item.created_at)}</td>
                 <td className="px-4 py-3">
                   <button
                     type="button"
@@ -663,7 +663,7 @@ export default function DashboardOrganizationsPage() {
             ))}
             {members.length === 0 ? (
               <tr>
-                <td className="px-4 py-4 text-[var(--muted)]" colSpan={4}>
+                <td className="px-4 py-4 text-muted-foreground" colSpan={4}>
                   No members loaded.
                 </td>
               </tr>
@@ -673,7 +673,7 @@ export default function DashboardOrganizationsPage() {
       </div>
 
       <div className="ds-card p-4">
-        <p className="mb-2 text-sm font-medium">Create invite</p>
+        <p className="mb-2 text-sm font-semibold">Create invite</p>
         <div className="flex flex-wrap items-center gap-2">
           <input
             value={inviteEmail}
@@ -709,14 +709,14 @@ export default function DashboardOrganizationsPage() {
       </div>
 
       <div className="ds-card overflow-x-auto">
-        <table className="min-w-[880px] text-sm">
-          <thead className="bg-[var(--surface-subtle)] text-left text-xs text-[var(--muted)]">
+        <table className="min-w-[880px] text-sm tabular-nums">
+          <thead className="sticky top-16 z-10 bg-muted/80 text-left text-xs text-muted-foreground backdrop-blur supports-[backdrop-filter]:bg-background/85">
             <tr>
-              <th className="px-4 py-3">ID</th>
+              <th className="px-4 py-3 text-right">ID</th>
               <th className="px-4 py-3">Role</th>
               <th className="px-4 py-3">Invited Email</th>
               <th className="px-4 py-3">Status</th>
-              <th className="px-4 py-3">Expires</th>
+              <th className="px-4 py-3 text-right">Expires</th>
               <th className="px-4 py-3">Token</th>
               <th className="px-4 py-3">Action</th>
             </tr>
@@ -725,12 +725,12 @@ export default function DashboardOrganizationsPage() {
             {invites.map((item) => {
               const status = item.revoked_at ? "revoked" : item.accepted_at ? "accepted" : "pending";
               return (
-                <tr key={`invite-${item.id}`} className="border-t border-[var(--border)]">
-                  <td className="px-4 py-3">#{item.id}</td>
+                <tr key={`invite-${item.id}`} className="border-t border-border">
+                  <td className="px-4 py-3 text-right">#{item.id}</td>
                   <td className="px-4 py-3">{item.role}</td>
                   <td className="px-4 py-3">{item.invited_email || "-"}</td>
                   <td className="px-4 py-3">{status}</td>
-                  <td className="px-4 py-3">{formatDate(item.expires_at)}</td>
+                  <td className="px-4 py-3 text-right">{formatDate(item.expires_at)}</td>
                   <td className="px-4 py-3 font-mono text-xs">{item.token}</td>
                   <td className="px-4 py-3">
                     <div className="flex items-center gap-2">
@@ -759,7 +759,7 @@ export default function DashboardOrganizationsPage() {
             })}
             {invites.length === 0 ? (
               <tr>
-                <td className="px-4 py-4 text-[var(--muted)]" colSpan={7}>
+                <td className="px-4 py-4 text-muted-foreground" colSpan={7}>
                   No invites loaded.
                 </td>
               </tr>
@@ -769,7 +769,7 @@ export default function DashboardOrganizationsPage() {
       </div>
 
       <div className="ds-card p-4">
-        <p className="mb-2 text-sm font-medium">Role change requests</p>
+        <p className="mb-2 text-sm font-semibold">Role change requests</p>
         <div className="flex flex-wrap items-center gap-2">
           <input
             value={roleRequestTargetUserId}
@@ -805,31 +805,31 @@ export default function DashboardOrganizationsPage() {
             {creatingRoleRequest ? "Creating..." : "Create Request"}
           </button>
         </div>
-        {!ownerActionsEnabled ? <p className="mt-2 text-xs text-[var(--muted)]">Owner role required.</p> : null}
+        {!ownerActionsEnabled ? <p className="mt-2 text-xs text-muted-foreground">Owner role required.</p> : null}
       </div>
 
       <div className="ds-card overflow-x-auto">
-        <table className="min-w-[880px] text-sm">
-          <thead className="bg-[var(--surface-subtle)] text-left text-xs text-[var(--muted)]">
+        <table className="min-w-[880px] text-sm tabular-nums">
+          <thead className="sticky top-16 z-10 bg-muted/80 text-left text-xs text-muted-foreground backdrop-blur supports-[backdrop-filter]:bg-background/85">
             <tr>
-              <th className="px-4 py-3">ID</th>
+              <th className="px-4 py-3 text-right">ID</th>
               <th className="px-4 py-3">Target</th>
               <th className="px-4 py-3">Requested Role</th>
               <th className="px-4 py-3">Status</th>
               <th className="px-4 py-3">Requested By</th>
-              <th className="px-4 py-3">Created At</th>
+              <th className="px-4 py-3 text-right">Created At</th>
               <th className="px-4 py-3">Action</th>
             </tr>
           </thead>
           <tbody>
             {roleRequests.map((item) => (
-              <tr key={`role-request-${item.id}`} className="border-t border-[var(--border)]">
-                <td className="px-4 py-3">#{item.id}</td>
+              <tr key={`role-request-${item.id}`} className="border-t border-border">
+                <td className="px-4 py-3 text-right">#{item.id}</td>
                 <td className="px-4 py-3 font-mono text-xs">{item.target_user_id}</td>
                 <td className="px-4 py-3">{item.requested_role}</td>
                 <td className="px-4 py-3">{item.status}</td>
                 <td className="px-4 py-3 font-mono text-xs">{item.requested_by}</td>
-                <td className="px-4 py-3">{formatDate(item.created_at)}</td>
+                <td className="px-4 py-3 text-right">{formatDate(item.created_at)}</td>
                 <td className="px-4 py-3">
                   {item.status === "pending" && item.requested_by !== me?.user_id && ownerActionsEnabled ? (
                     <div className="flex items-center gap-2">
@@ -837,7 +837,7 @@ export default function DashboardOrganizationsPage() {
                         type="button"
                         onClick={() => void reviewRoleRequest(item.id, "approve")}
                         disabled={reviewingRoleRequestAction === `${item.id}:approve`}
-                        className="h-11 rounded-md border border-[var(--success-600)]/40 px-3 text-xs font-medium text-[var(--success-600)] disabled:opacity-60 md:h-9"
+                        className="h-11 rounded-md border border-chart-2/40 px-3 text-xs font-medium text-chart-2 disabled:opacity-60 md:h-9"
                       >
                         Approve
                       </button>
@@ -845,24 +845,24 @@ export default function DashboardOrganizationsPage() {
                         type="button"
                         onClick={() => void reviewRoleRequest(item.id, "reject")}
                         disabled={reviewingRoleRequestAction === `${item.id}:reject`}
-                        className="h-11 rounded-md border border-[var(--danger-500)]/40 px-3 text-xs font-medium text-[var(--danger-500)] disabled:opacity-60 md:h-9"
+                        className="h-11 rounded-md border border-destructive/40 px-3 text-xs font-medium text-destructive disabled:opacity-60 md:h-9"
                       >
                         Reject
                       </button>
                     </div>
                   ) : item.status === "pending" && item.requested_by === me?.user_id ? (
-                    <p className="text-xs text-[var(--muted)]">Self-review blocked</p>
+                    <p className="text-xs text-muted-foreground">Self-review blocked</p>
                   ) : item.status === "pending" ? (
-                    <p className="text-xs text-[var(--muted)]">Review is owner-only.</p>
+                    <p className="text-xs text-muted-foreground">Review is owner-only.</p>
                   ) : (
-                    <p className="text-xs text-[var(--muted)]">-</p>
+                    <p className="text-xs text-muted-foreground">-</p>
                   )}
                 </td>
               </tr>
             ))}
             {roleRequests.length === 0 ? (
               <tr>
-                <td className="px-4 py-4 text-[var(--muted)]" colSpan={7}>
+                <td className="px-4 py-4 text-muted-foreground" colSpan={7}>
                   {loadingRoleRequests ? "Loading role requests..." : "No role requests loaded."}
                 </td>
               </tr>
