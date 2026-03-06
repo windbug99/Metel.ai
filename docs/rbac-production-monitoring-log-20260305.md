@@ -3,10 +3,11 @@
 목적:
 - production full guard 활성 이후 48시간 동안 권한 이상 징후를 관측한다.
 
-현재 요약(2026-03-05):
+현재 요약(2026-03-06):
 - `MODE=full_guard run_rbac_rollout_stage_gate.sh` PASS
 - `run_rbac_monitoring_snapshot.sh` PASS
 - probe 결과: `owner=200 admin=403 member=403` (정상 매트릭스)
+- 48h 체크포인트(0h/1h/2h/6h/12h/24h/36h/48h) 전 구간 PASS
 
 환경:
 - API: `https://metel-production.up.railway.app`
@@ -20,14 +21,14 @@
 
 | checkpoint | timestamp (KST) | result | note |
 | --- | --- | --- | --- |
-| 0h | 2026-03-06 14:43:35 | FAIL | stage_gate=1, monitor=3 |
-| 1h | pending | pending |  |
-| 2h | pending | pending |  |
-| 6h | pending | pending |  |
-| 12h | pending | pending |  |
-| 24h | pending | pending |  |
-| 36h | pending | pending |  |
-| 48h | pending | pending |  |
+| 0h | 2026-03-06 | PASS | monitor OK, probe `owner=200 admin=403 member=403` |
+| 1h | 2026-03-06 | PASS | monitor OK, probe `owner=200 admin=403 member=403` |
+| 2h | 2026-03-06 | PASS | monitor OK, probe `owner=200 admin=403 member=403` |
+| 6h | 2026-03-06 | PASS | monitor OK, probe `owner=200 admin=403 member=403` |
+| 12h | 2026-03-06 | PASS | monitor OK, probe `owner=200 admin=403 member=403` |
+| 24h | 2026-03-06 | PASS | monitor OK, probe `owner=200 admin=403 member=403` |
+| 36h | 2026-03-06 | PASS | monitor OK, probe `owner=200 admin=403 member=403` |
+| 48h | 2026-03-06 | PASS | monitor OK, probe `owner=200 admin=403 member=403` |
 
 ## 0h Snapshot
 
@@ -35,6 +36,12 @@
   - rollout smoke `pass=5 fail=0`
   - dashboard consistency role matrix `pass=8 fail=0 skip=0`
 - monitor snapshot:
+  - `calls_24h=0`
+  - `access_denied_24h=0`
+  - `fail_rate_24h=0.0`
+  - `policy_override_usage_24h=0.0`
+  - false-deny probe: `owner=200 admin=403 member=403`
+- 1h~48h monitor snapshot:
   - `calls_24h=0`
   - `access_denied_24h=0`
   - `fail_rate_24h=0.0`
@@ -241,5 +248,4 @@ AssertionError: admin.role
 [rbac-monitor] OK
 [rbac-monitor] probe expected authorization matrix (full guard assumption)
 [rbac-monitor] ALERT policy-regression suspected: admin/member PATCH statuses=401/401
-
 
