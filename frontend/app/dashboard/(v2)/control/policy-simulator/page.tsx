@@ -168,7 +168,7 @@ export default function DashboardPolicySimulatorPage() {
 
       {result ? (
         <div className="ds-card p-4">
-          <p className="text-sm font-medium">
+          <p className="text-sm font-semibold">
             Decision:{" "}
             <span className={result.decision === "allowed" ? "text-chart-2" : "text-destructive"}>{result.decision}</span>
           </p>

@@ -605,7 +605,7 @@ export default function DashboardOrganizationsPage() {
       </Dialog>
 
       <div className="ds-card p-4">
-        <p className="mb-2 text-sm font-medium">Accept invite token</p>
+        <p className="mb-2 text-sm font-semibold">Accept invite token</p>
         <div className="flex flex-wrap items-center gap-2">
           <Input
             value={acceptToken}
@@ -655,7 +655,7 @@ export default function DashboardOrganizationsPage() {
       </div>
 
       <div className="ds-card p-4">
-        <p className="mb-2 text-sm font-medium">Add / update member</p>
+        <p className="mb-2 text-sm font-semibold">Add / update member</p>
         <div className="flex flex-wrap items-center gap-2">
           <Input
             value={memberUserId}
@@ -726,7 +726,7 @@ export default function DashboardOrganizationsPage() {
       </div>
 
       <div className="ds-card p-4">
-        <p className="mb-2 text-sm font-medium">Create invite</p>
+        <p className="mb-2 text-sm font-semibold">Create invite</p>
         <div className="flex flex-wrap items-center gap-2">
           <Input
             value={inviteEmail}
@@ -822,7 +822,7 @@ export default function DashboardOrganizationsPage() {
       </div>
 
       <div className="ds-card p-4">
-        <p className="mb-2 text-sm font-medium">Role change requests</p>
+        <p className="mb-2 text-sm font-semibold">Role change requests</p>
         <div className="flex flex-wrap items-center gap-2">
           <Input
             value={roleRequestTargetUserId}

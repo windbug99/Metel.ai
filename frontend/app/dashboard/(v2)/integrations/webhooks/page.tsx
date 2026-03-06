@@ -283,7 +283,7 @@ export default function DashboardIntegrationsWebhooksPage() {
 
       <div className="grid gap-3 sm:grid-cols-2">
         <article className="ds-card p-4">
-          <p className="text-sm font-medium">Subscriptions</p>
+          <p className="text-sm font-semibold">Subscriptions</p>
           <div className="mt-2 space-y-1">
             {webhooks.length === 0 ? <p className="text-xs text-muted-foreground">No subscriptions.</p> : null}
             {webhooks.slice(0, 12).map((hook) => (
@@ -295,7 +295,7 @@ export default function DashboardIntegrationsWebhooksPage() {
         </article>
 
         <article className="ds-card p-4">
-          <p className="text-sm font-medium">Recent Deliveries</p>
+          <p className="text-sm font-semibold">Recent Deliveries</p>
           <div className="mt-2 space-y-2">
             {deliveries.length === 0 ? <p className="text-xs text-muted-foreground">No deliveries.</p> : null}
             {deliveries.slice(0, 20).map((delivery) => (

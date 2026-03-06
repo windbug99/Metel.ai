@@ -420,7 +420,7 @@ export default function DashboardTeamPolicyPage() {
       {loading ? <p className="text-sm text-muted-foreground">Loading teams...</p> : null}
 
       <div className="ds-card p-4">
-        <p className="mb-2 text-sm font-medium">Create team</p>
+        <p className="mb-2 text-sm font-semibold">Create team</p>
         <div className="space-y-2">
           <Input
             value={createName}

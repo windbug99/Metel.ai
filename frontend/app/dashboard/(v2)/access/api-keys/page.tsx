@@ -407,7 +407,7 @@ export default function DashboardApiKeysPage() {
       <p className="text-sm text-muted-foreground">Create, update, rotate, revoke, and drill down API key activity.</p>
 
       <div className="ds-card p-4">
-        <p className="mb-3 text-sm font-medium">Create API key</p>
+        <p className="mb-3 text-sm font-semibold">Create API key</p>
         <div className="grid gap-2 lg:grid-cols-2">
           <Input
             value={createName}

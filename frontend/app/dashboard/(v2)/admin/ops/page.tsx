@@ -341,7 +341,7 @@ export default function DashboardAdminOpsPage() {
   }, [fetchAdminOps, pathname]);
 
   return (
-    <section className="space-y-4">
+    <section className="space-y-5">
       <div className="flex flex-wrap items-center justify-between gap-2">
         <div>
           <h1 className="text-2xl font-semibold">Admin / Ops</h1>

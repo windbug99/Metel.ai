@@ -125,6 +125,7 @@ pre,
   font-size: 11px;
   line-height: 1.35;
   font-weight: 600;
+  font-variant-numeric: tabular-nums;
 }
 
 .ds-display {

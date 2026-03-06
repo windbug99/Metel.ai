@@ -137,7 +137,7 @@ export default function DashboardOverviewPage() {
 
           <div className="grid gap-3 lg:grid-cols-3">
             <article className="ds-card p-4">
-              <p className="text-sm font-medium">Top Called Tools</p>
+              <p className="text-sm font-semibold">Top Called Tools</p>
               <div className="mt-2 space-y-1">
                 {(data.top?.called_tools ?? []).slice(0, 5).map((item) => (
                   <p key={`called-${item.tool_name}`} className="text-xs text-muted-foreground">
@@ -148,7 +148,7 @@ export default function DashboardOverviewPage() {
               </div>
             </article>
             <article className="ds-card p-4">
-              <p className="text-sm font-medium">Top Failed Tools</p>
+              <p className="text-sm font-semibold">Top Failed Tools</p>
               <div className="mt-2 space-y-1">
                 {(data.top?.failed_tools ?? []).slice(0, 5).map((item) => (
                   <p key={`failed-${item.tool_name}`} className="text-xs text-muted-foreground">
@@ -159,7 +159,7 @@ export default function DashboardOverviewPage() {
               </div>
             </article>
             <article className="ds-card p-4">
-              <p className="text-sm font-medium">Top Blocked Tools</p>
+              <p className="text-sm font-semibold">Top Blocked Tools</p>
               <div className="mt-2 space-y-1">
                 {(data.top?.blocked_tools ?? []).slice(0, 5).map((item) => (
                   <p key={`blocked-${item.tool_name}`} className="text-xs text-muted-foreground">

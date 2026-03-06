@@ -312,7 +312,7 @@ export default function DashboardAuditSettingsPage() {
       {!loading && canReadSettings ? (
         <>
           <div className="ds-card p-4">
-            <p className="mb-3 text-sm font-medium">Settings</p>
+            <p className="mb-3 text-sm font-semibold">Settings</p>
             <div className="flex flex-wrap items-center gap-2">
               <label className="text-sm text-muted-foreground">Retention days</label>
               <Input
@@ -355,7 +355,7 @@ export default function DashboardAuditSettingsPage() {
           </div>
 
           <div className="ds-card p-4">
-            <p className="mb-3 text-sm font-medium">Audit Export (JSONL/CSV)</p>
+            <p className="mb-3 text-sm font-semibold">Audit Export (JSONL/CSV)</p>
             <div className="flex flex-wrap items-center gap-2">
               <Select
                 value={organizationFilter}
