@@ -30,11 +30,11 @@ export default function DashboardTopbar({
   theme,
 }: TopbarProps) {
   return (
-    <header className="sticky top-0 z-10 border-b border-border bg-background/95 backdrop-blur supports-[backdrop-filter]:bg-background/70">
-      <div className="flex h-16 flex-col justify-center gap-3 px-4 py-3 md:flex-row md:items-center md:justify-between md:px-6 md:py-0">
-        <div className="flex items-center gap-2">
-          <SidebarTrigger />
-          <Separator orientation="vertical" className="mr-2 h-4" />
+    <>
+      <header className="flex h-16 shrink-0 items-center justify-between gap-2 border-b border-border bg-background px-4 transition-[width,height] ease-linear group-has-data-[collapsible=icon]/sidebar-wrapper:h-12 md:px-6">
+        <div className="flex min-w-0 items-center gap-2">
+          <SidebarTrigger className="-ml-1" />
+          <Separator orientation="vertical" className="mr-2 data-[orientation=vertical]:h-4" />
           <Breadcrumb>
             <BreadcrumbList>
               <BreadcrumbItem>Dashboard</BreadcrumbItem>
@@ -45,7 +45,7 @@ export default function DashboardTopbar({
             </BreadcrumbList>
           </Breadcrumb>
         </div>
-        <div className="flex flex-wrap items-center gap-2 md:justify-end">
+        <div className="flex flex-wrap items-center justify-end gap-2">
           <Input
             type="search"
             disabled={!globalSearchEnabled}
@@ -81,12 +81,12 @@ export default function DashboardTopbar({
             {theme === "dark" ? "Light" : "Dark"}
           </Button>
         </div>
-      </div>
+      </header>
       {!globalSearchEnabled ? (
-        <p className="border-t border-border px-4 py-2 text-[11px] text-muted-foreground md:px-6">
+        <p className="border-b border-border px-4 py-2 text-[11px] text-muted-foreground md:px-6">
           Global Search is disabled until backend search API scope is finalized.
         </p>
       ) : null}
-    </header>
+    </>
   );
 }

@@ -224,7 +224,7 @@ export default function DashboardV2Shell({ children }: { children: React.ReactNo
             theme={theme}
           />
 
-          <div className="p-4 md:p-6">
+          <div className="flex flex-1 flex-col gap-4 p-4 pt-0 md:p-6 md:pt-0">
             {forbiddenBanner ? (
               <AlertBanner
                 message={forbiddenBanner}
