@@ -1,8 +1,8 @@
 # metel
 
-> Current baseline (2026-03-04):
-> metel is now operating at a **Phase 3 Execution Control Platform** baseline
-> (MCP Gateway + Policy/Audit/Ops Control Plane).
+> Current baseline (2026-03-06):
+> metel is operating at a **Phase 3 Execution Control Platform** baseline
+> with **RBAC full_guard production deployment** active.
 > The source-of-truth plan is `docs/overhaul-20260302.md`.
 
 [![Backend](https://img.shields.io/badge/backend-FastAPI-009688?logo=fastapi&logoColor=white)](#)
@@ -10,41 +10,73 @@
 [![Database](https://img.shields.io/badge/database-Supabase-3FCF8E?logo=supabase&logoColor=white)](#)
 [![Deploy Backend](https://img.shields.io/badge/deploy-Railway-7B3FE4?logo=railway&logoColor=white)](#)
 [![Deploy Frontend](https://img.shields.io/badge/deploy-Vercel-000000?logo=vercel&logoColor=white)](#)
-[![Status](https://img.shields.io/badge/status-phase3-green)](#)
+[![Status](https://img.shields.io/badge/status-phase3--rbac-green)](#)
 
-metel is an AI Execution Control Platform for teams that are starting to run
-multiple AI agents against real SaaS systems.
+## What is metel
 
-Core position:
-- Not an "employee AI usage monitor"
-- A control plane for "AI agents that execute actions"
+**metel** is an **AI Action Control Platform** — infrastructure that manages how
+AI agents execute actions against your organization's SaaS tools in a safe,
+controlled, and auditable way.
+
+### The Problem
+
+As AI agents evolve from simple assistants to autonomous actors, organizations
+face a new class of operational risk:
+
+- **Uncontrolled execution**: AI agents call SaaS APIs (create issues, update
+  databases, send messages) without centralized oversight.
+- **Privilege conflicts**: Multiple agents with different permission levels
+  operate on the same workspace, creating unsafe mutations.
+- **No auditability**: There is no unified log of what agents did, when, and why
+  — making incident response and compliance nearly impossible.
+- **Scaling danger**: Moving from 3–10 agents to 30+ without control
+  infrastructure turns every agent into a potential incident source.
+
+### The Solution
+
+metel sits between AI agents and SaaS APIs as an **execution control layer**:
+
+```text
+AI Agents (Claude / GPT / CrewAI / Custom)
+            ↓
+      MCP Gateway Layer       ← standard agent interface
+            ↓
+  Execution Control Core      ← policy · risk · audit · RBAC
+            ↓
+        SaaS APIs             ← Notion / Linear / ...
+```
+
+Every tool call goes through metel's control core, which enforces:
+
+| Control              | What it does                                                  |
+|----------------------|---------------------------------------------------------------|
+| **Authentication**   | API key per agent/team with scoped permissions                |
+| **Schema Validation**| JSON Schema check on every tool input before execution        |
+| **Policy Engine**    | Allow/deny rules by key, team, and tool (merge-based)         |
+| **Risk Gate**        | Blocks destructive operations (delete, archive) by default    |
+| **Resolver**         | Converts human-readable names to system IDs (name→id)         |
+| **Retry & Quota**    | Per-key rate limits, retry with backoff, dead-letter alerting  |
+| **Audit Log**        | Every execution recorded with actor, decision, latency, error |
+| **RBAC**             | Organization-level role control (owner / admin / member)      |
+
+### Core Position
+
+- **Not** an "employee AI usage monitor."
+- **Not** just a SaaS connector or integration wrapper.
+- metel is a **control plane for AI agents that execute real actions** —
+  designed for teams scaling from a handful of agents to dozens, where control
+  must be designed before risk becomes unmanageable.
+
+### Who It's For
+
+- **Platform / DevOps teams** deploying AI agents against production SaaS
+- **Security / Compliance leads** who need audit trails and policy enforcement
+- **Engineering teams** building multi-agent systems that touch real data
 
 ## Live Product
 
 - Frontend: `https://metel-frontend.vercel.app`
 - Backend: `https://metel-production.up.railway.app`
-
-## Why metel
-
-The market is moving from:
-- employee asks AI -> human manually executes
-to:
-- AI agents -> directly execute SaaS actions
-
-This shift creates operational risk:
-- unknown agent actions
-- privilege conflicts and unsafe mutations
-- no auditability at team/org level
-- difficult rollback and incident response
-
-metel targets teams that are likely to move from 3-10 agents to 30+ within 12 months.
-If control is not designed early, scaling agents becomes high-risk and expensive.
-
-metel focuses on:
-- controlled MCP execution
-- policy/risk gate enforcement
-- audit/export and ops diagnostics
-- reliability automation (retry/dead-letter/alerts)
 
 ## How It Works (Current Baseline)
 
@@ -56,7 +88,7 @@ metel focuses on:
    |
    v
 [Execution Control Core]
-   |-- API Key Auth
+   |-- API Key Auth + RBAC (owner/admin/member)
    |-- Tool Registry + Schema Validation
    |-- Team/Key Policy Merge + Risk Gate
    |-- Resolver + Retry/Backoff + Quota
@@ -68,10 +100,18 @@ metel focuses on:
 [SaaS APIs: Notion / Linear]
 ```
 
-Operationally, metel records:
-- API key metadata (`api_keys`)
-- execution/audit logs (`tool_calls`)
-- structured JSON-RPC error codes
+### Dashboard (V2)
+
+metel includes a full operational dashboard built on a route-based architecture
+(`/dashboard/overview`, `/dashboard/access/api-keys`, etc.) with:
+
+- **Role-based menu visibility**: Owner sees everything, Admin sees
+  Admin/Ops (read-only sensitive actions), Member sees self-scoped views.
+- **Design system**: Vercel + Linear inspired UI with Datadog-style ops signals,
+  light/dark theme, status badges, and KPI cards.
+- **Pages**: Overview, API Keys, Organizations, Team Policy, MCP Usage,
+  Policy Simulator, Audit Events, Audit Settings, Integrations (Webhooks/OAuth),
+  Admin/Ops, Profile.
 
 ## What Works Now
 
@@ -79,7 +119,7 @@ Service connection (OAuth / status / disconnect):
 - Notion
 - Linear
 
-MCP and control features (implemented in Phase 3 baseline):
+MCP and control features (Phase 3 baseline):
 - `POST /mcp/list_tools`
 - `POST /mcp/call_tool`
 - API key issue/update/revoke/rotate (`/api/api-keys`)
@@ -92,21 +132,34 @@ MCP and control features (implemented in Phase 3 baseline):
 - webhook subscriptions/deliveries/retry processing (`/api/integrations/*`)
 - admin diagnostics/system-health/external-health/incident-banner (`/api/admin/*`)
 
+RBAC (production active):
+- Role-based access control: `owner`, `admin`, `member`
+- `require_role` + `require_scope` FastAPI dependency guards
+- Read/write guard feature flags for staged rollout
+- `/api/me/permissions` endpoint with role, scopes, capabilities
+- 403 standard error codes (`access_denied`, `scope_mismatch`, `insufficient_role`)
+- Audit logging for access-denied events
+
 ## Reliability Model (Current)
 
 Guardrails currently in runtime:
-- API key authentication
+- API key authentication + organization RBAC
 - tool/service allowlist + deny policy by key/team
 - schema-based input validation + resolver pipeline
 - risk gate for mutation-class tools
 - per-key quota/rate limit + retry/backoff
 - dead-letter transition + alerting (Slack/SIEM/ticket webhook)
 - structured execution/audit logging
+- role-scoped data filtering (member=self, admin=org, owner=global)
 
 Quality gates in repo:
 - phase3 regression script (`backend/scripts/run_phase3_regression.sh`)
-- route/core unit tests (teams/org/audit/admin/integrations/dead-letter)
+- RBAC smoke tests (`backend/scripts/run_phase3_rbac_smoke.sh`)
+- route/core unit tests (teams/org/audit/admin/integrations/dead-letter/RBAC)
 - tool spec validation script (`backend/scripts/check_tool_specs.py`)
+- dashboard V2 QA stage gate (`backend/scripts/run_dashboard_v2_qa_stage_gate.sh`)
+- RBAC rollout stage gate (`backend/scripts/run_rbac_rollout_stage_gate.sh`)
+- RBAC monitoring snapshot (`backend/scripts/run_rbac_monitoring_snapshot.sh`)
 
 This repository prioritizes deterministic and auditable execution over connector count.
 
@@ -173,20 +226,19 @@ curl -sS -X POST "$API_BASE_URL/mcp/call_tool" \
 
 ## Current Limits
 
-- Production-like controls are implemented, but formal enterprise hardening is still in progress.
+- RBAC full_guard is active in production; 48-hour monitoring is in progress.
 - Provider-side constraints still apply (OAuth scopes, upstream API limits, token status).
 - Advanced enterprise scope remains for next stages:
-  - dual-approval enforcement
-  - full organization RBAC model
+  - policy DSL
   - SSO/SAML, SOC2 process
   - usage-based billing
 
 ## Direction (Execution-First Roadmap)
 
 Near term:
-- maintain and harden Phase 3 control plane
+- complete RBAC 48h production monitoring
 - standardize SIEM/ticket templates (Jira/Linear mapping)
-- refine approval authority model (Owner/Admin/Reviewer split)
+- enterprise approval workflows (dual-approval, escalation)
 
 Service expansion priority (planned direction, not all implemented):
 1. deeper Notion/Linear coverage
@@ -273,6 +325,13 @@ MODE=full_guard ./scripts/run_rbac_rollout_stage_gate.sh
 ./scripts/run_rbac_monitoring_snapshot.sh
 ```
 
+Dashboard V2 QA gate:
+
+```bash
+cd backend
+./scripts/run_dashboard_v2_qa_stage_gate.sh
+```
+
 Tool spec validation:
 
 ```bash
@@ -284,11 +343,13 @@ python scripts/check_tool_specs.py --json
 ## Repository Structure
 
 ```text
-frontend/                  Next.js landing + dashboard
+frontend/                  Next.js landing + dashboard (V2 route-based)
 backend/                   FastAPI + MCP/control routes
+backend/app/core/          authz (RBAC), config, state
 backend/agent/             registry / tool_runner / tool specs
 backend/agent/tool_specs/  service tool specs (json)
-backend/tests/             unit + integration tests
+backend/tests/             unit + integration tests (RBAC/route/IDOR)
+backend/scripts/           regression, rollout, monitoring scripts
 docs/                      plans, release notes, architecture notes
 docs/sql/                  schema migration scripts
 docs/sql/legacy/           archived (non-baseline) migrations
@@ -297,8 +358,11 @@ docs/sql/legacy/           archived (non-baseline) migrations
 ## Related Docs
 
 - `docs/overhaul-20260302.md` (source-of-truth)
+- `docs/dashboard-ia-navigation-proposal-20260305.md` (dashboard IA/routing)
+- `docs/dashboard-design-system-draft-20260305.md` (design system tokens)
+- `docs/rbac-production-monitoring-log-20260305.md` (RBAC 48h monitoring)
+- `docs/rbac-production-rollout-runbook-20260304.md` (RBAC rollout runbook)
+- `docs/rbac-dashboard-e2e-smoke-checklist-20260304.md` (RBAC e2e smoke)
 - `docs/phase3-gap-closing-backlog-20260303.md` (phase3 completion + ops verification)
 - `docs/mcp_smoke_test_checklist.md` (deploy smoke test procedure)
 - `docs/sql/legacy/README.md` (migration policy)
-- `docs/work_plan.md` (legacy)
-- `docs/service_plan.md` (legacy)

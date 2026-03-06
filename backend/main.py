@@ -9,6 +9,7 @@ from fastapi.responses import JSONResponse
 from agent.registry import ToolSpecValidationError, validate_registry_on_startup
 from app.core.config import get_settings
 from app.routes.api_keys import router as api_keys_router
+from app.routes.agents import router as agents_router
 from app.routes.audit import router as audit_router
 from app.routes.admin import router as admin_router
 from app.routes.linear import router as linear_router
@@ -144,6 +145,7 @@ async def health_check():
 app.include_router(notion_router)
 app.include_router(linear_router)
 app.include_router(organizations_router)
+app.include_router(agents_router)
 app.include_router(api_keys_router)
 app.include_router(mcp_router)
 app.include_router(me_router)

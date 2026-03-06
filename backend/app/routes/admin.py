@@ -324,7 +324,7 @@ async def review_incident_banner_revision(request: Request, revision_id: str, bo
         raise HTTPException(status_code=400, detail="invalid_decision")
     rows = (
         supabase.table("incident_banner_revisions")
-        .select("id,user_id,enabled,message,severity,starts_at,ends_at,status")
+        .select("id,user_id,enabled,message,severity,starts_at,ends_at,status,requested_by")
         .eq("id", revision_id)
         .eq("user_id", user_id)
         .limit(1)

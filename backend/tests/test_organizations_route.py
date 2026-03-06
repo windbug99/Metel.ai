@@ -348,8 +348,8 @@ def test_review_role_request_approve_updates_membership(monkeypatch):
             return self
 
         def execute(self):
-            if self.mode == "select" and self.table_name == "organizations":
-                return SimpleNamespace(data=[{"id": 1}])
+            if self.mode == "select" and self.table_name == "org_memberships":
+                return SimpleNamespace(data=[{"organization_id": 1}])
             if self.mode == "select" and self.table_name == "org_role_change_requests":
                 return SimpleNamespace(data=[{"id": 3, "organization_id": 1, "target_user_id": "user-2", "requested_role": "admin", "status": "pending"}])
             if self.mode == "update" and self.table_name == "org_role_change_requests":
@@ -470,8 +470,8 @@ def test_review_role_request_blocks_self_review(monkeypatch):
             return self
 
         def execute(self):
-            if self.table_name == "organizations":
-                return SimpleNamespace(data=[{"id": 1}])
+            if self.table_name == "org_memberships":
+                return SimpleNamespace(data=[{"organization_id": 1}])
             if self.table_name == "org_role_change_requests":
                 return SimpleNamespace(data=[{"id": 3, "organization_id": 1, "target_user_id": "user-2", "requested_role": "admin", "status": "pending", "requested_by": "owner-user"}])
             return SimpleNamespace(data=[])
@@ -532,8 +532,8 @@ def test_revoke_and_reissue_organization_invite(monkeypatch):
             return self
 
         def execute(self):
-            if self.mode == "select" and self.table_name == "organizations":
-                return SimpleNamespace(data=[{"id": 1}])
+            if self.mode == "select" and self.table_name == "org_memberships":
+                return SimpleNamespace(data=[{"organization_id": 1}])
             if self.mode == "select" and self.table_name == "org_invites":
                 return SimpleNamespace(data=[{"id": 8, "organization_id": 1, "invited_email": "test@example.com", "role": "member", "accepted_at": None, "revoked_at": None}])
             if self.mode == "update" and self.table_name == "org_invites":

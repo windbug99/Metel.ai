@@ -99,13 +99,16 @@ def _query_tool_call_rows(
     user_id: str,
     from_iso: str,
     to_iso: str | None = None,
+    agent_id: int | None = None,
 ) -> list[dict]:
     query = (
         supabase.table("tool_calls")
-        .select("id,api_key_id,tool_name,status,error_code,latency_ms,created_at")
+        .select("id,api_key_id,agent_id,tool_name,status,error_code,latency_ms,created_at")
         .eq("user_id", user_id)
         .gte("created_at", from_iso)
     )
+    if agent_id is not None:
+        query = query.eq("agent_id", agent_id)
     if to_iso:
         query = query.lte("created_at", to_iso)
     return query.execute().data or []
@@ -235,6 +238,7 @@ async def list_tool_calls(
     status: str = Query("all"),
     tool_name: str = Query(""),
     api_key_id: int | None = Query(default=None),
+    agent_id: int | None = Query(default=None),
     from_: str = Query(default="", alias="from"),
     to: str = Query(default=""),
 ):
@@ -253,7 +257,7 @@ async def list_tool_calls(
 
     query = (
         supabase.table("tool_calls")
-        .select("id,api_key_id,tool_name,status,error_code,latency_ms,created_at")
+        .select("id,api_key_id,agent_id,tool_name,status,error_code,latency_ms,created_at")
         .eq("user_id", user_id)
     )
     if normalized_status != "all":
@@ -262,6 +266,8 @@ async def list_tool_calls(
         query = query.eq("tool_name", normalized_tool_name)
     if api_key_id is not None:
         query = query.eq("api_key_id", api_key_id)
+    if agent_id is not None:
+        query = query.eq("agent_id", agent_id)
     if from_iso:
         query = query.gte("created_at", from_iso)
     if to_iso:
@@ -301,6 +307,7 @@ async def list_tool_calls(
                     "name": api_key_row.get("name") if api_key_row else None,
                     "key_prefix": api_key_row.get("key_prefix") if api_key_row else None,
                 },
+                "agent_id": row.get("agent_id"),
             }
         )
 
@@ -312,6 +319,8 @@ async def list_tool_calls(
         stats_query = stats_query.eq("tool_name", normalized_tool_name)
     if api_key_id is not None:
         stats_query = stats_query.eq("api_key_id", api_key_id)
+    if agent_id is not None:
+        stats_query = stats_query.eq("agent_id", agent_id)
     if from_iso:
         stats_query = stats_query.gte("created_at", from_iso)
     if to_iso:
@@ -376,6 +385,7 @@ async def list_tool_calls(
 async def tool_calls_overview(
     request: Request,
     hours: int = Query(24, ge=1, le=168),
+    agent_id: int | None = Query(default=None),
 ):
     user_id = await get_authenticated_user_id(request)
     settings = get_settings()
@@ -388,8 +398,14 @@ async def tool_calls_overview(
     previous_from = (now - timedelta(hours=hours * 2)).isoformat()
     previous_to = current_from
 
-    current_rows = _query_tool_call_rows(supabase=supabase, user_id=user_id, from_iso=current_from)
-    previous_rows = _query_tool_call_rows(supabase=supabase, user_id=user_id, from_iso=previous_from, to_iso=previous_to)
+    current_rows = _query_tool_call_rows(supabase=supabase, user_id=user_id, from_iso=current_from, agent_id=agent_id)
+    previous_rows = _query_tool_call_rows(
+        supabase=supabase,
+        user_id=user_id,
+        from_iso=previous_from,
+        to_iso=previous_to,
+        agent_id=agent_id,
+    )
 
     key_rows = (
         supabase.table("api_keys")
@@ -416,6 +432,7 @@ async def tool_calls_trends(
     request: Request,
     days: int = Query(7, ge=1, le=30),
     bucket: str = Query("day"),
+    agent_id: int | None = Query(default=None),
 ):
     user_id = await get_authenticated_user_id(request)
     settings = get_settings()
@@ -428,7 +445,7 @@ async def tool_calls_trends(
         normalized_bucket = "day"
     now = datetime.now(timezone.utc)
     since = now - timedelta(days=days)
-    rows = _query_tool_call_rows(supabase=supabase, user_id=user_id, from_iso=since.isoformat())
+    rows = _query_tool_call_rows(supabase=supabase, user_id=user_id, from_iso=since.isoformat(), agent_id=agent_id)
 
     if normalized_bucket == "hour":
         start = since.replace(minute=0, second=0, microsecond=0)
@@ -487,6 +504,7 @@ async def tool_calls_trends(
 async def tool_calls_failure_breakdown(
     request: Request,
     days: int = Query(7, ge=1, le=30),
+    agent_id: int | None = Query(default=None),
 ):
     user_id = await get_authenticated_user_id(request)
     settings = get_settings()
@@ -495,7 +513,7 @@ async def tool_calls_failure_breakdown(
     require_min_role(authz_ctx, Role.MEMBER, method=request.method)
 
     since = (datetime.now(timezone.utc) - timedelta(days=days)).isoformat()
-    rows = _query_tool_call_rows(supabase=supabase, user_id=user_id, from_iso=since)
+    rows = _query_tool_call_rows(supabase=supabase, user_id=user_id, from_iso=since, agent_id=agent_id)
     fail_rows = [row for row in rows if row.get("status") == "fail"]
 
     category_counts: dict[str, int] = defaultdict(int)
@@ -523,6 +541,7 @@ async def tool_calls_failure_breakdown(
 async def tool_calls_connectors(
     request: Request,
     days: int = Query(7, ge=1, le=30),
+    agent_id: int | None = Query(default=None),
 ):
     user_id = await get_authenticated_user_id(request)
     settings = get_settings()
@@ -531,7 +550,7 @@ async def tool_calls_connectors(
     require_min_role(authz_ctx, Role.MEMBER, method=request.method)
 
     since = (datetime.now(timezone.utc) - timedelta(days=days)).isoformat()
-    rows = _query_tool_call_rows(supabase=supabase, user_id=user_id, from_iso=since)
+    rows = _query_tool_call_rows(supabase=supabase, user_id=user_id, from_iso=since, agent_id=agent_id)
 
     connector_rows: dict[str, list[dict]] = defaultdict(list)
     for row in rows:
@@ -559,4 +578,55 @@ async def tool_calls_connectors(
             }
         )
 
+    return {"days": days, "items": items}
+
+
+@router.get("/agents")
+async def tool_calls_agents(
+    request: Request,
+    days: int = Query(7, ge=1, le=30),
+):
+    user_id = await get_authenticated_user_id(request)
+    settings = get_settings()
+    supabase = create_client(settings.supabase_url, settings.supabase_service_role_key)
+    authz_ctx = await get_authz_context(request, user_id=user_id, supabase=supabase)
+    require_min_role(authz_ctx, Role.MEMBER, method=request.method)
+
+    since = (datetime.now(timezone.utc) - timedelta(days=days)).isoformat()
+    rows = _query_tool_call_rows(supabase=supabase, user_id=user_id, from_iso=since)
+    agent_rows = (
+        supabase.table("agents")
+        .select("id,name,team_id,organization_id")
+        .execute()
+    ).data or []
+    agent_map = {str(row.get("id")): row for row in agent_rows if row.get("id") is not None}
+
+    buckets: dict[str, dict[str, int]] = defaultdict(lambda: {"calls": 0, "success": 0, "fail": 0, "blocked": 0})
+    for row in rows:
+        key = str(row.get("agent_id") or "unassigned")
+        bucket = buckets[key]
+        bucket["calls"] += 1
+        if row.get("status") == "success":
+            bucket["success"] += 1
+        if row.get("status") == "fail":
+            bucket["fail"] += 1
+        if row.get("error_code") == "policy_blocked":
+            bucket["blocked"] += 1
+
+    items: list[dict] = []
+    for key, agg in sorted(buckets.items(), key=lambda item: item[1]["calls"], reverse=True):
+        agent_row = agent_map.get(key) if key != "unassigned" else None
+        calls = int(agg["calls"])
+        items.append(
+            {
+                "agent_id": None if key == "unassigned" else int(key),
+                "agent_name": agent_row.get("name") if agent_row else None,
+                "team_id": agent_row.get("team_id") if agent_row else None,
+                "organization_id": agent_row.get("organization_id") if agent_row else None,
+                "calls": calls,
+                "success_rate": _ratio(int(agg["success"]), calls),
+                "fail_rate": _ratio(int(agg["fail"]), calls),
+                "blocked_rate": _ratio(int(agg["blocked"]), calls),
+            }
+        )
     return {"days": days, "items": items}

@@ -73,6 +73,10 @@ ALERT_POLICY_BLOCK_RATE=0.4 \
 ./scripts/run_rbac_monitoring_snapshot.sh
 ```
 
+수동 실행 원칙:
+- 각 체크포인트(0h, 1h, 2h, 6h, 12h, 24h, 36h, 48h)마다 위 1회 실행 명령을 동일하게 반복한다.
+- 결과는 `docs/rbac-production-monitoring-log-20260305.md`의 `Checkpoints`/`Snapshot`/`모니터링 결과`에 즉시 기록한다.
+
 관찰 지표:
 - `access_denied_24h`
 - `fail_rate_24h`

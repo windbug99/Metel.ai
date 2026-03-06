@@ -51,15 +51,16 @@ class OrganizationRoleRequestReviewRequest(BaseModel):
 
 
 def _is_org_owner(*, supabase, user_id: str, organization_id: str | int) -> bool:
-    rows = (
-        supabase.table("organizations")
-        .select("id")
-        .eq("id", organization_id)
-        .eq("created_by", user_id)
+    membership_rows = (
+        supabase.table("org_memberships")
+        .select("organization_id")
+        .eq("organization_id", organization_id)
+        .eq("user_id", user_id)
+        .eq("role", "owner")
         .limit(1)
         .execute()
     ).data or []
-    return bool(rows)
+    return bool(membership_rows)
 
 
 def _is_org_member(*, supabase, user_id: str, organization_id: str | int) -> bool:

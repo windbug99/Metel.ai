@@ -148,6 +148,37 @@ def _connector_from_tool_name(tool_name: str) -> str:
     return "other"
 
 
+def _resolve_default_agent_id(*, supabase, api_key_id: int | str) -> int | None:
+    key_rows = (
+        supabase.table("api_keys")
+        .select("team_id")
+        .eq("id", api_key_id)
+        .limit(1)
+        .execute()
+    ).data or []
+    if not key_rows:
+        return None
+    team_id = key_rows[0].get("team_id")
+    if team_id is None:
+        return None
+    agent_rows = (
+        supabase.table("agents")
+        .select("id")
+        .eq("team_id", team_id)
+        .eq("is_active", True)
+        .order("created_at", desc=False)
+        .limit(1)
+        .execute()
+    ).data or []
+    if not agent_rows:
+        return None
+    agent_id = agent_rows[0].get("id")
+    try:
+        return int(agent_id) if agent_id is not None else None
+    except (TypeError, ValueError):
+        return None
+
+
 def _log_tool_call(
     *,
     supabase,
@@ -167,10 +198,13 @@ def _log_tool_call(
     retry_count: int | None = None,
     backoff_ms: int | None = None,
     masked_fields: list[str] | None = None,
+    agent_id: int | None = None,
 ) -> None:
     query = supabase.table("tool_calls")
     if not hasattr(query, "insert"):
         return
+    if agent_id is None:
+        agent_id = _resolve_default_agent_id(supabase=supabase, api_key_id=api_key_id)
     query.insert(
         {
             "request_id": request_id,
@@ -189,6 +223,7 @@ def _log_tool_call(
             "retry_count": retry_count if retry_count is not None else 0,
             "backoff_ms": backoff_ms if backoff_ms is not None else 0,
             "masked_fields": masked_fields or [],
+            "agent_id": agent_id,
             "created_at": datetime.now(timezone.utc).isoformat(),
         }
     ).execute()

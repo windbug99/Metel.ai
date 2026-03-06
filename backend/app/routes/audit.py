@@ -78,6 +78,7 @@ def _query_audit_rows(
     status: str,
     tool_name: str,
     api_key_id: int | None,
+    agent_id: int | None,
     team_id: int | None,
     organization_id: int | None,
     error_code: str,
@@ -121,7 +122,7 @@ def _query_audit_rows(
     query = (
         supabase.table("tool_calls")
         .select(
-            "id,user_id,request_id,trace_id,api_key_id,tool_name,connector,status,error_code,latency_ms,"
+            "id,user_id,request_id,trace_id,api_key_id,agent_id,tool_name,connector,status,error_code,latency_ms,"
             "request_payload,resolved_payload,risk_result,upstream_status,retry_count,backoff_ms,masked_fields,created_at"
         )
     )
@@ -135,6 +136,8 @@ def _query_audit_rows(
         query = query.eq("tool_name", tool_name)
     if api_key_id is not None:
         query = query.eq("api_key_id", api_key_id)
+    if agent_id is not None:
+        query = query.eq("agent_id", agent_id)
     if team_id is not None:
         query = query.in_("api_key_id", key_ids)
     if error_code:
@@ -172,6 +175,24 @@ def _query_api_key_map(*, supabase, user_id: str, organization_id: int | None) -
             .execute()
         ).data or []
     return {str(item.get("id")): item for item in key_rows}
+
+
+def _query_agent_map(*, supabase, agent_ids: set[int | str]) -> dict[str, dict]:
+    normalized_ids: list[int] = []
+    for value in agent_ids:
+        try:
+            normalized_ids.append(int(value))
+        except (TypeError, ValueError):
+            continue
+    if not normalized_ids:
+        return {}
+    rows = (
+        supabase.table("agents")
+        .select("id,name,team_id,organization_id")
+        .in_("id", sorted(set(normalized_ids)))
+        .execute()
+    ).data or []
+    return {str(item.get("id")): item for item in rows if item.get("id") is not None}
 
 
 def _default_audit_settings(*, user_id: str) -> dict[str, Any]:
@@ -222,6 +243,7 @@ async def list_audit_events(
     status: str = Query("all"),
     tool_name: str = Query(""),
     api_key_id: int | None = Query(default=None),
+    agent_id: int | None = Query(default=None),
     team_id: int | None = Query(default=None),
     organization_id: int | None = Query(default=None),
     error_code: str = Query(""),
@@ -260,6 +282,7 @@ async def list_audit_events(
         status=normalized_status,
         tool_name=normalized_tool_name,
         api_key_id=api_key_id,
+        agent_id=agent_id,
         team_id=normalized_team_id,
         organization_id=normalized_organization_id,
         error_code=normalized_error_code,
@@ -268,6 +291,10 @@ async def list_audit_events(
         to_iso=to_iso,
     )
     key_map = _query_api_key_map(supabase=supabase, user_id=user_id, organization_id=normalized_organization_id)
+    agent_map = _query_agent_map(
+        supabase=supabase,
+        agent_ids={row.get("agent_id") for row in rows if row.get("agent_id") is not None},
+    )
 
     items: list[dict] = []
     decision_counts: dict[str, int] = {
@@ -286,6 +313,7 @@ async def list_audit_events(
         decision_counts[decision] = decision_counts.get(decision, 0) + 1
 
         api_key_row = key_map.get(str(row.get("api_key_id")))
+        agent_row = agent_map.get(str(row.get("agent_id")))
         items.append(
             {
                 "id": row.get("id"),
@@ -299,6 +327,12 @@ async def list_audit_events(
                         "id": api_key_row.get("id") if api_key_row else row.get("api_key_id"),
                         "name": api_key_row.get("name") if api_key_row else None,
                         "key_prefix": api_key_row.get("key_prefix") if api_key_row else None,
+                    },
+                    "agent": {
+                        "id": agent_row.get("id") if agent_row else row.get("agent_id"),
+                        "name": agent_row.get("name") if agent_row else None,
+                        "team_id": agent_row.get("team_id") if agent_row else None,
+                        "organization_id": agent_row.get("organization_id") if agent_row else None,
                     },
                 },
                 "outcome": {
@@ -335,6 +369,7 @@ async def export_audit_events(
     status: str = Query("all"),
     tool_name: str = Query(""),
     api_key_id: int | None = Query(default=None),
+    agent_id: int | None = Query(default=None),
     team_id: int | None = Query(default=None),
     organization_id: int | None = Query(default=None),
     error_code: str = Query(""),
@@ -380,6 +415,7 @@ async def export_audit_events(
         status=normalized_status,
         tool_name=normalized_tool_name,
         api_key_id=api_key_id,
+        agent_id=agent_id,
         team_id=normalized_team_id,
         organization_id=normalized_organization_id,
         error_code=normalized_error_code,
@@ -388,6 +424,10 @@ async def export_audit_events(
         to_iso=to_iso,
     )
     key_map = _query_api_key_map(supabase=supabase, user_id=user_id, organization_id=normalized_organization_id)
+    agent_map = _query_agent_map(
+        supabase=supabase,
+        agent_ids={row.get("agent_id") for row in rows if row.get("agent_id") is not None},
+    )
 
     normalized_rows: list[dict] = []
     for row in rows:
@@ -395,6 +435,7 @@ async def export_audit_events(
         if normalized_decision != "all" and row_decision != normalized_decision:
             continue
         api_key_row = key_map.get(str(row.get("api_key_id")))
+        agent_row = agent_map.get(str(row.get("agent_id")))
         normalized_rows.append(
             {
                 "id": row.get("id"),
@@ -413,6 +454,10 @@ async def export_audit_events(
                 "api_key_id": row.get("api_key_id"),
                 "api_key_name": api_key_row.get("name") if api_key_row else None,
                 "api_key_prefix": api_key_row.get("key_prefix") if api_key_row else None,
+                "agent_id": agent_row.get("id") if agent_row else row.get("agent_id"),
+                "agent_name": agent_row.get("name") if agent_row else None,
+                "agent_team_id": agent_row.get("team_id") if agent_row else None,
+                "agent_organization_id": agent_row.get("organization_id") if agent_row else None,
             }
         )
 
@@ -442,6 +487,10 @@ async def export_audit_events(
         "api_key_id",
         "api_key_name",
         "api_key_prefix",
+        "agent_id",
+        "agent_name",
+        "agent_team_id",
+        "agent_organization_id",
     ]
     writer = csv.DictWriter(output, fieldnames=headers)
     writer.writeheader()
@@ -513,7 +562,7 @@ async def get_audit_event_detail(
     row = (
         supabase.table("tool_calls")
         .select(
-            "id,user_id,request_id,trace_id,api_key_id,tool_name,connector,status,error_code,latency_ms,"
+            "id,user_id,request_id,trace_id,api_key_id,agent_id,tool_name,connector,status,error_code,latency_ms,"
             "request_payload,resolved_payload,risk_result,upstream_status,retry_count,backoff_ms,masked_fields,created_at"
         )
         .eq("id", event_id)
@@ -556,6 +605,17 @@ async def get_audit_event_detail(
         .execute()
     ).data or []
     key = api_key_row[0] if api_key_row else None
+    agent_row = None
+    if item.get("agent_id") is not None:
+        agent_rows = (
+            supabase.table("agents")
+            .select("id,name,team_id,organization_id")
+            .eq("id", item.get("agent_id"))
+            .limit(1)
+            .execute()
+        ).data or []
+        if agent_rows:
+            agent_row = agent_rows[0]
     decision = _decision(str(item.get("status") or ""), item.get("error_code"))
 
     raw_request_payload = item.get("request_payload")
@@ -595,6 +655,12 @@ async def get_audit_event_detail(
                 "id": key.get("id") if key else item.get("api_key_id"),
                 "name": key.get("name") if key else None,
                 "key_prefix": key.get("key_prefix") if key else None,
+            },
+            "agent": {
+                "id": agent_row.get("id") if agent_row else item.get("agent_id"),
+                "name": agent_row.get("name") if agent_row else None,
+                "team_id": agent_row.get("team_id") if agent_row else None,
+                "organization_id": agent_row.get("organization_id") if agent_row else None,
             },
         },
         "outcome": {

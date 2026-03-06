@@ -43,13 +43,22 @@ type TeamItem = {
   name: string;
 };
 
+type AgentSummaryItem = {
+  agent_id: number | null;
+  agent_name?: string | null;
+};
+
 type AuditDetailPayload = {
   id: number;
   request_id: string | null;
   trace_id: string | null;
   timestamp: string;
   action: { tool_name?: string | null; connector?: string | null };
-  actor: { user_id?: string | null; api_key?: { id?: number | null; name?: string | null; key_prefix?: string | null } };
+  actor: {
+    user_id?: string | null;
+    api_key?: { id?: number | null; name?: string | null; key_prefix?: string | null };
+    agent?: { id?: number | null; name?: string | null; team_id?: number | null; organization_id?: number | null };
+  };
   outcome: {
     decision?: string | null;
     status?: string | null;
@@ -75,6 +84,7 @@ export default function DashboardAuditEventsPage() {
   const [summary, setSummary] = useState<AuditSummary | null>(null);
   const [organizations, setOrganizations] = useState<OrganizationItem[]>([]);
   const [teams, setTeams] = useState<TeamItem[]>([]);
+  const [agents, setAgents] = useState<AgentSummaryItem[]>([]);
 
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -84,6 +94,7 @@ export default function DashboardAuditEventsPage() {
   const [toolNameFilter, setToolNameFilter] = useState("");
   const [organizationFilter, setOrganizationFilter] = useState("");
   const [teamFilter, setTeamFilter] = useState("");
+  const [agentFilter, setAgentFilter] = useState("");
   const [fromFilter, setFromFilter] = useState("");
   const [toFilter, setToFilter] = useState("");
 
@@ -112,6 +123,9 @@ export default function DashboardAuditEventsPage() {
     if (teamFilter) {
       query.set("team_id", teamFilter);
     }
+    if (agentFilter) {
+      query.set("agent_id", agentFilter);
+    }
     if (fromFilter) {
       query.set("from", new Date(fromFilter).toISOString());
     }
@@ -139,14 +153,15 @@ export default function DashboardAuditEventsPage() {
     setItems(Array.isArray(result.data.items) ? result.data.items : []);
     setSummary(result.data.summary ?? null);
     setLoading(false);
-  }, [decisionFilter, fromFilter, handle401, organizationFilter, statusFilter, teamFilter, toFilter, toolNameFilter]);
+  }, [agentFilter, decisionFilter, fromFilter, handle401, organizationFilter, statusFilter, teamFilter, toFilter, toolNameFilter]);
 
   const fetchScopeOptions = useCallback(async () => {
-    const [orgRes, teamRes] = await Promise.all([
+    const [orgRes, teamRes, agentRes] = await Promise.all([
       dashboardApiGet<{ items?: OrganizationItem[] }>("/api/organizations"),
       dashboardApiGet<{ items?: TeamItem[] }>("/api/teams"),
+      dashboardApiGet<{ items?: AgentSummaryItem[] }>("/api/tool-calls/agents?days=7"),
     ]);
-    if (orgRes.status === 401 || teamRes.status === 401) {
+    if (orgRes.status === 401 || teamRes.status === 401 || agentRes.status === 401) {
       handle401();
       return;
     }
@@ -155,6 +170,9 @@ export default function DashboardAuditEventsPage() {
     }
     if (teamRes.ok && teamRes.data) {
       setTeams(Array.isArray(teamRes.data.items) ? teamRes.data.items : []);
+    }
+    if (agentRes.ok && agentRes.data) {
+      setAgents(Array.isArray(agentRes.data.items) ? agentRes.data.items : []);
     }
   }, [handle401]);
 
@@ -266,6 +284,14 @@ export default function DashboardAuditEventsPage() {
             {teams.map((team) => (
               <option key={`audit-team-${team.id}`} value={String(team.id)}>
                 Team #{team.id} - {team.name}
+              </option>
+            ))}
+          </select>
+          <select value={agentFilter} onChange={(event) => setAgentFilter(event.target.value)} className="ds-input h-11 rounded-md px-3 text-sm md:h-9">
+            <option value="">All agents</option>
+            {agents.map((agent) => (
+              <option key={`audit-agent-${String(agent.agent_id ?? "none")}`} value={agent.agent_id === null ? "" : String(agent.agent_id)}>
+                {agent.agent_id === null ? "Unassigned (no filter)" : `Agent #${agent.agent_id} - ${agent.agent_name ?? "Unnamed"}`}
               </option>
             ))}
           </select>

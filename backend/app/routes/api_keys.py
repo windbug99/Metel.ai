@@ -95,19 +95,35 @@ def _normalize_memo(raw_memo: str | None) -> str | None:
     return memo or None
 
 
-def _validate_team_id(*, supabase, user_id: str, team_id: int | None) -> int | None:
+def _validate_team_id(*, supabase, authz_ctx: AuthzContext, user_id: str, team_id: int | None) -> int | None:
     if team_id is None:
         return None
     rows = (
         supabase.table("teams")
-        .select("id")
+        .select("id,organization_id")
         .eq("id", team_id)
-        .eq("user_id", user_id)
         .eq("is_active", True)
         .limit(1)
         .execute()
     ).data or []
     if not rows:
+        raise HTTPException(status_code=400, detail="invalid_team_id")
+    organization_id = rows[0].get("organization_id")
+    try:
+        organization_id_int = int(organization_id) if organization_id is not None else None
+    except (TypeError, ValueError):
+        organization_id_int = None
+    has_org_scope = organization_id_int is not None and organization_id_int in authz_ctx.org_ids
+    has_admin_scope = has_org_scope and authz_ctx.role in {Role.ADMIN, Role.OWNER}
+    is_team_member = (
+        supabase.table("team_memberships")
+        .select("id")
+        .eq("team_id", team_id)
+        .eq("user_id", user_id)
+        .limit(1)
+        .execute()
+    ).data or []
+    if not has_admin_scope and not is_team_member:
         raise HTTPException(status_code=400, detail="invalid_team_id")
     return team_id
 
@@ -394,7 +410,7 @@ async def create_api_key(request: Request, body: CreateApiKeyRequest):
     memo = _normalize_memo(body.memo)
     tags = _normalize_tags(body.tags)
     _enforce_member_api_key_write_policy(authz_ctx=authz_ctx, team_id=body.team_id, policy_json=policy_json)
-    team_id = _validate_team_id(supabase=supabase, user_id=user_id, team_id=body.team_id)
+    team_id = _validate_team_id(supabase=supabase, authz_ctx=authz_ctx, user_id=user_id, team_id=body.team_id)
     _validate_policy_conflict(allowed_tools=allowed_tools, policy_json=policy_json)
 
     created = (
@@ -507,7 +523,7 @@ async def update_api_key(request: Request, key_id: str, body: UpdateApiKeyReques
                 status_code=403,
                 detail={"code": "access_denied", "reason": "member_team_scope_forbidden"},
             )
-        payload["team_id"] = _validate_team_id(supabase=supabase, user_id=user_id, team_id=body.team_id)
+        payload["team_id"] = _validate_team_id(supabase=supabase, authz_ctx=authz_ctx, user_id=user_id, team_id=body.team_id)
     _enforce_member_api_key_write_policy(
         authz_ctx=authz_ctx,
         team_id=payload.get("team_id") if "team_id" in payload else None,

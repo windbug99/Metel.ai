@@ -1,7 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useState } from "react";
-import { usePathname, useRouter } from "next/navigation";
+import { usePathname, useRouter, useSearchParams } from "next/navigation";
 
 import { buildNextPath, dashboardApiGet, dashboardApiRequest } from "../../../../../lib/dashboard-v2-client";
 import AlertBanner from "../../../../../components/dashboard-v2/alert-banner";
@@ -59,6 +59,7 @@ function asDate(value?: string | null): string {
 export default function DashboardTeamPolicyPage() {
   const pathname = usePathname();
   const router = useRouter();
+  const searchParams = useSearchParams();
 
   const [permission, setPermission] = useState<PermissionSnapshot | null>(null);
   const [teams, setTeams] = useState<TeamItem[]>([]);
@@ -87,6 +88,8 @@ export default function DashboardTeamPolicyPage() {
   const [rollbackRevisionId, setRollbackRevisionId] = useState<number | null>(null);
 
   const canManageTeams = Boolean(permission?.permissions?.can_manage_teams);
+  const orgQuery = (searchParams.get("org") ?? "").trim();
+  const scopedOrganizationId = orgQuery && orgQuery !== "all" ? Number(orgQuery) : null;
 
   const handle401 = useCallback(() => {
     const next = encodeURIComponent(buildNextPath(pathname, window.location.search));
@@ -110,7 +113,11 @@ export default function DashboardTeamPolicyPage() {
     }
     setPermission(meResult.data);
 
-    const result = await dashboardApiGet<{ items?: TeamItem[] }>("/api/teams");
+    const teamsEndpoint =
+      scopedOrganizationId && Number.isFinite(scopedOrganizationId) && scopedOrganizationId > 0
+        ? `/api/teams?organization_id=${scopedOrganizationId}`
+        : "/api/teams";
+    const result = await dashboardApiGet<{ items?: TeamItem[] }>(teamsEndpoint);
     if (result.status === 401) {
       handle401();
       setLoading(false);
@@ -145,7 +152,7 @@ export default function DashboardTeamPolicyPage() {
     setTeamPolicyDraft(nextPolicy);
     setTeamActiveDraft(nextActive);
     setLoading(false);
-  }, [handle401]);
+  }, [handle401, scopedOrganizationId]);
 
   const createTeam = useCallback(async () => {
     const name = createName.trim();
@@ -169,6 +176,10 @@ export default function DashboardTeamPolicyPage() {
         name,
         description: createDescription.trim() || null,
         policy_json: policyJson,
+        organization_id:
+          scopedOrganizationId && Number.isFinite(scopedOrganizationId) && scopedOrganizationId > 0
+            ? scopedOrganizationId
+            : null,
       },
     });
     if (result.status === 401) {
@@ -192,7 +203,7 @@ export default function DashboardTeamPolicyPage() {
     setCreatePolicy("{}");
     await fetchTeams();
     setCreating(false);
-  }, [createDescription, createName, createPolicy, fetchTeams, handle401]);
+  }, [createDescription, createName, createPolicy, fetchTeams, handle401, scopedOrganizationId]);
 
   const updateTeam = useCallback(
     async (teamId: number) => {
