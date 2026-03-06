@@ -3,14 +3,15 @@ set -euo pipefail
 
 ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
 SHELL_PAGE="${ROOT_DIR}/frontend/components/dashboard-v2/shell.tsx"
+NAV_MODEL_PAGE="${ROOT_DIR}/frontend/components/dashboard-v2/nav-model.ts"
+NAV_LIST_PAGE="${ROOT_DIR}/frontend/components/dashboard-v2/nav-list.tsx"
 
-if [[ ! -f "${SHELL_PAGE}" ]]; then
-  echo "[dashboard-v2-query-scope] ERROR: missing file ${SHELL_PAGE}"
-  exit 1
-fi
-
-PASS=0
-FAIL=0
+for f in "${SHELL_PAGE}" "${NAV_MODEL_PAGE}" "${NAV_LIST_PAGE}"; do
+  if [[ ! -f "${f}" ]]; then
+    echo "[dashboard-v2-query-scope] ERROR: missing file ${f}"
+    exit 1
+  fi
+done
 
 match_pattern() {
   local pattern="$1"
@@ -21,6 +22,14 @@ match_pattern() {
     grep -Eq "${pattern}" "${file}"
   fi
 }
+
+if [[ ! -f "${SHELL_PAGE}" ]]; then
+  echo "[dashboard-v2-query-scope] ERROR: missing file ${SHELL_PAGE}"
+  exit 1
+fi
+
+PASS=0
+FAIL=0
 
 pass() {
   echo "[PASS] $1"
@@ -33,9 +42,10 @@ fail() {
 }
 
 expect_pattern() {
-  local pattern="$1"
-  local label="$2"
-  if match_pattern "${pattern}" "${SHELL_PAGE}"; then
+  local file="$1"
+  local pattern="$2"
+  local label="$3"
+  if match_pattern "${pattern}" "${file}"; then
     pass "${label}"
   else
     fail "${label}"
@@ -44,16 +54,16 @@ expect_pattern() {
 
 echo "[dashboard-v2-query-scope] validate global/page query scope policy"
 
-expect_pattern "GLOBAL_QUERY_KEYS = \\[\"org\", \"team\", \"range\"\\]" "global query keys declared"
-expect_pattern "overview: \\[\"overview_window\"\\]" "overview page query key declared"
-expect_pattern "apiKeys: \\[\"keys_status\"\\]" "api-keys page query key declared"
-expect_pattern "auditEvents: \\[\"audit_status\"\\]" "audit-events page query key declared"
-expect_pattern "adminOps: \\[\"ops_tab\"\\]" "admin-ops page query key declared"
-expect_pattern "for \\(const key of GLOBAL_QUERY_KEYS\\)" "nav/global update iterates only global keys"
-expect_pattern "const allowed = new Set<string>\\(\\[\\.\\.\\.GLOBAL_QUERY_KEYS, \\.\\.\\.PAGE_QUERY_KEYS\\[pageKey\\]\\]\\)" "allowed set merges global + current page keys"
-expect_pattern "if \\(!allowed\\.has\\(key\\)\\) \\{" "unknown query keys are filtered"
-expect_pattern "params\\.delete\\(key\\);" "unknown/page-irrelevant query keys deleted"
-expect_pattern "href=\\{buildNavHref\\(item\\.href\\)\\}" "sidebar navigation keeps global query keys"
+expect_pattern "${NAV_MODEL_PAGE}" "GLOBAL_QUERY_KEYS = \\[\"org\", \"team\", \"range\"\\]" "global query keys declared"
+expect_pattern "${NAV_MODEL_PAGE}" "overview: \\[\"overview_window\"\\]" "overview page query key declared"
+expect_pattern "${NAV_MODEL_PAGE}" "apiKeys: \\[\"keys_status\"\\]" "api-keys page query key declared"
+expect_pattern "${NAV_MODEL_PAGE}" "auditEvents: \\[\"audit_status\"\\]" "audit-events page query key declared"
+expect_pattern "${NAV_MODEL_PAGE}" "adminOps: \\[\"ops_tab\"\\]" "admin-ops page query key declared"
+expect_pattern "${SHELL_PAGE}" "for \\(const key of GLOBAL_QUERY_KEYS\\)" "nav/global update iterates only global keys"
+expect_pattern "${SHELL_PAGE}" "const allowed = new Set<string>\\(\\[\\.\\.\\.GLOBAL_QUERY_KEYS, \\.\\.\\.PAGE_QUERY_KEYS\\[pageKey\\]\\]\\)" "allowed set merges global + current page keys"
+expect_pattern "${SHELL_PAGE}" "if \\(!allowed\\.has\\(key\\)\\) \\{" "unknown query keys are filtered"
+expect_pattern "${SHELL_PAGE}" "params\\.delete\\(key\\);" "unknown/page-irrelevant query keys deleted"
+expect_pattern "${NAV_LIST_PAGE}" "href=\\{buildNavHref\\(item\\.href\\)\\}" "sidebar navigation keeps global query keys"
 
 echo "[dashboard-v2-query-scope] pass=${PASS} fail=${FAIL}"
 if [[ "${FAIL}" -gt 0 ]]; then

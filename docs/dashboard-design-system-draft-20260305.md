@@ -2,7 +2,19 @@
 
 기준:
 - IA/내비게이션: `docs/dashboard-ia-navigation-proposal-20260305.md`
-- 스타일 방향: **Vercel + Linear 베이스**, **Perplexity 검색 UX**, **Datadog 상태 시그널**
+- shadcn create preset(기준):
+  - base: `radix`
+  - style: `nova`
+  - baseColor: `zinc`
+  - theme: `teal`
+  - iconLibrary: `hugeicons`
+  - font: `geist`
+  - menuAccent: `subtle`
+  - menuColor: `default`
+  - radius: `small`
+  - ref:
+    - light: `https://ui.shadcn.com/create?base=radix&style=nova&baseColor=zinc&theme=teal&iconLibrary=hugeicons&font=geist&menuAccent=subtle&menuColor=default&radius=small&item=preview`
+    - dark: `https://ui.shadcn.com/create?base=radix&style=nova&baseColor=zinc&theme=teal&iconLibrary=hugeicons&font=geist&menuAccent=subtle&menuColor=default&radius=small&item=preview`
 
 ## 1) Brand Direction
 
@@ -19,8 +31,8 @@
 ## 2) Typography
 
 권장 폰트:
-- UI: `IBM Plex Sans`
-- Data/Code: `IBM Plex Mono`
+- UI: `Geist`
+- Data/Code: `Geist Mono`
 
 타입 스케일:
 - `display`: 28/36, 700
@@ -37,61 +49,32 @@
 
 ## 3) Color System (Light + Dark)
 
-### 3-1) Light Theme Tokens
+원칙:
+- shadcn가 생성한 `globals.css`의 semantic token(`--background`, `--foreground`, `--card`, `--muted`, `--border`, `--primary` 등)을 단일 기준으로 사용
+- 커스텀 hex 하드코딩은 신규 추가 금지(기존 잔존 코드는 점진 제거)
+- 상태색(success/warning/danger/info)은 shadcn token에 alias로 연결
 
-#### Core Neutrals
-- `bg.canvas`: `#F5F7FA`
-- `bg.surface`: `#FFFFFF`
-- `bg.subtle`: `#EEF2F7`
-- `border.default`: `#D3DAE6`
-- `text.primary`: `#111827`
-- `text.secondary`: `#475467`
-- `text.muted`: `#667085`
+### 3-1) Theme Baseline
 
-#### Brand / Accent
-- `brand.500`: `#1F6FEB`
-- `brand.600`: `#1558C0`
-- `brand.100`: `#DCEBFF`
+- Neutral Base: `zinc`
+- Brand Accent: `teal`
+- Menu Accent Mode: `subtle`
 
-#### Semantic
-- `success.500`: `#1F9D63`
-- `warning.500`: `#D97706`
-- `danger.500`: `#D92D20`
-- `info.500`: `#0EA5E9`
+### 3-2) Token Alias Draft (Semantic Layer)
 
-#### Ops Signal (Datadog-like)
-- `status.ok`: `#1F9D63`
-- `status.warn`: `#D97706`
-- `status.critical`: `#D92D20`
-- `status.unknown`: `#98A2B3`
-
-### 3-2) Dark Theme Tokens
-
-#### Core Neutrals
-- `bg.canvas`: `#0B1117`
-- `bg.surface`: `#111927`
-- `bg.subtle`: `#162131`
-- `border.default`: `#2A3444`
-- `text.primary`: `#E6EDF3`
-- `text.secondary`: `#C3CDD8`
-- `text.muted`: `#96A2B2`
-
-#### Brand / Accent
-- `brand.500`: `#5EA4FF`
-- `brand.600`: `#7CB7FF`
-- `brand.100`: `#1A2C44`
-
-#### Semantic
-- `success.500`: `#3CCB86`
-- `warning.500`: `#F3A73D`
-- `danger.500`: `#FF6B5F`
-- `info.500`: `#38BDF8`
-
-#### Ops Signal (Datadog-like)
-- `status.ok`: `#3CCB86`
-- `status.warn`: `#F3A73D`
-- `status.critical`: `#FF6B5F`
-- `status.unknown`: `#8B9BB0`
+- `color.bg.canvas` -> `--background`
+- `color.bg.surface` -> `--card`
+- `color.bg.subtle` -> `--muted`
+- `color.border.default` -> `--border`
+- `color.text.primary` -> `--foreground`
+- `color.text.secondary` -> `--muted-foreground`
+- `color.brand.primary` -> `--primary`
+- `color.brand.onPrimary` -> `--primary-foreground`
+- `color.focus.ring` -> `--ring`
+- `color.status.success` -> `--chart-2` (또는 별도 `--success`)
+- `color.status.warning` -> `--chart-4` (또는 별도 `--warning`)
+- `color.status.danger` -> `--destructive`
+- `color.status.info` -> `--chart-1` (또는 별도 `--info`)
 
 ## 4) Spacing / Radius / Elevation
 
@@ -99,8 +82,8 @@ Spacing scale:
 - `4, 8, 12, 16, 20, 24, 32, 40`
 
 Radius:
-- `card`: 12
-- `input/button`: 10
+- `card`: small (`--radius`)
+- `input/button`: small (`--radius`)
 - `pill`: 999
 
 Shadow:
@@ -123,13 +106,15 @@ Shadow:
 ## 6) Component Rules
 
 ### Sidebar
-- 섹션 라벨은 `caption + muted`
-- 활성 메뉴는 `brand.100 + brand.600 text`
+- 상단: org switcher(`DropdownMenu`)
+- 중앙: role 기반 nav tree
+- 하단: profile/user menu
+- 메뉴 스타일: `menuAccent=subtle`, `menuColor=default`
 - 비활성(권한 없음): lock 아이콘 + 이유 툴팁
 
 ### Top Bar
 - 좌: breadcrumb + title
-- 중: 검색(요청ID/API Key/User)
+- 중: 검색(요청ID/API Key/User/Tool)
 - 우: org/team switcher, time range, refresh, user menu
 
 ### KPI Card
@@ -143,10 +128,12 @@ Shadow:
 - 에러코드는 code 스타일 태그로 표시
 
 ### Button
-- `primary`: brand fill
-- `secondary`: white + border
-- `danger`: red outline/fill
-- `ghost`: 텍스트 버튼
+- shadcn variant 우선:
+  - `default`(primary)
+  - `secondary`
+  - `destructive`
+  - `ghost`
+  - `outline`
 
 ### Badge / Tag
 - `role`: owner/admin/member
@@ -174,54 +161,28 @@ Shadow:
 
 - 텍스트 대비 WCAG AA 이상
 - 키보드 탭 순서: sidebar -> topbar -> content
-- 포커스 링: `2px solid var(--brand-500)`
+- 포커스 링: `2px solid var(--ring)`
 - 아이콘만 있는 버튼은 `aria-label` 필수
 
 ## 9) CSS Token Draft
 
 ```css
+/* source of truth: shadcn generated globals.css */
+/* keep semantic tokens (--background/--foreground/--card/--primary/...) from generator output */
 :root {
-  --bg-canvas: #f5f7fa;
-  --bg-surface: #ffffff;
-  --bg-subtle: #eef2f7;
-  --border-default: #d3dae6;
-  --text-primary: #111827;
-  --text-secondary: #475467;
-  --text-muted: #667085;
+  --radius: 0.375rem; /* small */
 
-  --brand-500: #1f6feb;
-  --brand-600: #1558c0;
-  --brand-100: #dcebff;
+  /* optional semantic aliases for dashboard status */
+  --success: var(--chart-2);
+  --warning: var(--chart-4);
+  --info: var(--chart-1);
+  --danger: var(--destructive);
 
-  --success-500: #1f9d63;
-  --warning-500: #d97706;
-  --danger-500: #d92d20;
-  --info-500: #0ea5e9;
-
-  --radius-card: 12px;
-  --radius-control: 10px;
   --shadow-sm: 0 1px 2px rgba(16, 24, 40, 0.06);
   --shadow-md: 0 6px 18px rgba(16, 24, 40, 0.08);
 }
 
 .theme-dark {
-  --bg-canvas: #0b1117;
-  --bg-surface: #111927;
-  --bg-subtle: #162131;
-  --border-default: #2a3444;
-  --text-primary: #e6edf3;
-  --text-secondary: #c3cdd8;
-  --text-muted: #96a2b2;
-
-  --brand-500: #5ea4ff;
-  --brand-600: #7cb7ff;
-  --brand-100: #1a2c44;
-
-  --success-500: #3ccb86;
-  --warning-500: #f3a73d;
-  --danger-500: #ff6b5f;
-  --info-500: #38bdf8;
-
   --shadow-sm: 0 1px 2px rgba(2, 6, 23, 0.5);
   --shadow-md: 0 10px 24px rgba(2, 6, 23, 0.55);
 }
@@ -237,12 +198,13 @@ Shadow:
 2. Overview / API Keys / Audit 화면에 토큰 우선 적용
 3. RBAC 배지/잠금/403 배너 컴포넌트 공통화
 
-## 11) Benchmark Mapping
+## 11) shadcn Migration Notes
 
-- **Vercel**: 레이아웃 단순성, 여백 리듬
-- **Linear**: 데이터 밀도, 리스트 가독성
-- **Perplexity**: 검색 중심 상호작용
-- **Datadog**: 상태/심각도 시그널 체계
-
-결론:
-- metel은 “운영 제어 콘솔” 성격이므로, 미니멀 UI에 강한 상태 시그널을 결합한 위 조합이 가장 적합하다.
+- 현재 목표는 "새 디자인 시스템 정의"가 아니라 "shadcn preset을 source of truth로 통일"하는 것이다.
+- 단계:
+  1. shell/sidebar/topbar를 shadcn 컴포넌트로 치환
+  2. 기존 커스텀 CSS 변수(`--brand-*`, `--bg-*`)를 shadcn semantic 변수로 매핑/축소
+  3. 페이지별 컴포넌트를 variant 기반(`Button`, `Badge`, `Input`)으로 정렬
+- 주의:
+  - 권한/RBAC 로직은 UI 라이브러리 변경과 무관하게 동일하게 유지
+  - Global Search는 API 계약 확정 전까지 disabled 유지

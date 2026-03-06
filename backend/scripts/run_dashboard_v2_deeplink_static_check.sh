@@ -72,8 +72,10 @@ expect_pattern "${SHELL_PAGE}" "router.replace" "shell has redirect handler"
 expect_pattern "${SHELL_PAGE}" "\\/\\?next=\\$\\{next\\}" "shell preserves next on 401 redirect"
 
 # OAuth callback landing compatibility
-expect_pattern "${NOTION_ROUTE}" "\\/dashboard\\?notion=connected" "notion oauth callback redirects with notion=connected"
-expect_pattern "${LINEAR_ROUTE}" "\\/dashboard\\?linear=connected" "linear oauth callback redirects with linear=connected"
+expect_pattern "${NOTION_ROUTE}" "\\/dashboard\\/integrations\\/oauth\\?\\{query\\}" "notion oauth callback base landing path"
+expect_pattern "${LINEAR_ROUTE}" "\\/dashboard\\/integrations\\/oauth\\?\\{query\\}" "linear oauth callback base landing path"
+expect_pattern "${NOTION_ROUTE}" "\"notion=connected\"" "notion oauth callback redirects with notion=connected"
+expect_pattern "${LINEAR_ROUTE}" "\"linear=connected\"" "linear oauth callback redirects with linear=connected"
 
 echo "[dashboard-v2-deeplink-static] pass=${PASS} fail=${FAIL}"
 if [[ "${FAIL}" -gt 0 ]]; then

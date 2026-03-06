@@ -23,19 +23,22 @@
 
 ## 2) 메뉴 정보구조(IA)
 
-### Sidebar 그룹
+### Sidebar 트리 (2026-03-06 업데이트)
 
 1. `Overview`
-2. `Access`
-- API Keys
+2. `Org`
 - Organizations
+3. `Team`
 - Team Policy
-3. `Control`
+- Agent Guide
+- API Keys
 - Policy Simulator
 - Audit Events
-4. `Integrations`
-- Webhooks / Deliveries
-- OAuth Connections
+4. `Operations`
+- Usage
+- Integrations
+- OAuth
+- Audit Settings
 5. `Admin / Ops` (권한 조건부)
 - Connector Diagnostics
 - Rate Limit Events
@@ -51,11 +54,21 @@
 - Organization / Team switcher
 - Time range picker (24h/7d/custom)
 - Refresh
-- User menu
+- User menu (Profile 분리)
 
 Global Search 구현 전제:
 - 백엔드 검색 API 스펙 확정 전에는 UI를 read-only(placeholder)로 두거나 비노출 처리
 - 검색 API 도입 시 role/scope(tenant) 필터를 서버에서 강제 적용
+
+### 역할별 메뉴 노출 규칙 (2026-03-06)
+
+1. `Owner/Admin`:
+- `Overview`, `Org`, `Team`, `Operations(Usage/Integrations/OAuth/Audit Settings)`, `Admin / Ops` 노출
+2. `Member`:
+- `Overview`, `Team`, `Usage` 중심으로 노출
+- `Org` 숨김
+- `Operations` 중 `Integrations/OAuth/Audit Settings` 숨김
+- `Admin / Ops` 숨김
 
 ## 3) 권한 UX 정책
 
@@ -513,6 +526,147 @@ MODE=full_guard ./scripts/run_rbac_rollout_stage_gate.sh
 MODE=read_only ./scripts/run_rbac_rollout_stage_gate.sh
 ```
 - `full_guard` 상태에서 `MODE=read_only` 실행 시 실패가 정상.
+
+## 15) shadcn 적용 작업계획 (2026-03-06)
+
+목표:
+- `sidebar-07` 스타일 구조(사이드바 상단 org 선택/중앙 메뉴/하단 profile, topbar breadcrumb+search)로 V2 Shell을 재구성한다.
+- 기존 RBAC/컨텍스트/URL 파라미터 동작을 유지한다.
+
+### 15-1. 선행 정정사항 (논리 충돌 해소)
+
+- [x] `Overview` 스코프 정합성 정정:
+  - 백엔드 `/api/tool-calls/overview`에 `organization_id/team_id` 스코프 적용 완료.
+  - role 규칙 반영: member는 org 확장 금지(`member_org_scope_forbidden`), team 범위는 소속 팀만 허용.
+- [x] `Overview` 요청 파라미터 정합성:
+  - 프론트 Overview 요청을 `hours` 표준 파라미터로 정정하고 org/team 쿼리 전달 적용.
+- [x] Global Search 명세 선확정:
+  - 검색 대상(`request_id`, `api_key`, `user_id`, `tool_name`) + 역할별 scope 강제 규칙을 API 계약으로 고정.
+  - 계약 전에는 UI disabled 유지.
+- [x] 메뉴 라벨/실제 라우트 정합성:
+  - `Team > Users/Agents/API/Policies/Logs`가 실제 라우트와 1:1 매핑되는지 점검하고 불일치 항목은 별도 route 신설 또는 라벨 조정.
+  - 정합성 반영: 라벨을 실제 라우트 기반으로 조정(`Team Policy`, `Agent Guide`, `API Keys`, `Policy Simulator`, `Audit Events`).
+
+### 15-2. 구현 단계
+
+1) 컴포넌트 베이스 도입
+- [x] shadcn `sidebar`, `breadcrumb`, `dropdown-menu`, `sheet`, `input`, `button`, `separator` 적용
+- [x] 기존 `DashboardV2Shell`에서 레이아웃/로직 분리 포인트 확정
+- 진행 메모(2026-03-06): `pnpm dlx shadcn@latest add ...` 실행 시 `registry.npmjs.org ENOTFOUND`로 설치 불가. 네트워크 가능한 환경에서 재시도 필요.
+- 진행 메모(2026-03-06): 선행 분리 완료
+  - nav 모델 분리: `frontend/components/dashboard-v2/nav-model.ts`
+  - nav 렌더 분리: `frontend/components/dashboard-v2/nav-list.tsx`
+  - shell는 권한/세션/컨텍스트 오케스트레이션 중심으로 단순화
+- 진행 메모(2026-03-06): 사용자 설치 완료 후 shadcn UI 컴포넌트 적용 확인(`frontend/components/ui/*`)
+
+2) 레이아웃 전환
+- [x] `AppSidebar` 신설: Header(org switcher) / Content(nav tree) / Footer(profile)
+- [x] `Topbar` 신설: breadcrumb + search + team/range + refresh
+- [x] 모바일 drawer/trigger를 shadcn sidebar 패턴으로 통합
+- 진행 메모(2026-03-06):
+  - `frontend/components/dashboard-v2/app-sidebar.tsx` 추가
+  - `frontend/components/dashboard-v2/topbar.tsx` 추가
+  - `frontend/components/dashboard-v2/shell.tsx`는 상태/권한/쿼리 관리 + 조합 책임으로 축소
+  - `SidebarProvider/Sidebar/SidebarInset/SidebarTrigger` 패턴으로 교체 완료
+
+3) 로직 이식
+- [x] role 기반 메뉴 노출(owner/admin/member) 이식
+- [x] `org/team/range` query 유지 + 페이지 전용 query 정리 규칙 이식
+- [x] 401(`/?next=`), 403(배너) 처리 이식
+- [x] refresh 이벤트(`dashboard:v2:refresh`) 이식
+- 진행 메모(2026-03-06):
+  - role 기반 메뉴 구성은 `frontend/components/dashboard-v2/nav-model.ts`의 `buildNavItems`로 단일화
+  - query 정리는 `shell.tsx`의 `GLOBAL_QUERY_KEYS/PAGE_QUERY_KEYS` 규칙으로 유지
+  - 인증/권한 예외 처리: 401 로그인 리다이렉트, 403 배너 표시 유지
+  - 페이지 refresh 이벤트는 기존 커스텀 이벤트 채널 유지
+
+4) 검색 준비 상태 반영
+- [x] feature flag 기반 disabled search 유지
+- [x] API 계약 확정 전 placeholder만 노출
+- [ ] 계약 확정 후 role/scope 서버강제 검증 케이스 추가
+- 진행 메모(2026-03-06):
+  - Topbar 검색 입력은 `NEXT_PUBLIC_DASHBOARD_GLOBAL_SEARCH_ENABLED` 플래그 기준으로 disabled/placeholder 동작
+
+#### 4-a) Global Search API 계약 (Final v1)
+
+- Endpoint: `GET /api/search/global`
+- Query:
+  - `q`: string (required, 2~120)
+  - `scope_org`: int(optional)
+  - `scope_team`: int(optional)
+  - `limit`: int(optional, default 20, max 50)
+  - `cursor`: string(optional)
+- Search target:
+  - `request_id`, `api_key`(prefix/name), `user_id`, `tool_name`
+- Response:
+  - `items`: `{type, id, title, subtitle, href, matched_by, created_at}`
+  - `next_cursor`: string|null
+- RBAC server enforcement:
+  - `owner`: `scope_org/scope_team` 허용(본인 권한 org/team 범위 내)
+  - `admin`: `scope_org/scope_team` 허용(본인 권한 org/team 범위 내)
+  - `member`: `scope_org` 금지, `scope_team`은 소속 team만 허용, 기본 self 범위
+- Error:
+  - 400 `invalid_query`
+  - 403 `access_denied(scope_forbidden)`
+  - 429 `rate_limited`
+
+검증 기준(서버 강제):
+- owner/admin이 권한 외 `scope_org/scope_team` 요청 시 403
+- member의 `scope_org` 요청 시 403
+- member의 비소속 `scope_team` 요청 시 403
+
+5) 회귀 검증
+- [x] Owner/Admin/Member 메뉴 노출 스모크
+- [x] deep-link + 쿼리 파라미터 보존/정리 스모크
+- [x] 모바일(320/375/768) 사이드바 동작 확인
+- [x] 기존 운영 체크리스트(14번) 재실행
+- 진행 메모(2026-03-06):
+  - 정적 스모크 실행:
+    - `backend/scripts/run_dashboard_v2_deeplink_static_check.sh` PASS
+    - `backend/scripts/run_dashboard_v2_query_scope_static_check.sh` PASS
+    - `backend/scripts/run_dashboard_v2_mobile_static_check.sh` PASS
+  - 구조 변경에 맞춰 static check 스크립트 패턴/검사 파일을 업데이트함
+  - role 스모크(`run_dashboard_v2_menu_rbac_smoke.sh`) PASS
+    - owner/admin/member role 판별 PASS
+    - role별 visible menu 기대값 PASS
+    - incident banner 관리 권한(owner only) PASS
+  - 운영 체크리스트(14번) 재실행 결과(2026-03-06 KST):
+    - `backend/scripts/run_dashboard_v2_qa_stage_gate.sh` FAIL
+      - static checks: PASS
+      - runtime checks: member 인증이 401로 실패(`rbac-token-validate`, `menu-rbac`, `phase3-dashboard` 연쇄 실패)
+    - `MODE=full_guard backend/scripts/run_rbac_rollout_stage_gate.sh` FAIL
+      - member 기대값(403) 대신 401 응답(`admin-read`, `audit-settings patch`)
+    - `backend/scripts/run_rbac_monitoring_snapshot.sh` FAIL(종료코드 4)
+      - snapshot 임계치는 OK이나, probe에서 `member=401`으로 policy regression alert 발생
+    - 참고: 현재 제공된 토큰 만료 시각
+      - `MEMBER_JWT exp`: 2026-03-06 17:21:27 KST
+      - `ADMIN_JWT exp`: 2026-03-06 17:21:23 KST
+      - 재검증 시점: 2026-03-06 17:20~17:21 KST (만료 임박 구간)
+  - 운영 체크리스트(14번) 재실행 재검증 결과(2026-03-06 KST, 토큰 갱신 후):
+    - `backend/scripts/run_dashboard_v2_qa_stage_gate.sh` PASS (`pass=7 fail=0 skip=0`)
+    - `MODE=full_guard backend/scripts/run_rbac_rollout_stage_gate.sh` PASS (`pass=5 fail=0`)
+    - `backend/scripts/run_rbac_monitoring_snapshot.sh` PASS (`probe OK owner=200 admin=403 member=403`)
+    - 운영 로그 반영: `docs/rbac-production-monitoring-log-20260305.md` 최신 재검증 섹션 업데이트 완료
+
+### 15-3. 완료 기준 (DoD)
+
+- [x] 시각 구조가 `sidebar-07` 목표 구조와 일치
+- [x] 기존 Shell 기능 회귀 없음(RBAC, query, 401/403, refresh)
+- [x] 문서(2, 3, 6, 15장)와 실제 동작 간 불일치 없음
+- [x] 최소 1회 `owner/admin/member` 수동 점검 로그를 운영 문서에 기록
+
+진행 메모(2026-03-06):
+- 회귀 없음 증적:
+  - `backend/scripts/run_dashboard_v2_qa_stage_gate.sh` PASS (`pass=7 fail=0 skip=0`)
+  - `MODE=full_guard backend/scripts/run_rbac_rollout_stage_gate.sh` PASS (`pass=5 fail=0`)
+  - `backend/scripts/run_rbac_monitoring_snapshot.sh` PASS (`probe OK owner=200 admin=403 member=403`)
+- `sidebar-07` 구조 일치 증적(코드):
+  - Sidebar 상단 org 선택: `frontend/components/dashboard-v2/app-sidebar.tsx` (`SidebarHeader` + Org dropdown)
+  - Sidebar 중앙 메뉴: `frontend/components/dashboard-v2/app-sidebar.tsx` (`SidebarContent` + `DashboardNavList`)
+  - Sidebar 하단 profile: `frontend/components/dashboard-v2/app-sidebar.tsx` (`SidebarFooter` + Profile menu)
+  - Topbar breadcrumb + search: `frontend/components/dashboard-v2/topbar.tsx` (`Breadcrumb`, `Input[type=search]`)
+- 잔여 항목 사유:
+  - 없음 (15-3 DoD 전 항목 충족)
 
 진행 메모 (2026-03-05, 미이관 Wave 1):
 - V2 API Keys 고도화 완료:

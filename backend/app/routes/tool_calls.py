@@ -96,22 +96,129 @@ def _error_category(error_code: str | None) -> str:
 def _query_tool_call_rows(
     *,
     supabase,
-    user_id: str,
+    user_ids: list[str],
     from_iso: str,
     to_iso: str | None = None,
     agent_id: int | None = None,
+    api_key_ids: list[int] | None = None,
 ) -> list[dict]:
+    scoped_user_ids = [str(item or "").strip() for item in user_ids if str(item or "").strip()]
+    if not scoped_user_ids:
+        return []
+    if api_key_ids is not None and not api_key_ids:
+        return []
+
     query = (
         supabase.table("tool_calls")
         .select("id,api_key_id,agent_id,tool_name,status,error_code,latency_ms,created_at")
-        .eq("user_id", user_id)
         .gte("created_at", from_iso)
     )
+    if len(scoped_user_ids) == 1:
+        query = query.eq("user_id", scoped_user_ids[0])
+    else:
+        query = query.in_("user_id", scoped_user_ids)
     if agent_id is not None:
         query = query.eq("agent_id", agent_id)
+    if api_key_ids is not None:
+        if len(api_key_ids) == 1:
+            query = query.eq("api_key_id", api_key_ids[0])
+        else:
+            query = query.in_("api_key_id", api_key_ids)
     if to_iso:
         query = query.lte("created_at", to_iso)
     return query.execute().data or []
+
+
+def _normalize_optional_int(value: int | None) -> int | None:
+    if value is None:
+        return None
+    if isinstance(value, bool):
+        return None
+    if isinstance(value, int):
+        return value
+    text = str(value).strip()
+    if not text:
+        return None
+    try:
+        return int(text)
+    except ValueError:
+        return None
+
+
+def _resolve_scoped_user_ids(
+    *,
+    supabase,
+    authz_ctx,
+    request_user_id: str,
+    organization_id: int | None,
+) -> list[str]:
+    if organization_id is None:
+        return [request_user_id]
+    if authz_ctx.role == Role.MEMBER:
+        raise HTTPException(status_code=403, detail={"code": "access_denied", "reason": "member_org_scope_forbidden"})
+    if organization_id not in authz_ctx.org_ids:
+        raise HTTPException(status_code=403, detail={"code": "access_denied", "reason": "organization_scope_forbidden"})
+
+    member_rows = (
+        supabase.table("org_memberships")
+        .select("user_id")
+        .eq("organization_id", organization_id)
+        .execute()
+    ).data or []
+    scoped_user_ids = [str(row.get("user_id") or "").strip() for row in member_rows if str(row.get("user_id") or "").strip()]
+    return scoped_user_ids or [request_user_id]
+
+
+def _resolve_scoped_api_key_ids(
+    *,
+    supabase,
+    authz_ctx,
+    scoped_user_ids: list[str],
+    team_id: int | None,
+) -> list[int] | None:
+    if team_id is None:
+        return None
+
+    if authz_ctx.role == Role.MEMBER and team_id not in authz_ctx.team_ids:
+        raise HTTPException(status_code=403, detail={"code": "access_denied", "reason": "team_scope_forbidden"})
+
+    if authz_ctx.role in {Role.ADMIN, Role.OWNER}:
+        team_rows = (
+            supabase.table("teams")
+            .select("id,organization_id")
+            .eq("id", team_id)
+            .limit(1)
+            .execute()
+        ).data or []
+        if not team_rows:
+            return []
+        org_id_raw = team_rows[0].get("organization_id")
+        try:
+            org_id = int(org_id_raw) if org_id_raw is not None else None
+        except (TypeError, ValueError):
+            org_id = None
+        has_org_scope = org_id is not None and org_id in authz_ctx.org_ids
+        has_team_scope = team_id in authz_ctx.team_ids
+        if not has_org_scope and not has_team_scope:
+            raise HTTPException(status_code=403, detail={"code": "access_denied", "reason": "team_scope_forbidden"})
+
+    key_query = supabase.table("api_keys").select("id").eq("team_id", team_id)
+    normalized_user_ids = [str(item or "").strip() for item in scoped_user_ids if str(item or "").strip()]
+    if normalized_user_ids:
+        if len(normalized_user_ids) == 1:
+            key_query = key_query.eq("user_id", normalized_user_ids[0])
+        else:
+            key_query = key_query.in_("user_id", normalized_user_ids)
+    key_rows = key_query.execute().data or []
+    key_ids: list[int] = []
+    for row in key_rows:
+        raw = row.get("id")
+        try:
+            if raw is not None:
+                key_ids.append(int(raw))
+        except (TypeError, ValueError):
+            continue
+    return sorted(set(key_ids))
 
 
 def _kpi_summary(rows: list[dict]) -> dict:
@@ -386,33 +493,61 @@ async def tool_calls_overview(
     request: Request,
     hours: int = Query(24, ge=1, le=168),
     agent_id: int | None = Query(default=None),
+    organization_id: int | None = Query(default=None),
+    team_id: int | None = Query(default=None),
 ):
     user_id = await get_authenticated_user_id(request)
     settings = get_settings()
     supabase = create_client(settings.supabase_url, settings.supabase_service_role_key)
     authz_ctx = await get_authz_context(request, user_id=user_id, supabase=supabase)
     require_min_role(authz_ctx, Role.MEMBER, method=request.method)
+    normalized_organization_id = _normalize_optional_int(organization_id)
+    normalized_team_id = _normalize_optional_int(team_id)
+    scoped_user_ids = _resolve_scoped_user_ids(
+        supabase=supabase,
+        authz_ctx=authz_ctx,
+        request_user_id=user_id,
+        organization_id=normalized_organization_id,
+    )
+    scoped_api_key_ids = _resolve_scoped_api_key_ids(
+        supabase=supabase,
+        authz_ctx=authz_ctx,
+        scoped_user_ids=scoped_user_ids,
+        team_id=normalized_team_id,
+    )
 
     now = datetime.now(timezone.utc)
     current_from = (now - timedelta(hours=hours)).isoformat()
     previous_from = (now - timedelta(hours=hours * 2)).isoformat()
     previous_to = current_from
 
-    current_rows = _query_tool_call_rows(supabase=supabase, user_id=user_id, from_iso=current_from, agent_id=agent_id)
+    current_rows = _query_tool_call_rows(
+        supabase=supabase,
+        user_ids=scoped_user_ids,
+        from_iso=current_from,
+        agent_id=agent_id,
+        api_key_ids=scoped_api_key_ids,
+    )
     previous_rows = _query_tool_call_rows(
         supabase=supabase,
-        user_id=user_id,
+        user_ids=scoped_user_ids,
         from_iso=previous_from,
         to_iso=previous_to,
         agent_id=agent_id,
+        api_key_ids=scoped_api_key_ids,
     )
 
-    key_rows = (
-        supabase.table("api_keys")
-        .select("id,name,key_prefix")
-        .eq("user_id", user_id)
-        .execute()
-    ).data or []
+    key_query = supabase.table("api_keys").select("id,name,key_prefix")
+    if len(scoped_user_ids) == 1:
+        key_query = key_query.eq("user_id", scoped_user_ids[0])
+    else:
+        key_query = key_query.in_("user_id", scoped_user_ids)
+    if scoped_api_key_ids is not None:
+        if len(scoped_api_key_ids) == 1:
+            key_query = key_query.eq("id", scoped_api_key_ids[0])
+        elif len(scoped_api_key_ids) > 1:
+            key_query = key_query.in_("id", scoped_api_key_ids)
+    key_rows = key_query.execute().data or []
     key_map = {str(row.get("id")): row for row in key_rows}
 
     return {
@@ -445,7 +580,7 @@ async def tool_calls_trends(
         normalized_bucket = "day"
     now = datetime.now(timezone.utc)
     since = now - timedelta(days=days)
-    rows = _query_tool_call_rows(supabase=supabase, user_id=user_id, from_iso=since.isoformat(), agent_id=agent_id)
+    rows = _query_tool_call_rows(supabase=supabase, user_ids=[user_id], from_iso=since.isoformat(), agent_id=agent_id)
 
     if normalized_bucket == "hour":
         start = since.replace(minute=0, second=0, microsecond=0)
@@ -513,7 +648,7 @@ async def tool_calls_failure_breakdown(
     require_min_role(authz_ctx, Role.MEMBER, method=request.method)
 
     since = (datetime.now(timezone.utc) - timedelta(days=days)).isoformat()
-    rows = _query_tool_call_rows(supabase=supabase, user_id=user_id, from_iso=since, agent_id=agent_id)
+    rows = _query_tool_call_rows(supabase=supabase, user_ids=[user_id], from_iso=since, agent_id=agent_id)
     fail_rows = [row for row in rows if row.get("status") == "fail"]
 
     category_counts: dict[str, int] = defaultdict(int)
@@ -550,7 +685,7 @@ async def tool_calls_connectors(
     require_min_role(authz_ctx, Role.MEMBER, method=request.method)
 
     since = (datetime.now(timezone.utc) - timedelta(days=days)).isoformat()
-    rows = _query_tool_call_rows(supabase=supabase, user_id=user_id, from_iso=since, agent_id=agent_id)
+    rows = _query_tool_call_rows(supabase=supabase, user_ids=[user_id], from_iso=since, agent_id=agent_id)
 
     connector_rows: dict[str, list[dict]] = defaultdict(list)
     for row in rows:
@@ -593,7 +728,7 @@ async def tool_calls_agents(
     require_min_role(authz_ctx, Role.MEMBER, method=request.method)
 
     since = (datetime.now(timezone.utc) - timedelta(days=days)).isoformat()
-    rows = _query_tool_call_rows(supabase=supabase, user_id=user_id, from_iso=since)
+    rows = _query_tool_call_rows(supabase=supabase, user_ids=[user_id], from_iso=since)
     agent_rows = (
         supabase.table("agents")
         .select("id,name,team_id,organization_id")

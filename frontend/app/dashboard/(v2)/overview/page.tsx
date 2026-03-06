@@ -42,7 +42,18 @@ export default function DashboardOverviewPage() {
     setError(null);
 
     const range = searchParams.get("range") === "7d" ? 168 : 24;
-    const result = await dashboardApiGet<OverviewPayload>(`/api/tool-calls/overview?window_hours=${range}`);
+    const params = new URLSearchParams();
+    params.set("hours", String(range));
+    const org = searchParams.get("org");
+    const team = searchParams.get("team");
+    if (org && org !== "all") {
+      params.set("organization_id", org);
+    }
+    if (team && team !== "all") {
+      params.set("team_id", team);
+    }
+
+    const result = await dashboardApiGet<OverviewPayload>(`/api/tool-calls/overview?${params.toString()}`);
     if (result.status === 401) {
       const next = encodeURIComponent(buildNextPath(pathname, window.location.search));
       router.replace(`/?next=${next}`);

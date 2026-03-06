@@ -4,6 +4,7 @@ from types import SimpleNamespace
 from fastapi import HTTPException
 from starlette.requests import Request
 
+from app.core.authz import AuthzContext, Role
 from app.routes.tool_calls import (
     list_tool_calls,
     tool_calls_connectors,
@@ -267,3 +268,34 @@ def test_tool_calls_overview_and_breakdown(monkeypatch):
 
     connectors = asyncio.run(tool_calls_connectors(_request(), days=7))
     assert any(item["connector"] == "linear" for item in connectors["items"])
+
+
+def test_tool_calls_overview_member_org_scope_forbidden(monkeypatch):
+    class _Client:
+        def table(self, _name: str):
+            return SimpleNamespace(select=lambda *_args, **_kwargs: self)
+
+    async def _fake_user(_request: Request) -> str:
+        return "user-1"
+
+    async def _fake_authz_ctx(_request: Request, *, user_id: str, supabase):
+        assert user_id == "user-1"
+        assert supabase is not None
+        return AuthzContext(user_id="user-1", role=Role.MEMBER, org_ids={1}, team_ids={11})
+
+    monkeypatch.setattr("app.routes.tool_calls.get_authenticated_user_id", _fake_user)
+    monkeypatch.setattr("app.routes.tool_calls.get_authz_context", _fake_authz_ctx)
+    monkeypatch.setattr("app.routes.tool_calls.create_client", lambda *_args, **_kwargs: _Client())
+    monkeypatch.setattr(
+        "app.routes.tool_calls.get_settings",
+        lambda: SimpleNamespace(supabase_url="https://example.supabase.co", supabase_service_role_key="service-role-key"),
+    )
+
+    try:
+        asyncio.run(tool_calls_overview(_request(), hours=24, organization_id=1))
+    except HTTPException as exc:
+        assert exc.status_code == 403
+        assert isinstance(exc.detail, dict)
+        assert exc.detail.get("reason") == "member_org_scope_forbidden"
+    else:
+        assert False, "expected HTTPException"
