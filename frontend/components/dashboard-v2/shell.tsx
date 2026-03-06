@@ -211,7 +211,7 @@ export default function DashboardV2Shell({ children }: { children: React.ReactNo
           signingOut={signingOut}
           onSignOut={() => void handleSignOut()}
         />
-        <SidebarInset className="min-w-0">
+        <SidebarInset className="min-w-0 md:ml-[--sidebar-width]">
           <DashboardTopbar
             title={title}
             globalSearchEnabled={globalSearchEnabled}
