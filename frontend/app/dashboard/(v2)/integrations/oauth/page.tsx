@@ -127,9 +127,10 @@ export default function DashboardOAuthConnectionsPage() {
   const [policyError, setPolicyError] = useState<string | null>(null);
   const [oauthPolicy, setOauthPolicy] = useState<OrganizationOAuthPolicyPayload["item"] | null>(null);
   const [canManagePolicy, setCanManagePolicy] = useState(false);
-  const [allowedDraft, setAllowedDraft] = useState("");
-  const [requiredDraft, setRequiredDraft] = useState("");
-  const [blockedDraft, setBlockedDraft] = useState("");
+  const [activePolicyTab, setActivePolicyTab] = useState<"allowed" | "required" | "blocked">("allowed");
+  const [allowedDraft, setAllowedDraft] = useState<string[]>([]);
+  const [requiredDraft, setRequiredDraft] = useState<string[]>([]);
+  const [blockedDraft, setBlockedDraft] = useState<string[]>([]);
   const [savingPolicy, setSavingPolicy] = useState(false);
   const [policySaveMessage, setPolicySaveMessage] = useState<string | null>(null);
 
@@ -196,20 +197,36 @@ export default function DashboardOAuthConnectionsPage() {
     }
     setOauthPolicy(res.data.item);
     const policy = res.data.item.policy_json ?? {};
-    const toDraft = (items: string[] | undefined) => (Array.isArray(items) ? items.join(", ") : "");
-    setAllowedDraft(toDraft(policy.allowed_providers));
-    setRequiredDraft(toDraft(policy.required_providers));
-    setBlockedDraft(toDraft(policy.blocked_providers));
+    const normalizeProviders = (items: string[] | undefined): string[] => {
+      if (!Array.isArray(items)) {
+        return [];
+      }
+      return Array.from(
+        new Set(items.map((item) => String(item ?? "").trim().toLowerCase()).filter((item) => item.length > 0))
+      ).sort();
+    };
+    setAllowedDraft(normalizeProviders(policy.allowed_providers));
+    setRequiredDraft(normalizeProviders(policy.required_providers));
+    setBlockedDraft(normalizeProviders(policy.blocked_providers));
     setPolicySaveMessage(null);
     setPolicyLoading(false);
   }, [handle401, scope.organizationId, scope.scope]);
 
-  const toProviderList = useCallback((raw: string): string[] => {
-    const values = raw
-      .split(/[\n,]/g)
-      .map((item) => item.trim().toLowerCase())
-      .filter((item) => item.length > 0);
-    return Array.from(new Set(values)).sort();
+  const toggleProvider = useCallback((target: "allowed" | "required" | "blocked", provider: string) => {
+    const apply = (prev: string[]) => {
+      if (prev.includes(provider)) {
+        return prev.filter((item) => item !== provider);
+      }
+      return [...prev, provider].sort();
+    };
+    if (target === "allowed") {
+      setAllowedDraft(apply);
+    } else if (target === "required") {
+      setRequiredDraft(apply);
+    } else {
+      setBlockedDraft(apply);
+    }
+    setPolicySaveMessage(null);
   }, []);
 
   const saveOrgPolicy = useCallback(async () => {
@@ -223,9 +240,9 @@ export default function DashboardOAuthConnectionsPage() {
     const response = await dashboardApiRequest<OrganizationOAuthPolicyPayload>(`/api/organizations/${scope.organizationId}/oauth-policy`, {
       method: "PATCH",
       body: {
-        allowed_providers: toProviderList(allowedDraft),
-        required_providers: toProviderList(requiredDraft),
-        blocked_providers: toProviderList(blockedDraft),
+        allowed_providers: allowedDraft,
+        required_providers: requiredDraft,
+        blocked_providers: blockedDraft,
         approval_workflow:
           currentPolicy && typeof currentPolicy.approval_workflow === "object"
             ? currentPolicy.approval_workflow
@@ -250,7 +267,7 @@ export default function DashboardOAuthConnectionsPage() {
     setOauthPolicy(response.data.item);
     setPolicySaveMessage("OAuth governance policy updated.");
     setSavingPolicy(false);
-  }, [allowedDraft, blockedDraft, canManagePolicy, handle401, oauthPolicy?.policy_json, requiredDraft, scope.organizationId, scope.scope, toProviderList]);
+  }, [allowedDraft, blockedDraft, canManagePolicy, handle401, oauthPolicy?.policy_json, requiredDraft, scope.organizationId, scope.scope]);
 
   const handleConnect = useCallback(
     async (provider: "notion" | "linear") => {
@@ -338,6 +355,9 @@ export default function DashboardOAuthConnectionsPage() {
   const allowedProviders = Array.isArray(policyJson.allowed_providers) ? policyJson.allowed_providers : [];
   const requiredProviders = Array.isArray(policyJson.required_providers) ? policyJson.required_providers : [];
   const blockedProviders = Array.isArray(policyJson.blocked_providers) ? policyJson.blocked_providers : [];
+  const providerCatalog = useMemo(() => {
+    return Array.from(new Set(["notion", "linear", ...allowedDraft, ...requiredDraft, ...blockedDraft])).sort();
+  }, [allowedDraft, blockedDraft, requiredDraft]);
 
   if (scope.scope !== "user") {
     return (
@@ -377,37 +397,52 @@ export default function DashboardOAuthConnectionsPage() {
               {scope.scope === "org" ? (
                 <div className="space-y-3 rounded-md border border-border p-3">
                   <p className="text-sm font-medium">Policy Editor</p>
-                  <p className="text-xs text-muted-foreground">
-                    Comma-separated provider list. Example: <code>notion, linear</code>
-                  </p>
-                  <div className="grid gap-3 md:grid-cols-3">
-                    <label className="space-y-1 text-xs">
-                      <span className="text-muted-foreground">Allowed Providers</span>
-                      <textarea
-                        className="ds-input min-h-[92px] w-full rounded-md px-3 py-2 text-sm"
-                        value={allowedDraft}
-                        onChange={(event) => setAllowedDraft(event.target.value)}
-                        disabled={!canManagePolicy || savingPolicy}
-                      />
-                    </label>
-                    <label className="space-y-1 text-xs">
-                      <span className="text-muted-foreground">Required Providers</span>
-                      <textarea
-                        className="ds-input min-h-[92px] w-full rounded-md px-3 py-2 text-sm"
-                        value={requiredDraft}
-                        onChange={(event) => setRequiredDraft(event.target.value)}
-                        disabled={!canManagePolicy || savingPolicy}
-                      />
-                    </label>
-                    <label className="space-y-1 text-xs">
-                      <span className="text-muted-foreground">Blocked Providers</span>
-                      <textarea
-                        className="ds-input min-h-[92px] w-full rounded-md px-3 py-2 text-sm"
-                        value={blockedDraft}
-                        onChange={(event) => setBlockedDraft(event.target.value)}
-                        disabled={!canManagePolicy || savingPolicy}
-                      />
-                    </label>
+                  <div className="flex flex-wrap items-center gap-2">
+                    {[
+                      { key: "allowed" as const, label: "Allowed Providers" },
+                      { key: "required" as const, label: "Required Providers" },
+                      { key: "blocked" as const, label: "Blocked Providers" },
+                    ].map((tab) => (
+                      <Button
+                        key={tab.key}
+                        type="button"
+                        onClick={() => setActivePolicyTab(tab.key)}
+                        className={`h-9 rounded-md px-3 text-xs ${
+                          activePolicyTab === tab.key ? "bg-sidebar-accent text-sidebar-accent-foreground" : "ds-btn"
+                        }`}
+                        disabled={savingPolicy}
+                      >
+                        {tab.label}
+                      </Button>
+                    ))}
+                  </div>
+
+                  <div className="space-y-2 rounded-md border border-border p-3">
+                    <p className="text-xs text-muted-foreground">
+                      Toggle providers for <span className="font-medium text-foreground">{activePolicyTab}</span> policy.
+                    </p>
+                    <div className="grid gap-2 sm:grid-cols-2">
+                      {providerCatalog.map((provider) => {
+                        const checked =
+                          activePolicyTab === "allowed"
+                            ? allowedDraft.includes(provider)
+                            : activePolicyTab === "required"
+                              ? requiredDraft.includes(provider)
+                              : blockedDraft.includes(provider);
+                        return (
+                          <label key={provider} className="flex items-center justify-between rounded-md border border-border px-3 py-2 text-sm">
+                            <span>{provider}</span>
+                            <input
+                              type="checkbox"
+                              checked={checked}
+                              onChange={() => toggleProvider(activePolicyTab, provider)}
+                              disabled={!canManagePolicy || savingPolicy}
+                              className="h-4 w-4 accent-primary"
+                            />
+                          </label>
+                        );
+                      })}
+                    </div>
                   </div>
                   <div className="flex items-center gap-2">
                     <Button
