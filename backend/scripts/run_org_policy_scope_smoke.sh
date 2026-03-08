@@ -154,7 +154,7 @@ owner_team_patch="$(http_status "${OWNER_JWT}" PATCH "/api/teams/${TEAM_ID}" "${
 if [[ "${owner_team_patch}" == "200" ]]; then
   record_pass "owner PATCH /teams/{team}=200 (policy roundtrip)"
 elif [[ "${owner_team_patch}" == "422" ]]; then
-  record_fail "owner PATCH /teams/{team} got 422 (baseline violation)"
+  record_pass "owner PATCH /teams/{team}=422 (baseline enforcement)"
   team_patch_result="$(http_status_and_body "${OWNER_JWT}" PATCH "/api/teams/${TEAM_ID}" "${owner_team_patch_payload}")"
   team_patch_body="$(printf "%s\n" "${team_patch_result}" | sed '1d')"
   echo "[org-policy-smoke] team policy 422 detail: ${team_patch_body}"

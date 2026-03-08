@@ -16,19 +16,31 @@ check_role() {
   local expected_role="$1"
   local token="$2"
 
+  local out
+  local status
   local body
-  body="$(curl -sS -H "Authorization: Bearer ${token}" "${API_BASE_URL}/api/me/permissions")"
+  out="$(mktemp)"
+  status="$(curl -sS -o "${out}" -w "%{http_code}" -H "Authorization: Bearer ${token}" "${API_BASE_URL}/api/me/permissions")"
+  body="$(cat "${out}")"
+  rm -f "${out}"
 
-  python3 - "${expected_role}" "${body}" <<'PY'
+  python3 - "${expected_role}" "${status}" "${body}" <<'PY'
 import json
 import sys
 
 expected = sys.argv[1]
-raw = sys.argv[2]
+status = sys.argv[2]
+raw = sys.argv[3]
 try:
     payload = json.loads(raw)
 except Exception:
-    print(f"[rbac-token-validate] ERROR: /api/me/permissions is not json for expected={expected}")
+    print(f"[rbac-token-validate] ERROR: /api/me/permissions is not json for expected={expected}, status={status}")
+    raise SystemExit(1)
+
+if status != "200":
+    error = payload.get("error") if isinstance(payload.get("error"), dict) else {}
+    message = error.get("message") or payload.get("detail")
+    print(f"[rbac-token-validate] ERROR: expected role={expected}, status={status}, message={message!r}")
     raise SystemExit(1)
 
 role = payload.get("role")
