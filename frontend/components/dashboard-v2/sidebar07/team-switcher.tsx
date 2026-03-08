@@ -10,7 +10,7 @@ type TeamSwitcherProps = {
   currentOrg: string;
   orgIds: number[];
   isMemberRole: boolean;
-  setGlobalQuery: (next: Partial<Record<"org" | "team" | "range", string>>) => void;
+  setGlobalQuery: (next: Partial<Record<"scope" | "org" | "team" | "range", string>>) => void;
   onAddOrganization: () => void;
   roleLabel: string;
   collapsed: boolean;
@@ -51,7 +51,7 @@ export function TeamSwitcher({
       >
         <DropdownMenuLabel className="text-xs font-light text-muted-foreground">Organizations</DropdownMenuLabel>
         {orgIds.length > 1 && !isMemberRole ? (
-          <DropdownMenuItem className="gap-2 p-2 text-sm font-light" onClick={() => setGlobalQuery({ org: "all" })}>
+          <DropdownMenuItem className="gap-2 p-2 text-sm font-light" onClick={() => setGlobalQuery({ scope: "user", org: "all", team: "all" })}>
             <div className="flex h-6 w-6 items-center justify-center rounded-md border">
               <GalleryVerticalEnd className="h-3.5 w-3.5" strokeWidth={1.5} />
             </div>
@@ -63,7 +63,7 @@ export function TeamSwitcher({
         {orgIds.map((id, index) => {
           const Icon = ORG_ICONS[index % ORG_ICONS.length];
           return (
-            <DropdownMenuItem key={`org-${id}`} className="gap-2 p-2 text-sm font-light" onClick={() => setGlobalQuery({ org: String(id) })}>
+            <DropdownMenuItem key={`org-${id}`} className="gap-2 p-2 text-sm font-light" onClick={() => setGlobalQuery({ scope: "org", org: String(id), team: "all" })}>
               <div className="flex h-6 w-6 items-center justify-center rounded-md border">
                 <Icon className="h-3.5 w-3.5" strokeWidth={1.5} />
               </div>

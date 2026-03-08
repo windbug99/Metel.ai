@@ -17,7 +17,7 @@ type AppSidebarProps = {
   currentOrg: string;
   orgIds: number[];
   isMemberRole: boolean;
-  setGlobalQuery: (next: Partial<Record<"org" | "team" | "range", string>>) => void;
+  setGlobalQuery: (next: Partial<Record<"scope" | "org" | "team" | "range", string>>) => void;
   onAddOrganization: () => void;
   signingOut: boolean;
   onSignOut: () => void;

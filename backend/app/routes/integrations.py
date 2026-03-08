@@ -31,6 +31,89 @@ class WebhookUpdateRequest(BaseModel):
     is_active: bool | None = None
 
 
+def _normalize_optional_int(value: int | None) -> int | None:
+    if value is None:
+        return None
+    if isinstance(value, bool):
+        return None
+    if isinstance(value, int):
+        return value
+    text = str(value).strip()
+    if not text:
+        return None
+    try:
+        return int(text)
+    except ValueError:
+        return None
+
+
+def _resolve_scoped_user_ids(
+    *,
+    supabase,
+    authz_ctx,
+    request_user_id: str,
+    organization_id: int | None,
+    team_id: int | None,
+) -> list[str]:
+    normalized_organization_id = _normalize_optional_int(organization_id)
+    normalized_team_id = _normalize_optional_int(team_id)
+
+    if normalized_organization_id is None and normalized_team_id is None:
+        return [request_user_id]
+
+    if normalized_organization_id is not None:
+        if authz_ctx.role == Role.MEMBER:
+            raise HTTPException(status_code=403, detail={"code": "access_denied", "reason": "member_org_scope_forbidden"})
+        if normalized_organization_id not in authz_ctx.org_ids:
+            raise HTTPException(status_code=403, detail={"code": "access_denied", "reason": "organization_scope_forbidden"})
+
+    if normalized_team_id is not None:
+        if authz_ctx.role == Role.MEMBER and normalized_team_id not in authz_ctx.team_ids:
+            raise HTTPException(status_code=403, detail={"code": "access_denied", "reason": "team_scope_forbidden"})
+
+        team_rows = (
+            supabase.table("teams")
+            .select("id,organization_id")
+            .eq("id", normalized_team_id)
+            .limit(1)
+            .execute()
+        ).data or []
+        if not team_rows:
+            return []
+
+        team_org_raw = team_rows[0].get("organization_id")
+        try:
+            team_org_id = int(team_org_raw) if team_org_raw is not None else None
+        except (TypeError, ValueError):
+            team_org_id = None
+        if normalized_organization_id is not None and team_org_id != normalized_organization_id:
+            raise HTTPException(status_code=403, detail={"code": "access_denied", "reason": "team_scope_forbidden"})
+
+        if authz_ctx.role in {Role.ADMIN, Role.OWNER}:
+            has_org_scope = team_org_id is not None and team_org_id in authz_ctx.org_ids
+            has_team_scope = normalized_team_id in authz_ctx.team_ids
+            if not has_org_scope and not has_team_scope:
+                raise HTTPException(status_code=403, detail={"code": "access_denied", "reason": "team_scope_forbidden"})
+
+        team_member_rows = (
+            supabase.table("team_memberships")
+            .select("user_id")
+            .eq("team_id", normalized_team_id)
+            .execute()
+        ).data or []
+        team_user_ids = [str(row.get("user_id") or "").strip() for row in team_member_rows if str(row.get("user_id") or "").strip()]
+        return sorted(set(team_user_ids))
+
+    org_member_rows = (
+        supabase.table("org_memberships")
+        .select("user_id")
+        .eq("organization_id", normalized_organization_id)
+        .execute()
+    ).data or []
+    org_user_ids = [str(row.get("user_id") or "").strip() for row in org_member_rows if str(row.get("user_id") or "").strip()]
+    return sorted(set(org_user_ids)) or [request_user_id]
+
+
 def _normalize_event_types(raw: list[str] | None) -> list[str]:
     if raw is None:
         return []
@@ -57,19 +140,34 @@ def _normalize_event_types(raw: list[str] | None) -> list[str]:
 
 
 @router.get("/webhooks")
-async def list_webhooks(request: Request):
+async def list_webhooks(
+    request: Request,
+    organization_id: int | None = Query(default=None),
+    team_id: int | None = Query(default=None),
+):
     user_id = await get_authenticated_user_id(request)
     settings = get_settings()
     supabase = create_client(settings.supabase_url, settings.supabase_service_role_key)
     authz_ctx = await get_authz_context(request, user_id=user_id, supabase=supabase)
     require_min_role(authz_ctx, Role.MEMBER, method=request.method)
-    rows = (
-        supabase.table("webhook_subscriptions")
-        .select("id,name,endpoint_url,event_types,is_active,last_delivery_at,created_at,updated_at")
-        .eq("user_id", user_id)
-        .order("created_at", desc=True)
-        .execute()
-    ).data or []
+    scoped_user_ids = _resolve_scoped_user_ids(
+        supabase=supabase,
+        authz_ctx=authz_ctx,
+        request_user_id=user_id,
+        organization_id=organization_id,
+        team_id=team_id,
+    )
+    if not scoped_user_ids:
+        rows = []
+    else:
+        query = supabase.table("webhook_subscriptions").select(
+            "id,name,endpoint_url,event_types,is_active,last_delivery_at,created_at,updated_at"
+        )
+        if len(scoped_user_ids) == 1:
+            query = query.eq("user_id", scoped_user_ids[0])
+        else:
+            query = query.in_("user_id", scoped_user_ids)
+        rows = query.order("created_at", desc=True).execute().data or []
     return {"items": rows, "count": len(rows)}
 
 
@@ -180,6 +278,8 @@ async def list_deliveries(
     status: str = Query("all"),
     event_type: str = Query(""),
     webhook_id: int | None = Query(default=None),
+    organization_id: int | None = Query(default=None),
+    team_id: int | None = Query(default=None),
     limit: int = Query(50, ge=1, le=300),
 ):
     user_id = await get_authenticated_user_id(request)
@@ -187,19 +287,31 @@ async def list_deliveries(
     supabase = create_client(settings.supabase_url, settings.supabase_service_role_key)
     authz_ctx = await get_authz_context(request, user_id=user_id, supabase=supabase)
     require_min_role(authz_ctx, Role.MEMBER, method=request.method)
-    normalized_status = status.strip().lower()
-    query = (
-        supabase.table("webhook_deliveries")
-        .select("id,subscription_id,event_type,status,http_status,error_message,retry_count,next_retry_at,delivered_at,created_at")
-        .eq("user_id", user_id)
+    scoped_user_ids = _resolve_scoped_user_ids(
+        supabase=supabase,
+        authz_ctx=authz_ctx,
+        request_user_id=user_id,
+        organization_id=organization_id,
+        team_id=team_id,
     )
-    if normalized_status and normalized_status != "all":
-        query = query.eq("status", normalized_status)
-    if event_type.strip():
-        query = query.eq("event_type", event_type.strip())
-    if webhook_id is not None:
-        query = query.eq("subscription_id", webhook_id)
-    rows = query.order("created_at", desc=True).limit(limit).execute().data or []
+    normalized_status = status.strip().lower()
+    if not scoped_user_ids:
+        rows = []
+    else:
+        query = supabase.table("webhook_deliveries").select(
+            "id,subscription_id,event_type,status,http_status,error_message,retry_count,next_retry_at,delivered_at,created_at"
+        )
+        if len(scoped_user_ids) == 1:
+            query = query.eq("user_id", scoped_user_ids[0])
+        else:
+            query = query.in_("user_id", scoped_user_ids)
+        if normalized_status and normalized_status != "all":
+            query = query.eq("status", normalized_status)
+        if event_type.strip():
+            query = query.eq("event_type", event_type.strip())
+        if webhook_id is not None:
+            query = query.eq("subscription_id", webhook_id)
+        rows = query.order("created_at", desc=True).limit(limit).execute().data or []
     return {"items": rows, "count": len(rows)}
 
 

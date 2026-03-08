@@ -66,6 +66,77 @@ def _insert_policy_revision(*, supabase, team_id: int | str, user_id: str, sourc
     ).execute()
 
 
+def _load_org_policy_baseline(*, supabase, organization_id: int | None) -> dict[str, Any]:
+    if organization_id is None:
+        return {}
+    try:
+        rows = (
+            supabase.table("org_policies")
+            .select("policy_json")
+            .eq("organization_id", organization_id)
+            .limit(1)
+            .execute()
+        ).data or []
+    except Exception:
+        # Backward compatibility: table may not exist on older environments.
+        return {}
+    if not rows:
+        return {}
+    raw = rows[0].get("policy_json")
+    return _normalize_policy(raw if isinstance(raw, dict) else None)
+
+
+def _enforce_team_policy_baseline(*, baseline: dict[str, Any], candidate: dict[str, Any]) -> None:
+    violations: list[str] = []
+
+    baseline_allow_high_risk = baseline.get("allow_high_risk")
+    if baseline_allow_high_risk is False and candidate.get("allow_high_risk") is not False:
+        violations.append("allow_high_risk")
+
+    baseline_allowed_services = baseline.get("allowed_services")
+    if isinstance(baseline_allowed_services, list):
+        candidate_allowed_services = candidate.get("allowed_services")
+        if not isinstance(candidate_allowed_services, list):
+            violations.append("allowed_services")
+        else:
+            base_set = set(str(item) for item in baseline_allowed_services)
+            candidate_set = set(str(item) for item in candidate_allowed_services)
+            if not candidate_set.issubset(base_set):
+                violations.append("allowed_services")
+
+    baseline_allowed_linear_team_ids = baseline.get("allowed_linear_team_ids")
+    if isinstance(baseline_allowed_linear_team_ids, list):
+        candidate_allowed_linear_team_ids = candidate.get("allowed_linear_team_ids")
+        if not isinstance(candidate_allowed_linear_team_ids, list):
+            violations.append("allowed_linear_team_ids")
+        else:
+            base_set = set(str(item) for item in baseline_allowed_linear_team_ids)
+            candidate_set = set(str(item) for item in candidate_allowed_linear_team_ids)
+            if not candidate_set.issubset(base_set):
+                violations.append("allowed_linear_team_ids")
+
+    baseline_deny_tools = baseline.get("deny_tools")
+    if isinstance(baseline_deny_tools, list):
+        candidate_deny_tools = candidate.get("deny_tools")
+        if not isinstance(candidate_deny_tools, list):
+            violations.append("deny_tools")
+        else:
+            base_set = set(str(item) for item in baseline_deny_tools)
+            candidate_set = set(str(item) for item in candidate_deny_tools)
+            if not base_set.issubset(candidate_set):
+                violations.append("deny_tools")
+
+    if violations:
+        raise HTTPException(
+            status_code=422,
+            detail={
+                "code": "policy_baseline_violation",
+                "reason": "team_policy_cannot_weaken_organization_baseline",
+                "fields": sorted(set(violations)),
+            },
+        )
+
+
 def _resolve_organization_id(*, authz_ctx: AuthzContext, requested_organization_id: int | None) -> int:
     if requested_organization_id is not None:
         if requested_organization_id not in authz_ctx.org_ids:
@@ -207,6 +278,8 @@ async def create_team(request: Request, body: TeamCreateRequest):
     organization_id = _resolve_organization_id(authz_ctx=authz_ctx, requested_organization_id=body.organization_id)
     now = datetime.now(timezone.utc).isoformat()
     policy_json = _normalize_policy(body.policy_json)
+    org_baseline = _load_org_policy_baseline(supabase=supabase, organization_id=organization_id)
+    _enforce_team_policy_baseline(baseline=org_baseline, candidate=policy_json)
 
     created = (
         supabase.table("teams")
@@ -255,7 +328,7 @@ async def update_team(request: Request, team_id: str, body: TeamUpdateRequest):
     authz_ctx = await get_authz_context(request, user_id=user_id, supabase=supabase)
     require_min_role(authz_ctx, Role.ADMIN, method=request.method)
 
-    _require_team_access(supabase=supabase, authz_ctx=authz_ctx, team_id=team_id, write=True)
+    team = _require_team_access(supabase=supabase, authz_ctx=authz_ctx, team_id=team_id, write=True)
 
     payload: dict[str, Any] = {"updated_at": datetime.now(timezone.utc).isoformat()}
     fields = body.model_fields_set
@@ -270,6 +343,13 @@ async def update_team(request: Request, team_id: str, body: TeamUpdateRequest):
 
     if "policy_json" in fields:
         policy_json = _normalize_policy(body.policy_json)
+        org_id_raw = team.get("organization_id") if team else None
+        try:
+            org_id = int(org_id_raw) if org_id_raw is not None else None
+        except (TypeError, ValueError):
+            org_id = None
+        org_baseline = _load_org_policy_baseline(supabase=supabase, organization_id=org_id)
+        _enforce_team_policy_baseline(baseline=org_baseline, candidate=policy_json)
         now = datetime.now(timezone.utc).isoformat()
         existing = (
             supabase.table("team_policies")

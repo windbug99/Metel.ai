@@ -4,10 +4,11 @@ import { Select } from "@/components/ui/select";
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
 import { DateRangePicker } from "@/components/ui/date-range-picker";
-import { useCallback, useEffect, useState } from "react";
-import { usePathname, useRouter } from "next/navigation";
+import { useCallback, useEffect, useMemo, useState } from "react";
+import { usePathname, useRouter, useSearchParams } from "next/navigation";
 
 import { buildNextPath, dashboardApiGet } from "../../../../../lib/dashboard-v2-client";
+import { resolveDashboardScope } from "../../../../../lib/dashboard-scope";
 
 type ToolCallItem = {
   id: number;
@@ -79,6 +80,8 @@ type ConnectorPayload = {
 export default function DashboardMcpUsagePage() {
   const pathname = usePathname();
   const router = useRouter();
+  const searchParams = useSearchParams();
+  const scope = useMemo(() => resolveDashboardScope(searchParams), [searchParams]);
 
   const [toolCalls, setToolCalls] = useState<ToolCallItem[]>([]);
   const [toolCallsSummary, setToolCallsSummary] = useState<ToolCallSummary | null>(null);
@@ -108,6 +111,12 @@ export default function DashboardMcpUsagePage() {
     const query = new URLSearchParams();
     query.set("limit", "20");
     query.set("status", statusFilter);
+    if (scope.organizationId !== null) {
+      query.set("organization_id", String(scope.organizationId));
+    }
+    if (scope.teamId !== null) {
+      query.set("team_id", String(scope.teamId));
+    }
     if (toolNameFilter.trim()) {
       query.set("tool_name", toolNameFilter.trim());
     }
@@ -138,16 +147,32 @@ export default function DashboardMcpUsagePage() {
     setToolCalls(Array.isArray(result.data.items) ? result.data.items : []);
     setToolCallsSummary(result.data.summary ?? null);
     setToolCallsLoading(false);
-  }, [fromFilter, handle401, statusFilter, toFilter, toolNameFilter]);
+  }, [fromFilter, handle401, scope.organizationId, scope.teamId, statusFilter, toFilter, toolNameFilter]);
 
   const fetchTrendAndBreakdown = useCallback(async () => {
     setTrendLoading(true);
     setTrendError(null);
 
+    const trendsQuery = new URLSearchParams({ days: "7", bucket: "day" });
+    const breakdownQuery = new URLSearchParams({ days: "7" });
+    const connectorsQuery = new URLSearchParams({ days: "7" });
+    if (scope.organizationId !== null) {
+      const organizationId = String(scope.organizationId);
+      trendsQuery.set("organization_id", organizationId);
+      breakdownQuery.set("organization_id", organizationId);
+      connectorsQuery.set("organization_id", organizationId);
+    }
+    if (scope.teamId !== null) {
+      const teamId = String(scope.teamId);
+      trendsQuery.set("team_id", teamId);
+      breakdownQuery.set("team_id", teamId);
+      connectorsQuery.set("team_id", teamId);
+    }
+
     const [trendsRes, breakdownRes, connectorsRes] = await Promise.all([
-      dashboardApiGet<TrendPayload>("/api/tool-calls/trends?days=7&bucket=day"),
-      dashboardApiGet<FailureBreakdownPayload>("/api/tool-calls/failure-breakdown?days=7"),
-      dashboardApiGet<ConnectorPayload>("/api/tool-calls/connectors?days=7"),
+      dashboardApiGet<TrendPayload>(`/api/tool-calls/trends?${trendsQuery.toString()}`),
+      dashboardApiGet<FailureBreakdownPayload>(`/api/tool-calls/failure-breakdown?${breakdownQuery.toString()}`),
+      dashboardApiGet<ConnectorPayload>(`/api/tool-calls/connectors?${connectorsQuery.toString()}`),
     ]);
 
     if (trendsRes.status === 401 || breakdownRes.status === 401 || connectorsRes.status === 401) {
@@ -173,7 +198,7 @@ export default function DashboardMcpUsagePage() {
     setFailureBreakdown(breakdownRes.data ?? null);
     setConnectorSummary(Array.isArray(connectorsRes.data.items) ? connectorsRes.data.items : []);
     setTrendLoading(false);
-  }, [handle401]);
+  }, [handle401, scope.organizationId, scope.teamId]);
 
   useEffect(() => {
     void fetchToolCalls();

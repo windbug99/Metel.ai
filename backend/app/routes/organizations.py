@@ -50,6 +50,17 @@ class OrganizationRoleRequestReviewRequest(BaseModel):
     decision: str = Field(min_length=1, max_length=20)
 
 
+class OrganizationPolicyUpdateRequest(BaseModel):
+    policy_json: dict[str, Any] = Field(default_factory=dict)
+
+
+class OrganizationOAuthPolicyUpdateRequest(BaseModel):
+    allowed_providers: list[str] = Field(default_factory=list)
+    required_providers: list[str] = Field(default_factory=list)
+    blocked_providers: list[str] = Field(default_factory=list)
+    approval_workflow: dict[str, Any] | None = None
+
+
 def _is_org_owner(*, supabase, user_id: str, organization_id: str | int) -> bool:
     membership_rows = (
         supabase.table("org_memberships")
@@ -94,6 +105,42 @@ def _is_org_admin_or_owner(*, supabase, user_id: str, organization_id: str | int
     return role in {"owner", "admin"}
 
 
+def _normalize_provider_list(items: list[str] | None) -> list[str]:
+    if not isinstance(items, list):
+        return []
+    deduped = {str(item or "").strip().lower() for item in items if str(item or "").strip()}
+    return sorted(deduped)
+
+
+def _normalize_org_oauth_policy(body: OrganizationOAuthPolicyUpdateRequest) -> dict[str, Any]:
+    allowed = _normalize_provider_list(body.allowed_providers)
+    required = _normalize_provider_list(body.required_providers)
+    blocked = _normalize_provider_list(body.blocked_providers)
+
+    required_set = set(required)
+    allowed_set = set(allowed)
+    if allowed_set and not required_set.issubset(allowed_set):
+        raise HTTPException(status_code=400, detail="invalid_oauth_policy:required_not_subset_of_allowed")
+    if set(blocked).intersection(required_set):
+        raise HTTPException(status_code=400, detail="invalid_oauth_policy:blocked_conflicts_required")
+
+    payload: dict[str, Any] = {
+        "allowed_providers": allowed,
+        "required_providers": required,
+        "blocked_providers": blocked,
+    }
+    if isinstance(body.approval_workflow, dict):
+        payload["approval_workflow"] = body.approval_workflow
+    return payload
+
+
+def _sanitize_oauth_policy_for_member(raw: dict[str, Any]) -> dict[str, Any]:
+    payload = dict(raw or {})
+    for key in ("approval_workflow", "provider_credentials", "secrets", "token_templates"):
+        payload.pop(key, None)
+    return payload
+
+
 def _require_org_admin_or_owner(*, supabase, user_id: str, organization_id: str | int) -> str:
     role = _org_member_role(supabase=supabase, user_id=user_id, organization_id=organization_id)
     if role not in {"owner", "admin"}:
@@ -113,6 +160,117 @@ def _user_email(*, supabase, user_id: str) -> str | None:
         return None
     value = str(rows[0].get("email") or "").strip().lower()
     return value or None
+
+
+@router.get("/{organization_id}/policy")
+async def get_organization_policy(request: Request, organization_id: str):
+    user_id = await get_authenticated_user_id(request)
+    settings = get_settings()
+    supabase = create_client(settings.supabase_url, settings.supabase_service_role_key)
+    authz_ctx = await get_authz_context(request, user_id=user_id, supabase=supabase)
+    require_min_role(authz_ctx, Role.MEMBER, method=request.method)
+    role = _org_member_role(supabase=supabase, user_id=user_id, organization_id=organization_id)
+    if role not in {"owner", "admin", "member"}:
+        raise HTTPException(status_code=404, detail="organization_not_found")
+    rows = (
+        supabase.table("org_policies")
+        .select("organization_id,policy_json,updated_at")
+        .eq("organization_id", organization_id)
+        .limit(1)
+        .execute()
+    ).data or []
+    row = rows[0] if rows else {}
+    return {
+        "item": {
+            "organization_id": row.get("organization_id", organization_id),
+            "policy_json": row.get("policy_json") if isinstance(row.get("policy_json"), dict) else {},
+            "updated_at": row.get("updated_at"),
+        }
+    }
+
+
+@router.patch("/{organization_id}/policy")
+async def update_organization_policy(request: Request, organization_id: str, body: OrganizationPolicyUpdateRequest):
+    user_id = await get_authenticated_user_id(request)
+    settings = get_settings()
+    supabase = create_client(settings.supabase_url, settings.supabase_service_role_key)
+    authz_ctx = await get_authz_context(request, user_id=user_id, supabase=supabase)
+    require_min_role(authz_ctx, Role.ADMIN, method=request.method)
+    _require_org_admin_or_owner(supabase=supabase, user_id=user_id, organization_id=organization_id)
+    now = datetime.now(timezone.utc).isoformat()
+    payload = {
+        "organization_id": organization_id,
+        "policy_json": body.policy_json if isinstance(body.policy_json, dict) else {},
+        "updated_by": user_id,
+        "updated_at": now,
+        "created_at": now,
+    }
+    rows = supabase.table("org_policies").upsert(payload, on_conflict="organization_id").execute().data or []
+    item = rows[0] if rows else payload
+    return {"item": item}
+
+
+@router.get("/{organization_id}/oauth-policy")
+async def get_organization_oauth_policy(request: Request, organization_id: str):
+    user_id = await get_authenticated_user_id(request)
+    settings = get_settings()
+    supabase = create_client(settings.supabase_url, settings.supabase_service_role_key)
+    authz_ctx = await get_authz_context(request, user_id=user_id, supabase=supabase)
+    require_min_role(authz_ctx, Role.MEMBER, method=request.method)
+    role = _org_member_role(supabase=supabase, user_id=user_id, organization_id=organization_id)
+    if role not in {"owner", "admin", "member"}:
+        raise HTTPException(status_code=404, detail="organization_not_found")
+
+    rows = (
+        supabase.table("org_oauth_policies")
+        .select("organization_id,policy_json,version,updated_at")
+        .eq("organization_id", organization_id)
+        .limit(1)
+        .execute()
+    ).data or []
+    row = rows[0] if rows else {}
+    raw_policy = row.get("policy_json") if isinstance(row.get("policy_json"), dict) else {}
+    policy_json = _sanitize_oauth_policy_for_member(raw_policy) if role == "member" else raw_policy
+    return {
+        "item": {
+            "organization_id": row.get("organization_id", organization_id),
+            "policy_json": policy_json,
+            "version": int(row.get("version") or 1),
+            "updated_at": row.get("updated_at"),
+        }
+    }
+
+
+@router.patch("/{organization_id}/oauth-policy")
+async def update_organization_oauth_policy(request: Request, organization_id: str, body: OrganizationOAuthPolicyUpdateRequest):
+    user_id = await get_authenticated_user_id(request)
+    settings = get_settings()
+    supabase = create_client(settings.supabase_url, settings.supabase_service_role_key)
+    authz_ctx = await get_authz_context(request, user_id=user_id, supabase=supabase)
+    require_min_role(authz_ctx, Role.ADMIN, method=request.method)
+    _require_org_admin_or_owner(supabase=supabase, user_id=user_id, organization_id=organization_id)
+
+    normalized = _normalize_org_oauth_policy(body)
+    existing_rows = (
+        supabase.table("org_oauth_policies")
+        .select("version")
+        .eq("organization_id", organization_id)
+        .limit(1)
+        .execute()
+    ).data or []
+    next_version = int(existing_rows[0].get("version") or 1) + 1 if existing_rows else 1
+    now = datetime.now(timezone.utc).isoformat()
+    payload = {
+        "organization_id": organization_id,
+        "policy_json": normalized,
+        "version": next_version,
+        "updated_by": user_id,
+        "updated_at": now,
+        "created_at": now,
+    }
+    rows = supabase.table("org_oauth_policies").upsert(payload, on_conflict="organization_id").execute().data or []
+    item = rows[0] if rows else payload
+    return {"item": item}
 
 
 @router.get("")
@@ -473,15 +631,18 @@ async def list_organization_role_requests(request: Request, organization_id: str
     supabase = create_client(settings.supabase_url, settings.supabase_service_role_key)
     authz_ctx = await get_authz_context(request, user_id=user_id, supabase=supabase)
     require_min_role(authz_ctx, Role.MEMBER, method=request.method)
-    if not _is_org_member(supabase=supabase, user_id=user_id, organization_id=organization_id):
+    role = _org_member_role(supabase=supabase, user_id=user_id, organization_id=organization_id)
+    if role not in {"owner", "admin", "member"}:
         raise HTTPException(status_code=404, detail="organization_not_found")
-    rows = (
+
+    query = (
         supabase.table("org_role_change_requests")
         .select("id,organization_id,target_user_id,requested_role,reason,status,requested_by,reviewed_by,reviewed_at,created_at,updated_at")
         .eq("organization_id", organization_id)
-        .order("created_at", desc=True)
-        .execute()
-    ).data or []
+    )
+    if role == "member":
+        query = query.eq("requested_by", user_id)
+    rows = query.order("created_at", desc=True).execute().data or []
     return {"items": rows, "count": len(rows)}
 
 

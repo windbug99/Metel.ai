@@ -16,20 +16,30 @@ import { Separator } from "@/components/ui/separator";
 
 type SiteHeaderProps = {
   title: string;
+  breadcrumb: {
+    category: string;
+    menu: string;
+    submenu: string;
+  };
   globalSearchEnabled: boolean;
   currentTeam: string;
   currentRange: string;
+  currentScope: "org" | "team" | "user";
+  currentOrg: string;
   teamIds: number[];
-  setGlobalQuery: (next: Partial<Record<"org" | "team" | "range", string>>) => void;
+  setGlobalQuery: (next: Partial<Record<"scope" | "org" | "team" | "range", string>>) => void;
   triggerRefresh: () => void;
   onToggleSidebar: () => void;
 };
 
 export function SiteHeader({
   title,
+  breadcrumb,
   globalSearchEnabled,
   currentTeam,
   currentRange,
+  currentScope,
+  currentOrg,
   teamIds,
   setGlobalQuery,
   triggerRefresh,
@@ -45,10 +55,16 @@ export function SiteHeader({
         <Separator orientation="vertical" className="mr-2 data-[orientation=vertical]:h-4" />
         <Breadcrumb>
           <BreadcrumbList>
-            <BreadcrumbItem className="hidden md:block">Dashboard</BreadcrumbItem>
-            <BreadcrumbSeparator className="hidden md:block" />
             <BreadcrumbItem>
-              <BreadcrumbPage>{title}</BreadcrumbPage>
+              <BreadcrumbPage>{breadcrumb.category}</BreadcrumbPage>
+            </BreadcrumbItem>
+            <BreadcrumbSeparator />
+            <BreadcrumbItem className="hidden md:block">
+              <BreadcrumbPage>{breadcrumb.menu}</BreadcrumbPage>
+            </BreadcrumbItem>
+            <BreadcrumbSeparator className="hidden md:block" />
+            <BreadcrumbItem className="hidden md:block">
+              <BreadcrumbPage>{breadcrumb.submenu || title}</BreadcrumbPage>
             </BreadcrumbItem>
           </BreadcrumbList>
         </Breadcrumb>
@@ -65,7 +81,24 @@ export function SiteHeader({
         />
         <Select
           value={currentTeam}
-          onChange={(event) => setGlobalQuery({ team: event.target.value })}
+          onChange={(event) => {
+            const value = event.target.value;
+            if (value === "all") {
+              if (currentScope === "team") {
+                if (currentOrg !== "all") {
+                  setGlobalQuery({ scope: "org", team: "all" });
+                } else {
+                  setGlobalQuery({ scope: "user", team: "all", org: "all" });
+                }
+                return;
+              }
+              setGlobalQuery({ team: "all" });
+              return;
+            }
+            if (currentOrg !== "all") {
+              setGlobalQuery({ scope: "team", team: value });
+            }
+          }}
           className="h-8 w-auto min-w-[84px] shrink-0 rounded-md border border-input bg-background px-2 text-xs"
         >
           <option value="all">{teamIds.length === 0 ? "Team: None" : "Team: All"}</option>

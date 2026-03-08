@@ -4,9 +4,10 @@ import { Select } from "@/components/ui/select";
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
 import { useCallback, useEffect, useState } from "react";
-import { usePathname, useRouter } from "next/navigation";
+import { usePathname, useRouter, useSearchParams } from "next/navigation";
 
 import { buildNextPath, dashboardApiGet, dashboardApiRequest } from "../../../../../lib/dashboard-v2-client";
+import { resolveDashboardScope } from "../../../../../lib/dashboard-scope";
 import { supabase } from "../../../../../lib/supabase";
 import AlertBanner from "../../../../../components/dashboard-v2/alert-banner";
 
@@ -22,11 +23,6 @@ type AuditSettings = {
   export_enabled: boolean;
   masking_policy: Record<string, unknown>;
   updated_at?: string | null;
-};
-
-type OrganizationItem = {
-  id: number;
-  name: string;
 };
 
 type TeamItem = {
@@ -48,6 +44,11 @@ function asDate(value?: string | null): string {
 export default function DashboardAuditSettingsPage() {
   const pathname = usePathname();
   const router = useRouter();
+  const searchParams = useSearchParams();
+  const scopeState = resolveDashboardScope(searchParams);
+  const isUserScope = scopeState.scope === "user";
+  const isOrgScope = scopeState.scope === "org";
+  const isTeamScope = scopeState.scope === "team";
 
   const [canReadSettings, setCanReadSettings] = useState(false);
   const [canUpdateSettings, setCanUpdateSettings] = useState(false);
@@ -57,9 +58,7 @@ export default function DashboardAuditSettingsPage() {
   const [exportEnabledDraft, setExportEnabledDraft] = useState(false);
   const [maskingPolicyDraft, setMaskingPolicyDraft] = useState("{}");
 
-  const [organizations, setOrganizations] = useState<OrganizationItem[]>([]);
   const [teams, setTeams] = useState<TeamItem[]>([]);
-  const [organizationFilter, setOrganizationFilter] = useState("");
   const [teamFilter, setTeamFilter] = useState("");
 
   const [loading, setLoading] = useState(true);
@@ -86,27 +85,34 @@ export default function DashboardAuditSettingsPage() {
   }, [handle401]);
 
   const fetchScopeOptions = useCallback(async () => {
-    const [orgRes, teamRes] = await Promise.all([
-      dashboardApiGet<{ items?: OrganizationItem[] }>("/api/organizations"),
-      dashboardApiGet<{ items?: TeamItem[] }>("/api/teams"),
-    ]);
+    if (!isOrgScope || scopeState.organizationId === null) {
+      setTeams([]);
+      return;
+    }
+    const teamRes = await dashboardApiGet<{ items?: TeamItem[] }>(`/api/teams?organization_id=${scopeState.organizationId}`);
 
-    if (orgRes.status === 401 || teamRes.status === 401) {
+    if (teamRes.status === 401) {
       handle401();
       return;
     }
 
-    if (orgRes.ok && orgRes.data) {
-      setOrganizations(Array.isArray(orgRes.data.items) ? orgRes.data.items : []);
-    }
     if (teamRes.ok && teamRes.data) {
       setTeams(Array.isArray(teamRes.data.items) ? teamRes.data.items : []);
+    } else {
+      setTeams([]);
     }
-  }, [handle401]);
+  }, [handle401, isOrgScope, scopeState.organizationId]);
 
   const fetchAuditSettings = useCallback(async () => {
     setLoading(true);
     setError(null);
+    if (isUserScope) {
+      setCanReadSettings(false);
+      setCanUpdateSettings(false);
+      setSettings(null);
+      setLoading(false);
+      return;
+    }
 
     const permissionsRes = await dashboardApiGet<PermissionSnapshot>("/api/me/permissions");
     if (permissionsRes.status === 401) {
@@ -121,7 +127,7 @@ export default function DashboardAuditSettingsPage() {
     }
 
     const canRead = Boolean(permissionsRes.data.permissions?.can_read_audit_settings);
-    const canUpdate = Boolean(permissionsRes.data.permissions?.can_update_audit_settings);
+    const canUpdate = Boolean(permissionsRes.data.permissions?.can_update_audit_settings) && isOrgScope;
     setCanReadSettings(canRead);
     setCanUpdateSettings(canUpdate);
 
@@ -155,7 +161,7 @@ export default function DashboardAuditSettingsPage() {
     setExportEnabledDraft(Boolean(settingsRes.data.export_enabled));
     setMaskingPolicyDraft(JSON.stringify(settingsRes.data.masking_policy ?? {}, null, 2));
     setLoading(false);
-  }, [fetchScopeOptions, handle401]);
+  }, [fetchScopeOptions, handle401, isOrgScope, isUserScope]);
 
   const handleSave = useCallback(async () => {
     setSaving(true);
@@ -229,11 +235,13 @@ export default function DashboardAuditSettingsPage() {
 
       try {
         const query = new URLSearchParams({ format, limit: "500" });
-        if (teamFilter) {
-          query.set("team_id", teamFilter);
+        if (scopeState.organizationId !== null) {
+          query.set("organization_id", String(scopeState.organizationId));
         }
-        if (organizationFilter) {
-          query.set("organization_id", organizationFilter);
+        if (isTeamScope && scopeState.teamId !== null) {
+          query.set("team_id", String(scopeState.teamId));
+        } else if (isOrgScope && teamFilter) {
+          query.set("team_id", teamFilter);
         }
 
         const response = await fetch(`${apiBaseUrl}/api/audit/export?${query.toString()}`, {
@@ -273,12 +281,22 @@ export default function DashboardAuditSettingsPage() {
         setExporting(null);
       }
     },
-    [getAuthHeaders, handle401, organizationFilter, teamFilter]
+    [getAuthHeaders, handle401, isOrgScope, isTeamScope, scopeState.organizationId, scopeState.teamId, teamFilter]
   );
 
   useEffect(() => {
     void fetchAuditSettings();
   }, [fetchAuditSettings]);
+
+  useEffect(() => {
+    if (isTeamScope && scopeState.teamId !== null) {
+      setTeamFilter(String(scopeState.teamId));
+      return;
+    }
+    if (!isOrgScope) {
+      setTeamFilter("");
+    }
+  }, [isOrgScope, isTeamScope, scopeState.teamId]);
 
   useEffect(() => {
     const handler = (event: Event) => {
@@ -296,20 +314,32 @@ export default function DashboardAuditSettingsPage() {
   return (
     <section className="space-y-4">
       <h1 className="text-2xl font-semibold">Audit Settings</h1>
-      <p className="text-sm text-muted-foreground">Manage retention, export policy, masking JSON, and audit export downloads.</p>
+      <p className="text-sm text-muted-foreground">
+        {isUserScope
+          ? "Audit governance is managed at organization scope."
+          : isTeamScope
+          ? "Team scope provides read/export under organization governance."
+          : "Manage retention, export policy, masking JSON, and audit export downloads."}
+      </p>
 
       {error ? <AlertBanner message={error} tone="danger" /> : null}
       {message ? <p className="text-sm text-chart-2">{message}</p> : null}
 
       {loading ? <p className="text-sm text-muted-foreground">Loading audit settings...</p> : null}
 
-      {!loading && !canReadSettings ? (
+      {!loading && isUserScope ? (
+        <div className="ds-card p-4">
+          <p className="text-sm text-muted-foreground">Switch to organization scope to view audit governance settings.</p>
+        </div>
+      ) : null}
+
+      {!loading && !isUserScope && !canReadSettings ? (
         <div className="ds-card p-4">
           <p className="text-sm text-muted-foreground">Your role does not have permission to read audit settings.</p>
         </div>
       ) : null}
 
-      {!loading && canReadSettings ? (
+      {!loading && !isUserScope && canReadSettings ? (
         <>
           <div className="ds-card p-4">
             <p className="mb-3 text-sm font-semibold">Settings</p>
@@ -350,37 +380,27 @@ export default function DashboardAuditSettingsPage() {
               placeholder='Masking policy JSON, e.g. {"mask_keys":["token","secret"]}'
             />
 
-            {!canUpdateSettings ? <p className="mt-2 text-xs text-muted-foreground">Audit settings update is owner-only.</p> : null}
+            {!canUpdateSettings ? <p className="mt-2 text-xs text-muted-foreground">Audit settings update is organization owner-only (team scope is read-only).</p> : null}
             <p className="mt-2 text-xs text-muted-foreground">updated_at: {asDate(settings?.updated_at)}</p>
           </div>
 
           <div className="ds-card p-4">
             <p className="mb-3 text-sm font-semibold">Audit Export (JSONL/CSV)</p>
             <div className="flex flex-wrap items-center gap-2">
-              <Select
-                value={organizationFilter}
-                onChange={(event) => setOrganizationFilter(event.target.value)}
-                className="ds-input h-11 rounded-md px-3 text-sm md:h-9"
-              >
-                <option value="">All organizations</option>
-                {organizations.map((org) => (
-                  <option key={`audit-export-org-${org.id}`} value={String(org.id)}>
-                    Org #{org.id} - {org.name}
-                  </option>
-                ))}
-              </Select>
-              <Select
-                value={teamFilter}
-                onChange={(event) => setTeamFilter(event.target.value)}
-                className="ds-input h-11 rounded-md px-3 text-sm md:h-9"
-              >
-                <option value="">All teams</option>
-                {teams.map((team) => (
-                  <option key={`audit-export-team-${team.id}`} value={String(team.id)}>
-                    Team #{team.id} - {team.name}
-                  </option>
-                ))}
-              </Select>
+              {isOrgScope ? (
+                <Select
+                  value={teamFilter}
+                  onChange={(event) => setTeamFilter(event.target.value)}
+                  className="ds-input h-11 rounded-md px-3 text-sm md:h-9"
+                >
+                  <option value="">All teams in org</option>
+                  {teams.map((team) => (
+                    <option key={`audit-export-team-${team.id}`} value={String(team.id)}>
+                      Team #{team.id} - {team.name}
+                    </option>
+                  ))}
+                </Select>
+              ) : null}
 
               <Button
                 type="button"

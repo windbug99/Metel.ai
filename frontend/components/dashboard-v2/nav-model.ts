@@ -18,7 +18,13 @@ export type NavItem = {
   depth?: 0 | 1;
 };
 
-export const GLOBAL_QUERY_KEYS = ["org", "team", "range"] as const;
+export type BreadcrumbModel = {
+  category: string;
+  menu: string;
+  submenu: string;
+};
+
+export const GLOBAL_QUERY_KEYS = ["scope", "org", "team", "range"] as const;
 
 export const PAGE_QUERY_KEYS: Record<string, string[]> = {
   overview: ["overview_window"],
@@ -114,6 +120,31 @@ export function pageTitle(pathname: string): string {
     return "Admin / Ops";
   }
   return "Overview";
+}
+
+export function buildBreadcrumb(pathname: string, scope: "org" | "team" | "user"): BreadcrumbModel {
+  const category = scope === "org" ? "Organization" : scope === "team" ? "Team" : "User";
+
+  let menu = "Overview";
+  if (pathname.startsWith("/dashboard/access/")) {
+    menu = "Access";
+  } else if (pathname.startsWith("/dashboard/integrations/")) {
+    menu = "Integrations";
+  } else if (pathname.startsWith("/dashboard/control/audit")) {
+    menu = "Audit";
+  } else if (pathname.startsWith("/dashboard/control/")) {
+    menu = "Control";
+  } else if (pathname.startsWith("/dashboard/profile")) {
+    menu = "Profile";
+  } else if (pathname.startsWith("/dashboard/admin/")) {
+    menu = "Admin";
+  }
+
+  return {
+    category,
+    menu,
+    submenu: pageTitle(pathname),
+  };
 }
 
 export function buildNavItems(permissionSnapshot: PermissionSnapshot | null): NavItem[] {

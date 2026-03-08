@@ -15,8 +15,12 @@ export default function DashboardRootPage() {
   useEffect(() => {
     const hash = window.location.hash || "";
     const mapped = HASH_TO_ROUTE[hash] ?? "/dashboard/overview";
-    const query = window.location.search || "";
-    router.replace(`${mapped}${query}`);
+    const params = new URLSearchParams(window.location.search);
+    if (!params.get("scope")) {
+      params.set("scope", "user");
+    }
+    const query = params.toString();
+    router.replace(query ? `${mapped}?${query}` : mapped);
   }, [router]);
 
   return <p className="p-6 text-sm text-slate-500">Redirecting dashboard...</p>;

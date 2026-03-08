@@ -2,10 +2,11 @@
 
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
-import { useCallback, useEffect, useState } from "react";
-import { usePathname, useRouter } from "next/navigation";
+import { useCallback, useEffect, useMemo, useState } from "react";
+import { usePathname, useRouter, useSearchParams } from "next/navigation";
 
 import { buildNextPath, dashboardApiGet, dashboardApiRequest } from "../../../../../lib/dashboard-v2-client";
+import { resolveDashboardScope } from "../../../../../lib/dashboard-scope";
 
 type PermissionSnapshot = {
   permissions?: {
@@ -51,6 +52,8 @@ function formatDate(value?: string | null): string {
 export default function DashboardIntegrationsWebhooksPage() {
   const pathname = usePathname();
   const router = useRouter();
+  const searchParams = useSearchParams();
+  const scope = useMemo(() => resolveDashboardScope(searchParams), [searchParams]);
 
   const [canManage, setCanManage] = useState(false);
   const [webhooks, setWebhooks] = useState<WebhookItem[]>([]);
@@ -75,11 +78,23 @@ export default function DashboardIntegrationsWebhooksPage() {
   const fetchIntegrations = useCallback(async () => {
     setLoading(true);
     setError(null);
+    const webhooksQuery = new URLSearchParams();
+    const deliveriesQuery = new URLSearchParams({ limit: "50" });
+    if (scope.organizationId !== null) {
+      const organizationId = String(scope.organizationId);
+      webhooksQuery.set("organization_id", organizationId);
+      deliveriesQuery.set("organization_id", organizationId);
+    }
+    if (scope.teamId !== null) {
+      const teamId = String(scope.teamId);
+      webhooksQuery.set("team_id", teamId);
+      deliveriesQuery.set("team_id", teamId);
+    }
 
     const [permissionsRes, webhooksRes, deliveriesRes] = await Promise.all([
       dashboardApiGet<PermissionSnapshot>("/api/me/permissions"),
-      dashboardApiGet<{ items?: WebhookItem[] }>("/api/integrations/webhooks"),
-      dashboardApiGet<{ items?: DeliveryItem[] }>("/api/integrations/deliveries?limit=50"),
+      dashboardApiGet<{ items?: WebhookItem[] }>(`/api/integrations/webhooks?${webhooksQuery.toString()}`),
+      dashboardApiGet<{ items?: DeliveryItem[] }>(`/api/integrations/deliveries?${deliveriesQuery.toString()}`),
     ]);
 
     if (permissionsRes.status === 401 || webhooksRes.status === 401 || deliveriesRes.status === 401) {
@@ -94,11 +109,11 @@ export default function DashboardIntegrationsWebhooksPage() {
       return;
     }
 
-    setCanManage(Boolean(permissionsRes.data.permissions?.can_manage_integrations));
+    setCanManage(scope.scope === "user" && Boolean(permissionsRes.data.permissions?.can_manage_integrations));
     setWebhooks(Array.isArray(webhooksRes.data.items) ? webhooksRes.data.items : []);
     setDeliveries(Array.isArray(deliveriesRes.data.items) ? deliveriesRes.data.items : []);
     setLoading(false);
-  }, [handle401]);
+  }, [handle401, scope.organizationId, scope.scope, scope.teamId]);
 
   const handleCreateWebhook = useCallback(async () => {
     setCreatingWebhook(true);

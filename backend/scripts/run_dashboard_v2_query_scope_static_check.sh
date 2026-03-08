@@ -4,9 +4,9 @@ set -euo pipefail
 ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
 SHELL_PAGE="${ROOT_DIR}/frontend/components/dashboard-v2/shell.tsx"
 NAV_MODEL_PAGE="${ROOT_DIR}/frontend/components/dashboard-v2/nav-model.ts"
-NAV_LIST_PAGE="${ROOT_DIR}/frontend/components/dashboard-v2/nav-list.tsx"
+NAV_MAIN_PAGE="${ROOT_DIR}/frontend/components/dashboard-v2/sidebar07/nav-main.tsx"
 
-for f in "${SHELL_PAGE}" "${NAV_MODEL_PAGE}" "${NAV_LIST_PAGE}"; do
+for f in "${SHELL_PAGE}" "${NAV_MODEL_PAGE}" "${NAV_MAIN_PAGE}"; do
   if [[ ! -f "${f}" ]]; then
     echo "[dashboard-v2-query-scope] ERROR: missing file ${f}"
     exit 1
@@ -54,7 +54,7 @@ expect_pattern() {
 
 echo "[dashboard-v2-query-scope] validate global/page query scope policy"
 
-expect_pattern "${NAV_MODEL_PAGE}" "GLOBAL_QUERY_KEYS = \\[\"org\", \"team\", \"range\"\\]" "global query keys declared"
+expect_pattern "${NAV_MODEL_PAGE}" "GLOBAL_QUERY_KEYS = \\[\"scope\", \"org\", \"team\", \"range\"\\]" "global query keys declared"
 expect_pattern "${NAV_MODEL_PAGE}" "overview: \\[\"overview_window\"\\]" "overview page query key declared"
 expect_pattern "${NAV_MODEL_PAGE}" "apiKeys: \\[\"keys_status\"\\]" "api-keys page query key declared"
 expect_pattern "${NAV_MODEL_PAGE}" "auditEvents: \\[\"audit_status\"\\]" "audit-events page query key declared"
@@ -63,7 +63,7 @@ expect_pattern "${SHELL_PAGE}" "for \\(const key of GLOBAL_QUERY_KEYS\\)" "nav/g
 expect_pattern "${SHELL_PAGE}" "const allowed = new Set<string>\\(\\[\\.\\.\\.GLOBAL_QUERY_KEYS, \\.\\.\\.PAGE_QUERY_KEYS\\[pageKey\\]\\]\\)" "allowed set merges global + current page keys"
 expect_pattern "${SHELL_PAGE}" "if \\(!allowed\\.has\\(key\\)\\) \\{" "unknown query keys are filtered"
 expect_pattern "${SHELL_PAGE}" "params\\.delete\\(key\\);" "unknown/page-irrelevant query keys deleted"
-expect_pattern "${NAV_LIST_PAGE}" "href=\\{buildNavHref\\(item\\.href\\)\\}" "sidebar navigation keeps global query keys"
+expect_pattern "${NAV_MAIN_PAGE}" "href=\\{buildNavHref\\(item\\.href\\)\\}" "sidebar navigation keeps global query keys"
 
 echo "[dashboard-v2-query-scope] pass=${PASS} fail=${FAIL}"
 if [[ "${FAIL}" -gt 0 ]]; then

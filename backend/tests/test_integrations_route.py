@@ -6,11 +6,11 @@ from fastapi import HTTPException
 from starlette.requests import Request
 
 from app.core.authz import AuthzContext, Role
-from app.routes.integrations import process_deliveries, retry_delivery
+from app.routes.integrations import list_deliveries, list_webhooks, process_deliveries, retry_delivery
 
 
-def _request(path: str) -> Request:
-    scope = {"type": "http", "method": "POST", "path": path, "headers": []}
+def _request(path: str, method: str = "POST") -> Request:
+    scope = {"type": "http", "method": method, "path": path, "headers": []}
     return Request(scope)
 
 
@@ -155,3 +155,88 @@ def test_retry_delivery_sends_dead_letter_alert(monkeypatch):
     assert str(out["result"].get("status")) == "dead_letter"
     assert called.get("source") == "manual_retry"
     assert called.get("dead_lettered") == 1
+
+
+def test_list_webhooks_applies_org_scope(monkeypatch):
+    class _Query:
+        def __init__(self, client, table_name: str):
+            self.client = client
+            self.table_name = table_name
+            self.ops: list[tuple[str, str, object]] = []
+
+        def select(self, *_args, **_kwargs):
+            return self
+
+        def eq(self, field: str, value):
+            self.ops.append(("eq", field, value))
+            return self
+
+        def in_(self, field: str, value):
+            self.ops.append(("in", field, value))
+            return self
+
+        def order(self, *_args, **_kwargs):
+            return self
+
+        def limit(self, *_args, **_kwargs):
+            return self
+
+        def execute(self):
+            self.client.query_logs.append((self.table_name, list(self.ops)))
+            if self.table_name == "org_memberships":
+                return SimpleNamespace(data=[{"user_id": "user-1"}, {"user_id": "user-2"}])
+            if self.table_name == "webhook_subscriptions":
+                return SimpleNamespace(data=[])
+            return SimpleNamespace(data=[])
+
+    class _Client:
+        def __init__(self):
+            self.query_logs: list[tuple[str, list[tuple[str, str, object]]]] = []
+
+        def table(self, name: str):
+            return _Query(self, name)
+
+    async def _fake_user(_request: Request) -> str:
+        return "user-1"
+
+    async def _fake_authz(_request: Request, **_kwargs) -> AuthzContext:
+        return AuthzContext(user_id="user-1", role=Role.ADMIN, org_ids={1}, team_ids={11})
+
+    client = _Client()
+    monkeypatch.setattr("app.routes.integrations.get_authenticated_user_id", _fake_user)
+    monkeypatch.setattr("app.routes.integrations.get_authz_context", _fake_authz)
+    monkeypatch.setattr("app.routes.integrations.create_client", lambda *_args, **_kwargs: client)
+    monkeypatch.setattr("app.routes.integrations.get_settings", lambda: SimpleNamespace(supabase_url="x", supabase_service_role_key="y"))
+
+    out = asyncio.run(list_webhooks(_request("/api/integrations/webhooks", "GET"), organization_id=1))
+    assert out["count"] == 0
+    webhook_logs = [row for row in client.query_logs if row[0] == "webhook_subscriptions"]
+    assert webhook_logs
+    flat_ops = [op for _, ops in webhook_logs for op in ops]
+    assert any(op[0] == "in" and op[1] == "user_id" for op in flat_ops)
+
+
+def test_list_deliveries_member_team_scope_forbidden(monkeypatch):
+    class _Client:
+        def table(self, _name: str):
+            return SimpleNamespace(select=lambda *_args, **_kwargs: self)
+
+    async def _fake_user(_request: Request) -> str:
+        return "user-1"
+
+    async def _fake_authz(_request: Request, **_kwargs) -> AuthzContext:
+        return AuthzContext(user_id="user-1", role=Role.MEMBER, org_ids={1}, team_ids={11})
+
+    monkeypatch.setattr("app.routes.integrations.get_authenticated_user_id", _fake_user)
+    monkeypatch.setattr("app.routes.integrations.get_authz_context", _fake_authz)
+    monkeypatch.setattr("app.routes.integrations.create_client", lambda *_args, **_kwargs: _Client())
+    monkeypatch.setattr("app.routes.integrations.get_settings", lambda: SimpleNamespace(supabase_url="x", supabase_service_role_key="y"))
+
+    try:
+        asyncio.run(list_deliveries(_request("/api/integrations/deliveries", "GET"), team_id=22))
+    except HTTPException as exc:
+        assert exc.status_code == 403
+        assert isinstance(exc.detail, dict)
+        assert exc.detail.get("reason") == "team_scope_forbidden"
+    else:
+        assert False, "expected HTTPException"

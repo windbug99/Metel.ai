@@ -16,16 +16,23 @@ from app.routes.organizations import (
     OrganizationUpdateRequest,
     accept_organization_invite,
     create_organization_invite,
+    get_organization_oauth_policy,
+    get_organization_policy,
     create_organization,
     create_organization_role_request,
     delete_organization_member,
     list_organization_members,
+    list_organization_role_requests,
     list_organizations,
     reissue_organization_invite,
     revoke_organization_invite,
     review_organization_role_request,
+    update_organization_oauth_policy,
+    update_organization_policy,
     update_organization,
     upsert_organization_member,
+    OrganizationOAuthPolicyUpdateRequest,
+    OrganizationPolicyUpdateRequest,
 )
 
 
@@ -184,7 +191,7 @@ def test_upsert_organization_member_rejects_invalid_role(monkeypatch):
             return self
 
         def execute(self):
-            return SimpleNamespace(data=[{"id": 1}])
+            return SimpleNamespace(data=[{"role": "owner"}])
 
     class _Client:
         def table(self, _name: str):
@@ -261,7 +268,7 @@ def test_delete_organization_member_blocks_owner_self_removal(monkeypatch):
             return self
 
         def execute(self):
-            return SimpleNamespace(data=[{"id": 1}])
+            return SimpleNamespace(data=[{"role": "owner"}])
 
     class _Client:
         def table(self, name: str):
@@ -349,7 +356,7 @@ def test_review_role_request_approve_updates_membership(monkeypatch):
 
         def execute(self):
             if self.mode == "select" and self.table_name == "org_memberships":
-                return SimpleNamespace(data=[{"organization_id": 1}])
+                return SimpleNamespace(data=[{"organization_id": 1, "role": "owner"}])
             if self.mode == "select" and self.table_name == "org_role_change_requests":
                 return SimpleNamespace(data=[{"id": 3, "organization_id": 1, "target_user_id": "user-2", "requested_role": "admin", "status": "pending"}])
             if self.mode == "update" and self.table_name == "org_role_change_requests":
@@ -471,7 +478,7 @@ def test_review_role_request_blocks_self_review(monkeypatch):
 
         def execute(self):
             if self.table_name == "org_memberships":
-                return SimpleNamespace(data=[{"organization_id": 1}])
+                return SimpleNamespace(data=[{"organization_id": 1, "role": "owner"}])
             if self.table_name == "org_role_change_requests":
                 return SimpleNamespace(data=[{"id": 3, "organization_id": 1, "target_user_id": "user-2", "requested_role": "admin", "status": "pending", "requested_by": "owner-user"}])
             return SimpleNamespace(data=[])
@@ -533,7 +540,7 @@ def test_revoke_and_reissue_organization_invite(monkeypatch):
 
         def execute(self):
             if self.mode == "select" and self.table_name == "org_memberships":
-                return SimpleNamespace(data=[{"organization_id": 1}])
+                return SimpleNamespace(data=[{"organization_id": 1, "role": "owner"}])
             if self.mode == "select" and self.table_name == "org_invites":
                 return SimpleNamespace(data=[{"id": 8, "organization_id": 1, "invited_email": "test@example.com", "role": "member", "accepted_at": None, "revoked_at": None}])
             if self.mode == "update" and self.table_name == "org_invites":
@@ -564,3 +571,246 @@ def test_revoke_and_reissue_organization_invite(monkeypatch):
     reissued = asyncio.run(reissue_organization_invite(_request("/api/organizations/1/invites/8/reissue", "POST"), "1", "8"))
     assert reissued["item"]["id"] == 9
     assert client.updated is True
+
+
+def test_list_role_requests_filters_to_self_for_member(monkeypatch):
+    class _Query:
+        def __init__(self, table_name: str):
+            self.table_name = table_name
+            self.eq_calls: list[tuple[str, object]] = []
+
+        def select(self, *_args, **_kwargs):
+            return self
+
+        def eq(self, field: str, value):
+            self.eq_calls.append((field, value))
+            return self
+
+        def order(self, *_args, **_kwargs):
+            return self
+
+        def limit(self, *_args, **_kwargs):
+            return self
+
+        def execute(self):
+            if self.table_name == "org_memberships":
+                return SimpleNamespace(data=[{"role": "member"}])
+            if self.table_name == "org_role_change_requests":
+                assert ("requested_by", "member-user") in self.eq_calls
+                return SimpleNamespace(data=[{"id": 1, "requested_by": "member-user"}])
+            return SimpleNamespace(data=[])
+
+    class _Client:
+        def table(self, name: str):
+            return _Query(name)
+
+    async def _fake_user(_request: Request) -> str:
+        return "member-user"
+
+    async def _fake_authz(_request: Request, **_kwargs) -> AuthzContext:
+        return AuthzContext(user_id="member-user", role=Role.MEMBER, org_ids={1}, team_ids=set())
+
+    monkeypatch.setattr("app.routes.organizations.get_authenticated_user_id", _fake_user)
+    monkeypatch.setattr("app.routes.organizations.get_authz_context", _fake_authz)
+    monkeypatch.setattr("app.routes.organizations.create_client", lambda *_args, **_kwargs: _Client())
+    monkeypatch.setattr("app.routes.organizations.get_settings", lambda: SimpleNamespace(supabase_url="x", supabase_service_role_key="y"))
+
+    out = asyncio.run(list_organization_role_requests(_request("/api/organizations/1/role-requests"), "1"))
+    assert out["count"] == 1
+
+
+def test_get_organization_oauth_policy_masks_sensitive_fields_for_member(monkeypatch):
+    class _Query:
+        def __init__(self, table_name: str):
+            self.table_name = table_name
+
+        def select(self, *_args, **_kwargs):
+            return self
+
+        def eq(self, *_args, **_kwargs):
+            return self
+
+        def limit(self, *_args, **_kwargs):
+            return self
+
+        def execute(self):
+            if self.table_name == "org_memberships":
+                return SimpleNamespace(data=[{"role": "member"}])
+            if self.table_name == "org_oauth_policies":
+                return SimpleNamespace(
+                    data=[
+                        {
+                            "organization_id": 1,
+                            "version": 2,
+                            "policy_json": {
+                                "allowed_providers": ["google"],
+                                "required_providers": ["google"],
+                                "approval_workflow": {"mode": "manual"},
+                            },
+                        }
+                    ]
+                )
+            return SimpleNamespace(data=[])
+
+    class _Client:
+        def table(self, name: str):
+            return _Query(name)
+
+    async def _fake_user(_request: Request) -> str:
+        return "member-user"
+
+    async def _fake_authz(_request: Request, **_kwargs) -> AuthzContext:
+        return AuthzContext(user_id="member-user", role=Role.MEMBER, org_ids={1}, team_ids=set())
+
+    monkeypatch.setattr("app.routes.organizations.get_authenticated_user_id", _fake_user)
+    monkeypatch.setattr("app.routes.organizations.get_authz_context", _fake_authz)
+    monkeypatch.setattr("app.routes.organizations.create_client", lambda *_args, **_kwargs: _Client())
+    monkeypatch.setattr("app.routes.organizations.get_settings", lambda: SimpleNamespace(supabase_url="x", supabase_service_role_key="y"))
+
+    out = asyncio.run(get_organization_oauth_policy(_request("/api/organizations/1/oauth-policy"), "1"))
+    policy = out["item"]["policy_json"]
+    assert policy.get("allowed_providers") == ["google"]
+    assert "approval_workflow" not in policy
+
+
+def test_update_organization_policy_upserts_for_admin(monkeypatch):
+    class _Query:
+        def __init__(self, table_name: str):
+            self.table_name = table_name
+            self.mode = "select"
+            self.payload = None
+
+        def select(self, *_args, **_kwargs):
+            self.mode = "select"
+            return self
+
+        def upsert(self, payload: dict, **_kwargs):
+            self.mode = "upsert"
+            self.payload = payload
+            return self
+
+        def eq(self, *_args, **_kwargs):
+            return self
+
+        def limit(self, *_args, **_kwargs):
+            return self
+
+        def execute(self):
+            if self.mode == "select" and self.table_name == "org_memberships":
+                return SimpleNamespace(data=[{"role": "admin"}])
+            if self.mode == "upsert" and self.table_name == "org_policies":
+                return SimpleNamespace(data=[self.payload])
+            return SimpleNamespace(data=[])
+
+    class _Client:
+        def table(self, name: str):
+            return _Query(name)
+
+    async def _fake_user(_request: Request) -> str:
+        return "admin-user"
+
+    async def _fake_authz(_request: Request, **_kwargs) -> AuthzContext:
+        return AuthzContext(user_id="admin-user", role=Role.ADMIN, org_ids={1}, team_ids=set())
+
+    monkeypatch.setattr("app.routes.organizations.get_authenticated_user_id", _fake_user)
+    monkeypatch.setattr("app.routes.organizations.get_authz_context", _fake_authz)
+    monkeypatch.setattr("app.routes.organizations.create_client", lambda *_args, **_kwargs: _Client())
+    monkeypatch.setattr("app.routes.organizations.get_settings", lambda: SimpleNamespace(supabase_url="x", supabase_service_role_key="y"))
+
+    out = asyncio.run(
+        update_organization_policy(
+            _request("/api/organizations/1/policy", "PATCH"),
+            "1",
+            OrganizationPolicyUpdateRequest(policy_json={"allowed_services": ["notion"]}),
+        )
+    )
+    assert isinstance(out.get("item"), dict)
+    assert out["item"].get("policy_json", {}).get("allowed_services") == ["notion"]
+
+
+def test_update_oauth_policy_rejects_required_not_in_allowed(monkeypatch):
+    class _Query:
+        def __init__(self, table_name: str):
+            self.table_name = table_name
+
+        def select(self, *_args, **_kwargs):
+            return self
+
+        def eq(self, *_args, **_kwargs):
+            return self
+
+        def limit(self, *_args, **_kwargs):
+            return self
+
+        def execute(self):
+            if self.table_name == "org_memberships":
+                return SimpleNamespace(data=[{"role": "owner"}])
+            return SimpleNamespace(data=[])
+
+    class _Client:
+        def table(self, name: str):
+            return _Query(name)
+
+    async def _fake_user(_request: Request) -> str:
+        return "owner-user"
+
+    monkeypatch.setattr("app.routes.organizations.get_authenticated_user_id", _fake_user)
+    monkeypatch.setattr("app.routes.organizations.create_client", lambda *_args, **_kwargs: _Client())
+    monkeypatch.setattr("app.routes.organizations.get_settings", lambda: SimpleNamespace(supabase_url="x", supabase_service_role_key="y"))
+
+    try:
+        asyncio.run(
+            update_organization_oauth_policy(
+                _request("/api/organizations/1/oauth-policy", "PATCH"),
+                "1",
+                OrganizationOAuthPolicyUpdateRequest(
+                    allowed_providers=["google"],
+                    required_providers=["notion"],
+                ),
+            )
+        )
+    except HTTPException as exc:
+        assert exc.status_code == 400
+        assert exc.detail == "invalid_oauth_policy:required_not_subset_of_allowed"
+    else:
+        assert False, "expected HTTPException"
+
+
+def test_get_organization_policy_returns_empty_default(monkeypatch):
+    class _Query:
+        def __init__(self, table_name: str):
+            self.table_name = table_name
+
+        def select(self, *_args, **_kwargs):
+            return self
+
+        def eq(self, *_args, **_kwargs):
+            return self
+
+        def limit(self, *_args, **_kwargs):
+            return self
+
+        def execute(self):
+            if self.table_name == "org_memberships":
+                return SimpleNamespace(data=[{"role": "member"}])
+            if self.table_name == "org_policies":
+                return SimpleNamespace(data=[])
+            return SimpleNamespace(data=[])
+
+    class _Client:
+        def table(self, name: str):
+            return _Query(name)
+
+    async def _fake_user(_request: Request) -> str:
+        return "member-user"
+
+    async def _fake_authz(_request: Request, **_kwargs) -> AuthzContext:
+        return AuthzContext(user_id="member-user", role=Role.MEMBER, org_ids={1}, team_ids=set())
+
+    monkeypatch.setattr("app.routes.organizations.get_authenticated_user_id", _fake_user)
+    monkeypatch.setattr("app.routes.organizations.get_authz_context", _fake_authz)
+    monkeypatch.setattr("app.routes.organizations.create_client", lambda *_args, **_kwargs: _Client())
+    monkeypatch.setattr("app.routes.organizations.get_settings", lambda: SimpleNamespace(supabase_url="x", supabase_service_role_key="y"))
+
+    out = asyncio.run(get_organization_policy(_request("/api/organizations/1/policy"), "1"))
+    assert out["item"]["policy_json"] == {}

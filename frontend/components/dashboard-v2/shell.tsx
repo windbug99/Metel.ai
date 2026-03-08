@@ -11,6 +11,7 @@ import AlertBanner from "./alert-banner";
 import { SiteHeader } from "./sidebar07/site-header";
 import { useIsMobile } from "@/hooks/use-mobile";
 import {
+  buildBreadcrumb,
   GLOBAL_QUERY_KEYS,
   PAGE_QUERY_KEYS,
   buildNavItems,
@@ -18,6 +19,55 @@ import {
   pageTitle,
   type PermissionSnapshot,
 } from "./nav-model";
+
+type DashboardScope = "org" | "team" | "user";
+
+function normalizeDashboardScope(params: URLSearchParams): boolean {
+  let changed = false;
+  const rawScope = (params.get("scope") ?? "").trim().toLowerCase();
+  const scope: DashboardScope = rawScope === "org" || rawScope === "team" || rawScope === "user" ? rawScope : "user";
+  if (rawScope !== scope) {
+    params.set("scope", scope);
+    changed = true;
+  }
+
+  const org = (params.get("org") ?? "").trim();
+  const team = (params.get("team") ?? "").trim();
+
+  if (scope === "user") {
+    if (params.has("org")) {
+      params.delete("org");
+      changed = true;
+    }
+    if (params.has("team")) {
+      params.delete("team");
+      changed = true;
+    }
+    return changed;
+  }
+
+  if (scope === "org") {
+    if (!org || org === "all") {
+      params.set("scope", "user");
+      params.delete("org");
+      params.delete("team");
+      return true;
+    }
+    if (params.has("team")) {
+      params.delete("team");
+      changed = true;
+    }
+    return changed;
+  }
+
+  if (!org || org === "all" || !team || team === "all") {
+    params.set("scope", "user");
+    params.delete("org");
+    params.delete("team");
+    return true;
+  }
+  return changed;
+}
 
 export default function DashboardV2Shell({ children }: { children: React.ReactNode }) {
   const pathname = usePathname();
@@ -60,12 +110,16 @@ export default function DashboardV2Shell({ children }: { children: React.ReactNo
     [searchParams]
   );
 
-  const currentOrg = searchParams.get("org") ?? "all";
-  const currentTeam = searchParams.get("team") ?? "all";
+  const currentScopeParam = (searchParams.get("scope") ?? "").trim().toLowerCase();
+  const currentScope: DashboardScope =
+    currentScopeParam === "org" || currentScopeParam === "team" || currentScopeParam === "user" ? currentScopeParam : "user";
+  const currentOrg = currentScope === "org" || currentScope === "team" ? searchParams.get("org") ?? "all" : "all";
+  const currentTeam = currentScope === "team" ? searchParams.get("team") ?? "all" : "all";
   const currentRange = searchParams.get("range") ?? "24h";
   const orgIds = permissionSnapshot?.org_ids ?? [];
   const teamIds = permissionSnapshot?.team_ids ?? [];
   const isMemberRole = permissionSnapshot?.role === "member";
+  const breadcrumb = useMemo(() => buildBreadcrumb(pathname, currentScope), [currentScope, pathname]);
 
   const setGlobalQuery = useCallback(
     (next: Partial<Record<(typeof GLOBAL_QUERY_KEYS)[number], string>>) => {
@@ -81,6 +135,7 @@ export default function DashboardV2Shell({ children }: { children: React.ReactNo
         }
         params.set(key, value);
       }
+      normalizeDashboardScope(params);
       const encoded = params.toString();
       router.replace(encoded ? `${pathname}?${encoded}` : pathname);
     },
@@ -158,6 +213,16 @@ export default function DashboardV2Shell({ children }: { children: React.ReactNo
   }, []);
 
   useEffect(() => {
+    const params = new URLSearchParams(searchParams.toString());
+    const changed = normalizeDashboardScope(params);
+    if (!changed) {
+      return;
+    }
+    const encoded = params.toString();
+    router.replace(encoded ? `${pathname}?${encoded}` : pathname);
+  }, [pathname, router, searchParams]);
+
+  useEffect(() => {
     const allowed = new Set<string>([...GLOBAL_QUERY_KEYS, ...PAGE_QUERY_KEYS[pageKey]]);
     const params = new URLSearchParams(searchParams.toString());
     let changed = false;
@@ -178,6 +243,9 @@ export default function DashboardV2Shell({ children }: { children: React.ReactNo
 
   useEffect(() => {
     if (!permissionSnapshot) {
+      return;
+    }
+    if (currentScope === "user") {
       return;
     }
     const params = new URLSearchParams(searchParams.toString());
@@ -206,7 +274,7 @@ export default function DashboardV2Shell({ children }: { children: React.ReactNo
     }
     const encoded = params.toString();
     router.replace(encoded ? `${pathname}?${encoded}` : pathname);
-  }, [isMemberRole, orgIds, pathname, permissionSnapshot, router, searchParams, teamIds]);
+  }, [currentScope, isMemberRole, orgIds, pathname, permissionSnapshot, router, searchParams, teamIds]);
 
   const triggerRefresh = useCallback(() => {
     void fetchPermissions();
@@ -324,6 +392,9 @@ export default function DashboardV2Shell({ children }: { children: React.ReactNo
             globalSearchEnabled={globalSearchEnabled}
             currentTeam={currentTeam}
             currentRange={currentRange}
+            currentScope={currentScope}
+            currentOrg={currentOrg}
+            breadcrumb={breadcrumb}
             teamIds={teamIds}
             setGlobalQuery={setGlobalQuery}
             triggerRefresh={triggerRefresh}

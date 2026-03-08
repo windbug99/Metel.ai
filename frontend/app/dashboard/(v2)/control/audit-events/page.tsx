@@ -5,9 +5,10 @@ import { Select } from "@/components/ui/select";
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
 import { useCallback, useEffect, useState } from "react";
-import { usePathname, useRouter } from "next/navigation";
+import { usePathname, useRouter, useSearchParams } from "next/navigation";
 
 import { buildNextPath, dashboardApiGet } from "../../../../../lib/dashboard-v2-client";
+import { resolveDashboardScope } from "../../../../../lib/dashboard-scope";
 import StatusBadge from "../../../../../components/dashboard-v2/status-badge";
 
 type AuditEventItem = {
@@ -35,11 +36,6 @@ type AuditSummary = {
 type AuditListPayload = {
   items?: AuditEventItem[];
   summary?: AuditSummary;
-};
-
-type OrganizationItem = {
-  id: number;
-  name: string;
 };
 
 type TeamItem = {
@@ -83,10 +79,10 @@ type AuditDetailPayload = {
 export default function DashboardAuditEventsPage() {
   const pathname = usePathname();
   const router = useRouter();
+  const searchParams = useSearchParams();
 
   const [items, setItems] = useState<AuditEventItem[]>([]);
   const [summary, setSummary] = useState<AuditSummary | null>(null);
-  const [organizations, setOrganizations] = useState<OrganizationItem[]>([]);
   const [teams, setTeams] = useState<TeamItem[]>([]);
   const [agents, setAgents] = useState<AgentSummaryItem[]>([]);
 
@@ -96,7 +92,6 @@ export default function DashboardAuditEventsPage() {
   const [statusFilter, setStatusFilter] = useState<"all" | "success" | "fail">("all");
   const [decisionFilter, setDecisionFilter] = useState<"all" | "allowed" | "policy_blocked" | "access_denied" | "failed" | "policy_override_allowed">("all");
   const [toolNameFilter, setToolNameFilter] = useState("");
-  const [organizationFilter, setOrganizationFilter] = useState("");
   const [teamFilter, setTeamFilter] = useState("");
   const [agentFilter, setAgentFilter] = useState("");
   const [fromFilter, setFromFilter] = useState("");
@@ -104,6 +99,10 @@ export default function DashboardAuditEventsPage() {
 
   const [detail, setDetail] = useState<AuditDetailPayload | null>(null);
   const [detailLoading, setDetailLoading] = useState(false);
+  const scopeState = resolveDashboardScope(searchParams);
+  const isUserScope = scopeState.scope === "user";
+  const isOrgScope = scopeState.scope === "org";
+  const isTeamScope = scopeState.scope === "team";
 
   const handle401 = useCallback(() => {
     const next = encodeURIComponent(buildNextPath(pathname, window.location.search));
@@ -121,10 +120,12 @@ export default function DashboardAuditEventsPage() {
     if (toolNameFilter.trim()) {
       query.set("tool_name", toolNameFilter.trim());
     }
-    if (organizationFilter) {
-      query.set("organization_id", organizationFilter);
+    if (scopeState.organizationId !== null) {
+      query.set("organization_id", String(scopeState.organizationId));
     }
-    if (teamFilter) {
+    if (isTeamScope && scopeState.teamId !== null) {
+      query.set("team_id", String(scopeState.teamId));
+    } else if (isOrgScope && teamFilter) {
       query.set("team_id", teamFilter);
     }
     if (agentFilter) {
@@ -157,28 +158,53 @@ export default function DashboardAuditEventsPage() {
     setItems(Array.isArray(result.data.items) ? result.data.items : []);
     setSummary(result.data.summary ?? null);
     setLoading(false);
-  }, [agentFilter, decisionFilter, fromFilter, handle401, organizationFilter, statusFilter, teamFilter, toFilter, toolNameFilter]);
+  }, [agentFilter, decisionFilter, fromFilter, handle401, isOrgScope, isTeamScope, scopeState.organizationId, scopeState.teamId, statusFilter, teamFilter, toFilter, toolNameFilter]);
 
   const fetchScopeOptions = useCallback(async () => {
-    const [orgRes, teamRes, agentRes] = await Promise.all([
-      dashboardApiGet<{ items?: OrganizationItem[] }>("/api/organizations"),
-      dashboardApiGet<{ items?: TeamItem[] }>("/api/teams"),
-      dashboardApiGet<{ items?: AgentSummaryItem[] }>("/api/tool-calls/agents?days=7"),
-    ]);
-    if (orgRes.status === 401 || teamRes.status === 401 || agentRes.status === 401) {
+    const agentQuery = new URLSearchParams({ days: "7" });
+    if (scopeState.organizationId !== null) {
+      agentQuery.set("organization_id", String(scopeState.organizationId));
+    }
+    if (isTeamScope && scopeState.teamId !== null) {
+      agentQuery.set("team_id", String(scopeState.teamId));
+    } else if (isOrgScope && teamFilter) {
+      agentQuery.set("team_id", teamFilter);
+    }
+
+    if (isOrgScope && scopeState.organizationId !== null) {
+      const [teamRes, agentRes] = await Promise.all([
+        dashboardApiGet<{ items?: TeamItem[] }>(`/api/teams?organization_id=${scopeState.organizationId}`),
+        dashboardApiGet<{ items?: AgentSummaryItem[] }>(`/api/tool-calls/agents?${agentQuery.toString()}`),
+      ]);
+      if (teamRes.status === 401 || agentRes.status === 401) {
+        handle401();
+        return;
+      }
+      if (teamRes.ok && teamRes.data) {
+        setTeams(Array.isArray(teamRes.data.items) ? teamRes.data.items : []);
+      } else {
+        setTeams([]);
+      }
+      if (agentRes.ok && agentRes.data) {
+        setAgents(Array.isArray(agentRes.data.items) ? agentRes.data.items : []);
+      } else {
+        setAgents([]);
+      }
+      return;
+    }
+
+    const agentRes = await dashboardApiGet<{ items?: AgentSummaryItem[] }>(`/api/tool-calls/agents?${agentQuery.toString()}`);
+    if (agentRes.status === 401) {
       handle401();
       return;
     }
-    if (orgRes.ok && orgRes.data) {
-      setOrganizations(Array.isArray(orgRes.data.items) ? orgRes.data.items : []);
-    }
-    if (teamRes.ok && teamRes.data) {
-      setTeams(Array.isArray(teamRes.data.items) ? teamRes.data.items : []);
-    }
+    setTeams([]);
     if (agentRes.ok && agentRes.data) {
       setAgents(Array.isArray(agentRes.data.items) ? agentRes.data.items : []);
+    } else {
+      setAgents([]);
     }
-  }, [handle401]);
+  }, [handle401, isOrgScope, isTeamScope, scopeState.organizationId, scopeState.teamId, teamFilter]);
 
   const fetchAuditEventDetail = useCallback(
     async (eventId: number) => {
@@ -217,6 +243,17 @@ export default function DashboardAuditEventsPage() {
   }, [fetchScopeOptions]);
 
   useEffect(() => {
+    if (isTeamScope && scopeState.teamId !== null) {
+      setTeamFilter(String(scopeState.teamId));
+    } else if (!isOrgScope) {
+      setTeamFilter("");
+      setAgentFilter("");
+    } else if (scopeState.organizationId === null) {
+      setTeamFilter("");
+    }
+  }, [isOrgScope, isTeamScope, scopeState.organizationId, scopeState.teamId]);
+
+  useEffect(() => {
     const handler = (event: Event) => {
       const custom = event as CustomEvent<{ path?: string }>;
       if (custom.detail?.path === pathname) {
@@ -232,7 +269,13 @@ export default function DashboardAuditEventsPage() {
   return (
     <section className="space-y-4">
       <h1 className="text-2xl font-semibold">Audit Events</h1>
-      <p className="text-sm text-muted-foreground">Who ran what, and whether it was allowed or blocked.</p>
+      <p className="text-sm text-muted-foreground">
+        {isUserScope
+          ? "Your personal audit trail."
+          : isTeamScope
+          ? "Team-scoped audit events under organization governance."
+          : "Organization-scoped audit events with optional team drilldown."}
+      </p>
 
       <div className="ds-card p-4">
         <div className="flex flex-wrap items-center gap-2">
@@ -267,30 +310,20 @@ export default function DashboardAuditEventsPage() {
             placeholder="Tool name"
             className="ds-input h-11 rounded-md px-3 text-sm md:h-9"
           />
-          <Select
-            value={organizationFilter}
-            onChange={(event) => setOrganizationFilter(event.target.value)}
-            className="ds-input h-11 rounded-md px-3 text-sm md:h-9"
-          >
-            <option value="">All organizations</option>
-            {organizations.map((org) => (
-              <option key={`audit-org-${org.id}`} value={String(org.id)}>
-                Org #{org.id} - {org.name}
-              </option>
-            ))}
-          </Select>
-          <Select
-            value={teamFilter}
-            onChange={(event) => setTeamFilter(event.target.value)}
-            className="ds-input h-11 rounded-md px-3 text-sm md:h-9"
-          >
-            <option value="">All teams</option>
-            {teams.map((team) => (
-              <option key={`audit-team-${team.id}`} value={String(team.id)}>
-                Team #{team.id} - {team.name}
-              </option>
-            ))}
-          </Select>
+          {isOrgScope ? (
+            <Select
+              value={teamFilter}
+              onChange={(event) => setTeamFilter(event.target.value)}
+              className="ds-input h-11 rounded-md px-3 text-sm md:h-9"
+            >
+              <option value="">All teams in org</option>
+              {teams.map((team) => (
+                <option key={`audit-team-${team.id}`} value={String(team.id)}>
+                  Team #{team.id} - {team.name}
+                </option>
+              ))}
+            </Select>
+          ) : null}
           <Select value={agentFilter} onChange={(event) => setAgentFilter(event.target.value)} className="ds-input h-11 rounded-md px-3 text-sm md:h-9">
             <option value="">All agents</option>
             {agents.map((agent) => (

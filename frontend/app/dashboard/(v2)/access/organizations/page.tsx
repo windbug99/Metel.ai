@@ -506,10 +506,12 @@ export default function DashboardOrganizationsPage() {
       return;
     }
     const params = new URLSearchParams(searchParams.toString());
-    if (params.get("org") === selectedOrgId) {
+    if (params.get("org") === selectedOrgId && params.get("scope") === "org") {
       return;
     }
+    params.set("scope", "org");
     params.set("org", selectedOrgId);
+    params.delete("team");
     const encoded = params.toString();
     router.replace(encoded ? `${pathname}?${encoded}` : pathname);
   }, [pathname, router, searchParams, selectedOrgId]);

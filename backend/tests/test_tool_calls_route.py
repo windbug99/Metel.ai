@@ -299,3 +299,87 @@ def test_tool_calls_overview_member_org_scope_forbidden(monkeypatch):
         assert exc.detail.get("reason") == "member_org_scope_forbidden"
     else:
         assert False, "expected HTTPException"
+
+
+def test_list_tool_calls_member_team_scope_forbidden(monkeypatch):
+    class _Client:
+        def table(self, _name: str):
+            return SimpleNamespace(select=lambda *_args, **_kwargs: self)
+
+    async def _fake_user(_request: Request) -> str:
+        return "user-1"
+
+    async def _fake_authz_ctx(_request: Request, *, user_id: str, supabase):
+        assert user_id == "user-1"
+        assert supabase is not None
+        return AuthzContext(user_id="user-1", role=Role.MEMBER, org_ids={1}, team_ids={11})
+
+    monkeypatch.setattr("app.routes.tool_calls.get_authenticated_user_id", _fake_user)
+    monkeypatch.setattr("app.routes.tool_calls.get_authz_context", _fake_authz_ctx)
+    monkeypatch.setattr("app.routes.tool_calls.create_client", lambda *_args, **_kwargs: _Client())
+    monkeypatch.setattr(
+        "app.routes.tool_calls.get_settings",
+        lambda: SimpleNamespace(supabase_url="https://example.supabase.co", supabase_service_role_key="service-role-key"),
+    )
+
+    try:
+        asyncio.run(
+            list_tool_calls(
+                _request(),
+                limit=20,
+                status="all",
+                tool_name="",
+                api_key_id=None,
+                agent_id=None,
+                organization_id=None,
+                team_id=22,
+                from_="",
+                to="",
+            )
+        )
+    except HTTPException as exc:
+        assert exc.status_code == 403
+        assert isinstance(exc.detail, dict)
+        assert exc.detail.get("reason") == "team_scope_forbidden"
+    else:
+        assert False, "expected HTTPException"
+
+
+def test_tool_calls_trends_scope_filters_forwarded(monkeypatch):
+    captured: dict[str, object] = {}
+
+    async def _fake_user(_request: Request) -> str:
+        return "user-1"
+
+    async def _fake_authz_ctx(_request: Request, *, user_id: str, supabase):
+        assert user_id == "user-1"
+        assert supabase is not None
+        return AuthzContext(user_id="user-1", role=Role.ADMIN, org_ids={1}, team_ids={11})
+
+    def _fake_resolve_scope_filters(**kwargs):
+        captured["organization_id"] = kwargs.get("organization_id")
+        captured["team_id"] = kwargs.get("team_id")
+        return ["user-1", "user-2"], [101, 102]
+
+    def _fake_query_tool_call_rows(**kwargs):
+        captured["user_ids"] = kwargs.get("user_ids")
+        captured["api_key_ids"] = kwargs.get("api_key_ids")
+        return []
+
+    monkeypatch.setattr("app.routes.tool_calls.get_authenticated_user_id", _fake_user)
+    monkeypatch.setattr("app.routes.tool_calls.get_authz_context", _fake_authz_ctx)
+    monkeypatch.setattr("app.routes.tool_calls.create_client", lambda *_args, **_kwargs: SimpleNamespace())
+    monkeypatch.setattr(
+        "app.routes.tool_calls.get_settings",
+        lambda: SimpleNamespace(supabase_url="https://example.supabase.co", supabase_service_role_key="service-role-key"),
+    )
+    monkeypatch.setattr("app.routes.tool_calls._resolve_scope_filters", _fake_resolve_scope_filters)
+    monkeypatch.setattr("app.routes.tool_calls._query_tool_call_rows", _fake_query_tool_call_rows)
+
+    out = asyncio.run(tool_calls_trends(_request(), days=7, bucket="day", organization_id=1, team_id=11))
+
+    assert out["bucket"] == "day"
+    assert captured["organization_id"] == 1
+    assert captured["team_id"] == 11
+    assert captured["user_ids"] == ["user-1", "user-2"]
+    assert captured["api_key_ids"] == [101, 102]

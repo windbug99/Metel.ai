@@ -221,6 +221,31 @@ def _resolve_scoped_api_key_ids(
     return sorted(set(key_ids))
 
 
+def _resolve_scope_filters(
+    *,
+    supabase,
+    authz_ctx,
+    request_user_id: str,
+    organization_id: int | None,
+    team_id: int | None,
+) -> tuple[list[str], list[int] | None]:
+    normalized_organization_id = _normalize_optional_int(organization_id)
+    normalized_team_id = _normalize_optional_int(team_id)
+    scoped_user_ids = _resolve_scoped_user_ids(
+        supabase=supabase,
+        authz_ctx=authz_ctx,
+        request_user_id=request_user_id,
+        organization_id=normalized_organization_id,
+    )
+    scoped_api_key_ids = _resolve_scoped_api_key_ids(
+        supabase=supabase,
+        authz_ctx=authz_ctx,
+        scoped_user_ids=scoped_user_ids,
+        team_id=normalized_team_id,
+    )
+    return scoped_user_ids, scoped_api_key_ids
+
+
 def _kpi_summary(rows: list[dict]) -> dict:
     total_calls = len(rows)
     success_count = len([row for row in rows if row.get("status") == "success"])
@@ -346,6 +371,8 @@ async def list_tool_calls(
     tool_name: str = Query(""),
     api_key_id: int | None = Query(default=None),
     agent_id: int | None = Query(default=None),
+    organization_id: int | None = Query(default=None),
+    team_id: int | None = Query(default=None),
     from_: str = Query(default="", alias="from"),
     to: str = Query(default=""),
 ):
@@ -361,34 +388,56 @@ async def list_tool_calls(
     normalized_tool_name = tool_name.strip()
     from_iso = _normalize_iso_datetime(from_, field_name="from")
     to_iso = _normalize_iso_datetime(to, field_name="to")
-
-    query = (
-        supabase.table("tool_calls")
-        .select("id,api_key_id,agent_id,tool_name,status,error_code,latency_ms,created_at")
-        .eq("user_id", user_id)
+    scoped_user_ids, scoped_api_key_ids = _resolve_scope_filters(
+        supabase=supabase,
+        authz_ctx=authz_ctx,
+        request_user_id=user_id,
+        organization_id=organization_id,
+        team_id=team_id,
     )
-    if normalized_status != "all":
-        query = query.eq("status", normalized_status)
-    if normalized_tool_name:
-        query = query.eq("tool_name", normalized_tool_name)
-    if api_key_id is not None:
-        query = query.eq("api_key_id", api_key_id)
-    if agent_id is not None:
-        query = query.eq("agent_id", agent_id)
-    if from_iso:
-        query = query.gte("created_at", from_iso)
-    if to_iso:
-        query = query.lte("created_at", to_iso)
-    calls_result = query.order("created_at", desc=True).limit(limit).execute()
-    calls = calls_result.data or []
 
-    key_result = (
-        supabase.table("api_keys")
-        .select("id,name,key_prefix")
-        .eq("user_id", user_id)
-        .execute()
-    )
-    keys = key_result.data or []
+    if scoped_api_key_ids is not None and not scoped_api_key_ids:
+        calls = []
+    else:
+        query = supabase.table("tool_calls").select("id,api_key_id,agent_id,tool_name,status,error_code,latency_ms,created_at")
+        if len(scoped_user_ids) == 1:
+            query = query.eq("user_id", scoped_user_ids[0])
+        else:
+            query = query.in_("user_id", scoped_user_ids)
+        if scoped_api_key_ids is not None:
+            if len(scoped_api_key_ids) == 1:
+                query = query.eq("api_key_id", scoped_api_key_ids[0])
+            else:
+                query = query.in_("api_key_id", scoped_api_key_ids)
+        if normalized_status != "all":
+            query = query.eq("status", normalized_status)
+        if normalized_tool_name:
+            query = query.eq("tool_name", normalized_tool_name)
+        if api_key_id is not None:
+            query = query.eq("api_key_id", api_key_id)
+        if agent_id is not None:
+            query = query.eq("agent_id", agent_id)
+        if from_iso:
+            query = query.gte("created_at", from_iso)
+        if to_iso:
+            query = query.lte("created_at", to_iso)
+        calls_result = query.order("created_at", desc=True).limit(limit).execute()
+        calls = calls_result.data or []
+
+    if scoped_api_key_ids is not None and not scoped_api_key_ids:
+        keys = []
+    else:
+        key_query = supabase.table("api_keys").select("id,name,key_prefix")
+        if len(scoped_user_ids) == 1:
+            key_query = key_query.eq("user_id", scoped_user_ids[0])
+        else:
+            key_query = key_query.in_("user_id", scoped_user_ids)
+        if scoped_api_key_ids is not None:
+            if len(scoped_api_key_ids) == 1:
+                key_query = key_query.eq("id", scoped_api_key_ids[0])
+            else:
+                key_query = key_query.in_("id", scoped_api_key_ids)
+        keys = key_query.execute().data or []
     key_map = {str(row.get("id")): row for row in keys}
 
     items = []
@@ -419,21 +468,33 @@ async def list_tool_calls(
         )
 
     window_start = (datetime.now(timezone.utc) - timedelta(hours=24)).isoformat()
-    stats_query = supabase.table("tool_calls").select("status,error_code").eq("user_id", user_id).gte("created_at", window_start)
-    if normalized_status != "all":
-        stats_query = stats_query.eq("status", normalized_status)
-    if normalized_tool_name:
-        stats_query = stats_query.eq("tool_name", normalized_tool_name)
-    if api_key_id is not None:
-        stats_query = stats_query.eq("api_key_id", api_key_id)
-    if agent_id is not None:
-        stats_query = stats_query.eq("agent_id", agent_id)
-    if from_iso:
-        stats_query = stats_query.gte("created_at", from_iso)
-    if to_iso:
-        stats_query = stats_query.lte("created_at", to_iso)
-    stats_result = stats_query.execute()
-    stats_rows = stats_result.data or []
+    if scoped_api_key_ids is not None and not scoped_api_key_ids:
+        stats_rows = []
+    else:
+        stats_query = supabase.table("tool_calls").select("status,error_code").gte("created_at", window_start)
+        if len(scoped_user_ids) == 1:
+            stats_query = stats_query.eq("user_id", scoped_user_ids[0])
+        else:
+            stats_query = stats_query.in_("user_id", scoped_user_ids)
+        if scoped_api_key_ids is not None:
+            if len(scoped_api_key_ids) == 1:
+                stats_query = stats_query.eq("api_key_id", scoped_api_key_ids[0])
+            else:
+                stats_query = stats_query.in_("api_key_id", scoped_api_key_ids)
+        if normalized_status != "all":
+            stats_query = stats_query.eq("status", normalized_status)
+        if normalized_tool_name:
+            stats_query = stats_query.eq("tool_name", normalized_tool_name)
+        if api_key_id is not None:
+            stats_query = stats_query.eq("api_key_id", api_key_id)
+        if agent_id is not None:
+            stats_query = stats_query.eq("agent_id", agent_id)
+        if from_iso:
+            stats_query = stats_query.gte("created_at", from_iso)
+        if to_iso:
+            stats_query = stats_query.lte("created_at", to_iso)
+        stats_result = stats_query.execute()
+        stats_rows = stats_result.data or []
     calls_24h = len(stats_rows)
     success_24h = len([row for row in stats_rows if row.get("status") == "success"])
     fail_24h = len([row for row in stats_rows if row.get("status") == "fail"])
@@ -501,19 +562,12 @@ async def tool_calls_overview(
     supabase = create_client(settings.supabase_url, settings.supabase_service_role_key)
     authz_ctx = await get_authz_context(request, user_id=user_id, supabase=supabase)
     require_min_role(authz_ctx, Role.MEMBER, method=request.method)
-    normalized_organization_id = _normalize_optional_int(organization_id)
-    normalized_team_id = _normalize_optional_int(team_id)
-    scoped_user_ids = _resolve_scoped_user_ids(
+    scoped_user_ids, scoped_api_key_ids = _resolve_scope_filters(
         supabase=supabase,
         authz_ctx=authz_ctx,
         request_user_id=user_id,
-        organization_id=normalized_organization_id,
-    )
-    scoped_api_key_ids = _resolve_scoped_api_key_ids(
-        supabase=supabase,
-        authz_ctx=authz_ctx,
-        scoped_user_ids=scoped_user_ids,
-        team_id=normalized_team_id,
+        organization_id=organization_id,
+        team_id=team_id,
     )
 
     now = datetime.now(timezone.utc)
@@ -568,6 +622,8 @@ async def tool_calls_trends(
     days: int = Query(7, ge=1, le=30),
     bucket: str = Query("day"),
     agent_id: int | None = Query(default=None),
+    organization_id: int | None = Query(default=None),
+    team_id: int | None = Query(default=None),
 ):
     user_id = await get_authenticated_user_id(request)
     settings = get_settings()
@@ -575,12 +631,25 @@ async def tool_calls_trends(
     authz_ctx = await get_authz_context(request, user_id=user_id, supabase=supabase)
     require_min_role(authz_ctx, Role.MEMBER, method=request.method)
 
+    scoped_user_ids, scoped_api_key_ids = _resolve_scope_filters(
+        supabase=supabase,
+        authz_ctx=authz_ctx,
+        request_user_id=user_id,
+        organization_id=organization_id,
+        team_id=team_id,
+    )
     normalized_bucket = bucket.strip().lower()
     if normalized_bucket not in {"hour", "day"}:
         normalized_bucket = "day"
     now = datetime.now(timezone.utc)
     since = now - timedelta(days=days)
-    rows = _query_tool_call_rows(supabase=supabase, user_ids=[user_id], from_iso=since.isoformat(), agent_id=agent_id)
+    rows = _query_tool_call_rows(
+        supabase=supabase,
+        user_ids=scoped_user_ids,
+        from_iso=since.isoformat(),
+        agent_id=agent_id,
+        api_key_ids=scoped_api_key_ids,
+    )
 
     if normalized_bucket == "hour":
         start = since.replace(minute=0, second=0, microsecond=0)
@@ -640,6 +709,8 @@ async def tool_calls_failure_breakdown(
     request: Request,
     days: int = Query(7, ge=1, le=30),
     agent_id: int | None = Query(default=None),
+    organization_id: int | None = Query(default=None),
+    team_id: int | None = Query(default=None),
 ):
     user_id = await get_authenticated_user_id(request)
     settings = get_settings()
@@ -647,8 +718,21 @@ async def tool_calls_failure_breakdown(
     authz_ctx = await get_authz_context(request, user_id=user_id, supabase=supabase)
     require_min_role(authz_ctx, Role.MEMBER, method=request.method)
 
+    scoped_user_ids, scoped_api_key_ids = _resolve_scope_filters(
+        supabase=supabase,
+        authz_ctx=authz_ctx,
+        request_user_id=user_id,
+        organization_id=organization_id,
+        team_id=team_id,
+    )
     since = (datetime.now(timezone.utc) - timedelta(days=days)).isoformat()
-    rows = _query_tool_call_rows(supabase=supabase, user_ids=[user_id], from_iso=since, agent_id=agent_id)
+    rows = _query_tool_call_rows(
+        supabase=supabase,
+        user_ids=scoped_user_ids,
+        from_iso=since,
+        agent_id=agent_id,
+        api_key_ids=scoped_api_key_ids,
+    )
     fail_rows = [row for row in rows if row.get("status") == "fail"]
 
     category_counts: dict[str, int] = defaultdict(int)
@@ -677,6 +761,8 @@ async def tool_calls_connectors(
     request: Request,
     days: int = Query(7, ge=1, le=30),
     agent_id: int | None = Query(default=None),
+    organization_id: int | None = Query(default=None),
+    team_id: int | None = Query(default=None),
 ):
     user_id = await get_authenticated_user_id(request)
     settings = get_settings()
@@ -684,8 +770,21 @@ async def tool_calls_connectors(
     authz_ctx = await get_authz_context(request, user_id=user_id, supabase=supabase)
     require_min_role(authz_ctx, Role.MEMBER, method=request.method)
 
+    scoped_user_ids, scoped_api_key_ids = _resolve_scope_filters(
+        supabase=supabase,
+        authz_ctx=authz_ctx,
+        request_user_id=user_id,
+        organization_id=organization_id,
+        team_id=team_id,
+    )
     since = (datetime.now(timezone.utc) - timedelta(days=days)).isoformat()
-    rows = _query_tool_call_rows(supabase=supabase, user_ids=[user_id], from_iso=since, agent_id=agent_id)
+    rows = _query_tool_call_rows(
+        supabase=supabase,
+        user_ids=scoped_user_ids,
+        from_iso=since,
+        agent_id=agent_id,
+        api_key_ids=scoped_api_key_ids,
+    )
 
     connector_rows: dict[str, list[dict]] = defaultdict(list)
     for row in rows:
@@ -720,6 +819,8 @@ async def tool_calls_connectors(
 async def tool_calls_agents(
     request: Request,
     days: int = Query(7, ge=1, le=30),
+    organization_id: int | None = Query(default=None),
+    team_id: int | None = Query(default=None),
 ):
     user_id = await get_authenticated_user_id(request)
     settings = get_settings()
@@ -727,8 +828,20 @@ async def tool_calls_agents(
     authz_ctx = await get_authz_context(request, user_id=user_id, supabase=supabase)
     require_min_role(authz_ctx, Role.MEMBER, method=request.method)
 
+    scoped_user_ids, scoped_api_key_ids = _resolve_scope_filters(
+        supabase=supabase,
+        authz_ctx=authz_ctx,
+        request_user_id=user_id,
+        organization_id=organization_id,
+        team_id=team_id,
+    )
     since = (datetime.now(timezone.utc) - timedelta(days=days)).isoformat()
-    rows = _query_tool_call_rows(supabase=supabase, user_ids=[user_id], from_iso=since)
+    rows = _query_tool_call_rows(
+        supabase=supabase,
+        user_ids=scoped_user_ids,
+        from_iso=since,
+        api_key_ids=scoped_api_key_ids,
+    )
     agent_rows = (
         supabase.table("agents")
         .select("id,name,team_id,organization_id")

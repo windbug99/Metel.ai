@@ -4,6 +4,7 @@ import { useCallback, useEffect, useState } from "react";
 import { usePathname, useRouter, useSearchParams } from "next/navigation";
 
 import { buildNextPath, dashboardApiGet } from "../../../../lib/dashboard-v2-client";
+import { resolveDashboardScope } from "../../../../lib/dashboard-scope";
 
 type OverviewPayload = {
   window_hours: number;
@@ -36,6 +37,13 @@ export default function DashboardOverviewPage() {
   const [data, setData] = useState<OverviewPayload | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const scopeState = resolveDashboardScope(searchParams);
+  const scopeLabel =
+    scopeState.scope === "team"
+      ? `Team Scope (org=${scopeState.organizationId ?? "-"}, team=${scopeState.teamId ?? "-"})`
+      : scopeState.scope === "org"
+      ? `Organization Scope (org=${scopeState.organizationId ?? "-"})`
+      : "User Scope (me)";
 
   const fetchOverview = useCallback(async () => {
     setLoading(true);
@@ -44,13 +52,11 @@ export default function DashboardOverviewPage() {
     const range = searchParams.get("range") === "7d" ? 168 : 24;
     const params = new URLSearchParams();
     params.set("hours", String(range));
-    const org = searchParams.get("org");
-    const team = searchParams.get("team");
-    if (org && org !== "all") {
-      params.set("organization_id", org);
+    if (scopeState.organizationId !== null) {
+      params.set("organization_id", String(scopeState.organizationId));
     }
-    if (team && team !== "all") {
-      params.set("team_id", team);
+    if (scopeState.teamId !== null) {
+      params.set("team_id", String(scopeState.teamId));
     }
 
     const result = await dashboardApiGet<OverviewPayload>(`/api/tool-calls/overview?${params.toString()}`);
@@ -73,7 +79,7 @@ export default function DashboardOverviewPage() {
 
     setData(result.data);
     setLoading(false);
-  }, [pathname, router, searchParams]);
+  }, [pathname, router, scopeState.organizationId, scopeState.teamId]);
 
   useEffect(() => {
     void fetchOverview();
@@ -95,7 +101,7 @@ export default function DashboardOverviewPage() {
   return (
     <section className="space-y-4">
       <h1 className="text-2xl font-semibold">Overview</h1>
-      <p className="text-sm text-muted-foreground">KPI summary is loaded per page route and refreshed in page scope.</p>
+      <p className="text-sm text-muted-foreground">{scopeLabel}</p>
 
       {loading ? <p className="text-sm text-muted-foreground">Loading overview...</p> : null}
       {error ? (
