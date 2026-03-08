@@ -80,7 +80,7 @@ export default function DashboardAppSidebar({
         </div>
       </div>
 
-      <div className="flex-1 overflow-y-auto px-3 py-3">
+      <div className="no-scrollbar flex-1 overflow-y-auto px-3 py-3">
         <NavMain pathname={pathname} navItems={navItems} buildNavHref={buildNavHref} collapsed={collapsed} />
       </div>
 
