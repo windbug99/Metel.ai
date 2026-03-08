@@ -21,7 +21,7 @@ export function NavMain({ pathname, navItems, buildNavHref, collapsed }: NavMain
   ];
 
   return (
-    <nav className="space-y-3">
+    <nav className="space-y-1.5">
       {sectionOrder.map((section) => {
         const items = visibleItems.filter((item) => item.section === section.key);
         if (items.length === 0) {
@@ -29,7 +29,7 @@ export function NavMain({ pathname, navItems, buildNavHref, collapsed }: NavMain
         }
 
         return (
-          <div key={section.key} className="space-y-1">
+          <div key={section.key} className="space-y-0.5">
             {!collapsed ? <p className="px-3 pb-1 text-xs font-light text-sidebar-foreground/70">{section.label}</p> : null}
             <div className={cn(!collapsed && "ml-3 border-l border-sidebar-border pl-3")}>
               {items.map((item) => {
@@ -42,7 +42,7 @@ export function NavMain({ pathname, navItems, buildNavHref, collapsed }: NavMain
                     key={item.key}
                     href={buildNavHref(item.href, item.section)}
                     className={cn(
-                      "mb-1 block rounded-md px-3 py-2 text-sm font-light transition-colors",
+                      "mb-0.5 block rounded-md px-3 pt-[4px] pb-[4px] text-xs font-light transition-colors",
                       active ? "bg-sidebar-accent text-sidebar-accent-foreground" : "text-sidebar-foreground hover:bg-sidebar-accent/70",
                       collapsed && "px-2 text-center"
                     )}
