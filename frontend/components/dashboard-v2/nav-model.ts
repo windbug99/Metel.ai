@@ -15,7 +15,7 @@ export type NavItem = {
   href?: string;
   label: string;
   visible: boolean;
-  depth?: 0 | 1;
+  section: "organization" | "team" | "user";
 };
 
 export type BreadcrumbModel = {
@@ -154,18 +154,21 @@ export function buildNavItems(permissionSnapshot: PermissionSnapshot | null): Na
   const isAdminPlus = isOwner || isAdmin;
   const canReadAdminOps = Boolean(permissionSnapshot?.permissions?.can_read_admin_ops);
   return [
-    { key: "overview", href: "/dashboard/overview", label: "Overview", visible: true, depth: 0 },
-    { key: "org", href: "/dashboard/access/organizations", label: "Org", visible: isAdminPlus, depth: 0 },
-    { key: "team", label: "Team", visible: true, depth: 0 },
-    { key: "team-policy", href: "/dashboard/access/team-policy", label: "Team Policy", visible: true, depth: 1 },
-    { key: "team-agent-guide", href: "/dashboard/control/mcp-guide", label: "Agent Guide", visible: true, depth: 1 },
-    { key: "team-api-keys", href: "/dashboard/access/api-keys", label: "API Keys", visible: true, depth: 1 },
-    { key: "team-policy-simulator", href: "/dashboard/control/policy-simulator", label: "Policy Simulator", visible: true, depth: 1 },
-    { key: "team-audit-events", href: "/dashboard/control/audit-events", label: "Audit Events", visible: true, depth: 1 },
-    { key: "ops-usage", href: "/dashboard/control/mcp-usage", label: "Usage", visible: true, depth: 0 },
-    { key: "ops-integrations", href: "/dashboard/integrations/webhooks", label: "Integrations", visible: isAdminPlus, depth: 0 },
-    { key: "ops-oauth", href: "/dashboard/integrations/oauth", label: "OAuth", visible: isAdminPlus, depth: 0 },
-    { key: "ops-audit-settings", href: "/dashboard/control/audit-settings", label: "Audit Settings", visible: isAdminPlus, depth: 0 },
-    { key: "ops-admin", href: "/dashboard/admin/ops", label: "Admin / Ops", visible: canReadAdminOps, depth: 0 },
+    { key: "org-access", href: "/dashboard/access/organizations", label: "Access", visible: isAdminPlus, section: "organization" },
+    { key: "org-integrations", href: "/dashboard/integrations/webhooks", label: "Integrations", visible: isAdminPlus, section: "organization" },
+    { key: "org-oauth-governance", href: "/dashboard/integrations/oauth", label: "OAuth Governance", visible: isAdminPlus, section: "organization" },
+    { key: "org-audit-settings", href: "/dashboard/control/audit-settings", label: "Audit Settings", visible: isAdminPlus, section: "organization" },
+    { key: "org-admin-ops", href: "/dashboard/admin/ops", label: "Admin / Ops", visible: canReadAdminOps, section: "organization" },
+
+    { key: "team-overview", href: "/dashboard/overview", label: "Overview", visible: true, section: "team" },
+    { key: "team-usage", href: "/dashboard/control/mcp-usage", label: "Usage", visible: true, section: "team" },
+    { key: "team-policy", href: "/dashboard/access/team-policy", label: "Team Policy", visible: true, section: "team" },
+    { key: "team-agent-guide", href: "/dashboard/control/mcp-guide", label: "Agent Guide", visible: true, section: "team" },
+    { key: "team-api-keys", href: "/dashboard/access/api-keys", label: "API Keys", visible: true, section: "team" },
+    { key: "team-policy-simulator", href: "/dashboard/control/policy-simulator", label: "Policy Simulator", visible: true, section: "team" },
+    { key: "team-audit-events", href: "/dashboard/control/audit-events", label: "Audit Events", visible: true, section: "team" },
+
+    { key: "user-profile", href: "/dashboard/profile", label: "Profile", visible: true, section: "user" },
+    { key: "user-oauth-connections", href: "/dashboard/integrations/oauth", label: "OAuth Connections", visible: true, section: "user" },
   ];
 }

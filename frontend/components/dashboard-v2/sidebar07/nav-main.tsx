@@ -14,58 +14,49 @@ type NavMainProps = {
 
 export function NavMain({ pathname, navItems, buildNavHref, collapsed }: NavMainProps) {
   const visibleItems = navItems.filter((item) => item.visible);
-  const topLevelItems = visibleItems.filter((item) => item.depth !== 1 && item.key !== "team");
-  const teamSubItems = visibleItems.filter((item) => item.depth === 1);
+  const sectionOrder: Array<{ key: NavItem["section"]; label: string }> = [
+    { key: "organization", label: "Organization" },
+    { key: "team", label: "Team" },
+    { key: "user", label: "User" },
+  ];
 
   return (
-    <nav className="space-y-1">
-      {topLevelItems.map((item) => {
-        if (!item.href) {
+    <nav className="space-y-3">
+      {sectionOrder.map((section) => {
+        const items = visibleItems.filter((item) => item.section === section.key);
+        if (items.length === 0) {
           return null;
         }
-        const active = pathname.startsWith(item.href);
+
         return (
-          <Link
-            key={item.key}
-            href={buildNavHref(item.href)}
-            className={cn(
-              "block rounded-md px-3 py-2 text-sm font-light transition-colors",
-              active ? "bg-sidebar-accent text-sidebar-accent-foreground" : "text-sidebar-foreground hover:bg-sidebar-accent/70",
-              collapsed && "px-2 text-center"
-            )}
-            title={collapsed ? item.label : undefined}
-          >
-            <span className={cn("truncate", collapsed && "hidden")}>{item.label}</span>
-            <span className={cn("hidden", collapsed && "inline")}>{item.label.slice(0, 1)}</span>
-          </Link>
+          <div key={section.key} className="space-y-1">
+            {!collapsed ? <p className="px-3 pb-1 text-xs font-light text-sidebar-foreground/70">{section.label}</p> : null}
+            <div className={cn(!collapsed && "ml-3 border-l border-sidebar-border pl-3")}>
+              {items.map((item) => {
+                if (!item.href) {
+                  return null;
+                }
+                const active = pathname.startsWith(item.href);
+                return (
+                  <Link
+                    key={item.key}
+                    href={buildNavHref(item.href)}
+                    className={cn(
+                      "mb-1 block rounded-md px-3 py-2 text-sm font-light transition-colors",
+                      active ? "bg-sidebar-accent text-sidebar-accent-foreground" : "text-sidebar-foreground hover:bg-sidebar-accent/70",
+                      collapsed && "px-2 text-center"
+                    )}
+                    title={collapsed ? `${section.label}: ${item.label}` : undefined}
+                  >
+                    <span className={cn("truncate", collapsed && "hidden")}>{item.label}</span>
+                    <span className={cn("hidden", collapsed && "inline")}>{item.label.slice(0, 1)}</span>
+                  </Link>
+                );
+              })}
+            </div>
+          </div>
         );
       })}
-
-      {teamSubItems.length > 0 && !collapsed ? (
-        <div className="pt-2">
-          <p className="px-3 pb-1 text-xs font-light text-sidebar-foreground/70">Team</p>
-          <div className="ml-3 space-y-1 border-l border-sidebar-border pl-3">
-            {teamSubItems.map((item) => {
-              if (!item.href) {
-                return null;
-              }
-              const active = pathname.startsWith(item.href);
-              return (
-                <Link
-                  key={item.key}
-                  href={buildNavHref(item.href)}
-                  className={cn(
-                    "block rounded-md px-2 py-1.5 text-sm font-light",
-                    active ? "bg-sidebar-accent text-sidebar-accent-foreground" : "text-sidebar-foreground hover:bg-sidebar-accent/70"
-                  )}
-                >
-                  {item.label}
-                </Link>
-              );
-            })}
-          </div>
-        </div>
-      ) : null}
     </nav>
   );
 }

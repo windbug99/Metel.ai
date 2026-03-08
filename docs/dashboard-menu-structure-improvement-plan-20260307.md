@@ -426,6 +426,27 @@
   - 현재 화면은 안정화/권한/스코프 개선이 우선 반영된 상태이며, 메뉴의 "보이는 구조"는 부분 개편 상태다.
   - 따라서 기능적 개선은 완료에 가깝지만, IA 시각 개편은 후속 UI 작업이 필요하다.
 
+### 15.8 Next Phase: IA UI Refactor Checklist (Visual Menu Restructure)
+- 목표:
+  - 사이드바를 `Organization / Team / User` 3개 대분류 기반 트리로 시각적으로 재배치한다.
+  - 현재의 평면/혼합 메뉴를 책임 경계 중심 구조로 정렬한다.
+- 작업 체크리스트:
+  - [x] 정보구조 1차 반영: `Organization/Team/User` 3대분류 사이드바 그룹 렌더링 적용
+  - [x] 사이드바 그룹 렌더러 개편: 기존 top-level 혼합 메뉴를 대분류 하위로 재배치
+  - [x] Team 섹션 하위 트리 재배치: `Overview/Usage/Team Policy/Agent Guide/API Keys/Policy Simulator/Audit Events`
+  - [x] User 섹션 신설/노출 규칙 1차 반영: `Profile/OAuth Connections`
+  - [ ] Scope 전환 UX 개선: 그룹 전환 시 query(`scope/org/team`) 일관 유지
+  - [ ] 라벨/문구 통일: breadcrumb/페이지 타이틀/사이드바 텍스트 동기화
+  - [ ] 모바일 레이아웃 검증: drawer 펼침/접힘, 탭 타겟, overflow 점검
+  - [ ] 권한 기반 가시성 재검증: owner/admin/member 메뉴 노출 표 재확인
+  - [ ] 정적 점검 스크립트 업데이트: 메뉴 구조 변경에 맞게 `run_dashboard_v2_*_static_check.sh` 갱신
+  - [ ] QA stage gate 재실행 및 PASS 기록
+- 완료 기준(DoD):
+  - [ ] 사이드바에서 `Organization / Team / User` 3개 대분류가 명확히 구분된다.
+  - [ ] 역할별(owner/admin/member) 메뉴 노출이 매핑표(Section 13)와 일치한다.
+  - [ ] `dashboard-v2-qa-gate`와 `rbac-stage-gate` 재실행 결과가 모두 PASS다.
+  - [ ] 변경 스크린샷(데스크탑/모바일)과 함께 문서/로그가 업데이트된다.
+
 ## 16. Staged Rollout Checklist (2026-03-08 update)
 - [x] Frontend query-scope static checks PASS
 - [x] Frontend type-check(`tsc --noEmit`) PASS
