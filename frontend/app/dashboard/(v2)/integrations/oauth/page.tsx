@@ -25,6 +25,13 @@ type OrganizationOAuthPolicy = {
   allowed_providers?: string[];
   required_providers?: string[];
   blocked_providers?: string[];
+  approval_workflow?: Record<string, unknown> | null;
+};
+
+type PermissionSnapshot = {
+  permissions?: {
+    can_manage_integrations?: boolean;
+  };
 };
 
 type OrganizationOAuthPolicyPayload = {
@@ -119,6 +126,12 @@ export default function DashboardOAuthConnectionsPage() {
   const [policyLoading, setPolicyLoading] = useState(false);
   const [policyError, setPolicyError] = useState<string | null>(null);
   const [oauthPolicy, setOauthPolicy] = useState<OrganizationOAuthPolicyPayload["item"] | null>(null);
+  const [canManagePolicy, setCanManagePolicy] = useState(false);
+  const [allowedDraft, setAllowedDraft] = useState("");
+  const [requiredDraft, setRequiredDraft] = useState("");
+  const [blockedDraft, setBlockedDraft] = useState("");
+  const [savingPolicy, setSavingPolicy] = useState(false);
+  const [policySaveMessage, setPolicySaveMessage] = useState<string | null>(null);
 
   const handle401 = useCallback(() => {
     const next = encodeURIComponent(buildNextPath(pathname, window.location.search));
@@ -165,12 +178,16 @@ export default function DashboardOAuthConnectionsPage() {
     }
     setPolicyLoading(true);
     setPolicyError(null);
-    const res = await dashboardApiGet<OrganizationOAuthPolicyPayload>(`/api/organizations/${scope.organizationId}/oauth-policy`);
-    if (res.status === 401) {
+    const [meRes, res] = await Promise.all([
+      dashboardApiGet<PermissionSnapshot>("/api/me/permissions"),
+      dashboardApiGet<OrganizationOAuthPolicyPayload>(`/api/organizations/${scope.organizationId}/oauth-policy`),
+    ]);
+    if (meRes.status === 401 || res.status === 401) {
       handle401();
       setPolicyLoading(false);
       return;
     }
+    setCanManagePolicy(Boolean(meRes.data?.permissions?.can_manage_integrations));
     if (!res.ok || !res.data?.item) {
       setOauthPolicy(null);
       setPolicyError(res.error ?? "Failed to load OAuth governance policy.");
@@ -178,8 +195,62 @@ export default function DashboardOAuthConnectionsPage() {
       return;
     }
     setOauthPolicy(res.data.item);
+    const policy = res.data.item.policy_json ?? {};
+    const toDraft = (items: string[] | undefined) => (Array.isArray(items) ? items.join(", ") : "");
+    setAllowedDraft(toDraft(policy.allowed_providers));
+    setRequiredDraft(toDraft(policy.required_providers));
+    setBlockedDraft(toDraft(policy.blocked_providers));
+    setPolicySaveMessage(null);
     setPolicyLoading(false);
   }, [handle401, scope.organizationId, scope.scope]);
+
+  const toProviderList = useCallback((raw: string): string[] => {
+    const values = raw
+      .split(/[\n,]/g)
+      .map((item) => item.trim().toLowerCase())
+      .filter((item) => item.length > 0);
+    return Array.from(new Set(values)).sort();
+  }, []);
+
+  const saveOrgPolicy = useCallback(async () => {
+    if (scope.scope !== "org" || scope.organizationId === null || !canManagePolicy) {
+      return;
+    }
+    setSavingPolicy(true);
+    setPolicyError(null);
+    setPolicySaveMessage(null);
+    const currentPolicy = oauthPolicy?.policy_json ?? {};
+    const response = await dashboardApiRequest<OrganizationOAuthPolicyPayload>(`/api/organizations/${scope.organizationId}/oauth-policy`, {
+      method: "PATCH",
+      body: {
+        allowed_providers: toProviderList(allowedDraft),
+        required_providers: toProviderList(requiredDraft),
+        blocked_providers: toProviderList(blockedDraft),
+        approval_workflow:
+          currentPolicy && typeof currentPolicy.approval_workflow === "object"
+            ? currentPolicy.approval_workflow
+            : null,
+      },
+    });
+    if (response.status === 401) {
+      handle401();
+      setSavingPolicy(false);
+      return;
+    }
+    if (response.status === 403) {
+      setPolicyError("Admin role required to update OAuth governance policy.");
+      setSavingPolicy(false);
+      return;
+    }
+    if (!response.ok || !response.data?.item) {
+      setPolicyError(response.error ?? "Failed to update OAuth governance policy.");
+      setSavingPolicy(false);
+      return;
+    }
+    setOauthPolicy(response.data.item);
+    setPolicySaveMessage("OAuth governance policy updated.");
+    setSavingPolicy(false);
+  }, [allowedDraft, blockedDraft, canManagePolicy, handle401, oauthPolicy?.policy_json, requiredDraft, scope.organizationId, scope.scope, toProviderList]);
 
   const handleConnect = useCallback(
     async (provider: "notion" | "linear") => {
@@ -303,6 +374,59 @@ export default function DashboardOAuthConnectionsPage() {
               <p className="text-xs text-muted-foreground">
                 Version: {oauthPolicy?.version ?? 1} | Updated: {formatDate(oauthPolicy?.updated_at ?? null)}
               </p>
+              {scope.scope === "org" ? (
+                <div className="space-y-3 rounded-md border border-border p-3">
+                  <p className="text-sm font-medium">Policy Editor</p>
+                  <p className="text-xs text-muted-foreground">
+                    Comma-separated provider list. Example: <code>notion, linear</code>
+                  </p>
+                  <div className="grid gap-3 md:grid-cols-3">
+                    <label className="space-y-1 text-xs">
+                      <span className="text-muted-foreground">Allowed Providers</span>
+                      <textarea
+                        className="ds-input min-h-[92px] w-full rounded-md px-3 py-2 text-sm"
+                        value={allowedDraft}
+                        onChange={(event) => setAllowedDraft(event.target.value)}
+                        disabled={!canManagePolicy || savingPolicy}
+                      />
+                    </label>
+                    <label className="space-y-1 text-xs">
+                      <span className="text-muted-foreground">Required Providers</span>
+                      <textarea
+                        className="ds-input min-h-[92px] w-full rounded-md px-3 py-2 text-sm"
+                        value={requiredDraft}
+                        onChange={(event) => setRequiredDraft(event.target.value)}
+                        disabled={!canManagePolicy || savingPolicy}
+                      />
+                    </label>
+                    <label className="space-y-1 text-xs">
+                      <span className="text-muted-foreground">Blocked Providers</span>
+                      <textarea
+                        className="ds-input min-h-[92px] w-full rounded-md px-3 py-2 text-sm"
+                        value={blockedDraft}
+                        onChange={(event) => setBlockedDraft(event.target.value)}
+                        disabled={!canManagePolicy || savingPolicy}
+                      />
+                    </label>
+                  </div>
+                  <div className="flex items-center gap-2">
+                    <Button
+                      type="button"
+                      className="ds-btn h-10 rounded-md px-3 text-xs disabled:cursor-not-allowed disabled:opacity-60"
+                      onClick={() => void saveOrgPolicy()}
+                      disabled={!canManagePolicy || savingPolicy}
+                    >
+                      {savingPolicy ? "Saving..." : "Save Policy"}
+                    </Button>
+                    {!canManagePolicy ? (
+                      <p className="text-xs text-muted-foreground">You do not have permission to modify this policy.</p>
+                    ) : null}
+                    {policySaveMessage ? <p className="text-xs text-emerald-500">{policySaveMessage}</p> : null}
+                  </div>
+                </div>
+              ) : (
+                <p className="text-xs text-muted-foreground">Team scope is read-only. Update policy in organization scope.</p>
+              )}
             </>
           ) : null}
         </div>
