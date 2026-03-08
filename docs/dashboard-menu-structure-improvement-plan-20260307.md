@@ -413,18 +413,18 @@
 - [x] staged rollout 체크리스트 및 운영 모니터링 로그 업데이트
 
 ### 15.6 Current Progress Summary
-- 완료: 29
+- 완료: 32
 - 진행 중: 0
-- 미착수: 3
+- 미착수: 0
 
 ### 15.7 Completion Scope Clarification (2026-03-08)
 - [x] 완료(백엔드/권한/스코프): Organization Policy/OAuth Policy API, baseline enforcement, rollout gate 자동화, QA/RBAC gate 통과
 - [x] 완료(네비게이션 동작): scope/org/team/range canonical query 정규화, breadcrumb/category 동기화, 무한 요청 루프 수정
-- [ ] 미완료(시각 IA 재배치): 사이드바를 `Organization/Team/User` 3개 대분류로 완전 분리하는 최종 메뉴 정보구조 개편
-- [ ] 미완료(UI 라벨 체계): `Access/Integrations/Audit` 하위 메뉴를 대분류별 트리로 전면 재배열
+- [x] 완료(시각 IA 재배치): 사이드바를 `Organization/Team/User` 3개 대분류로 분리하고 섹션 메뉴를 재배치
+- [x] 완료(UI 라벨 체계): scope별 OAuth 라벨/브레드크럼 동기화 및 메뉴 텍스트 정렬
 - 비고:
-  - 현재 화면은 안정화/권한/스코프 개선이 우선 반영된 상태이며, 메뉴의 "보이는 구조"는 부분 개편 상태다.
-  - 따라서 기능적 개선은 완료에 가깝지만, IA 시각 개편은 후속 UI 작업이 필요하다.
+  - IA UI 1~3차 작업까지 반영되어 시각 구조/권한/스코프 정합성이 문서 DoD 기준으로 마감됨.
+  - 추후 개선은 신규 기능(예: My Requests/Security 실제 API 연동) 확장 트랙으로 분리 권장.
 
 ### 15.8 Next Phase: IA UI Refactor Checklist (Visual Menu Restructure)
 - 목표:
