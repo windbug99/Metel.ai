@@ -392,7 +392,7 @@
 - [x] 공통 scope 해석 유틸 적용(`resolveDashboardScope`) 및 Overview/Audit Events 연동
 - [x] MCP Usage 페이지 org/team 스코프 쿼리 전달 연동(`organization_id/team_id`)
 - [x] Integrations(Webhooks) 페이지 org/team 스코프 쿼리 전달 및 non-user write 가드 적용
-- [x] Integrations(OAuth) 페이지 scope 분기 적용(`user=OAuth Connections`, `org/team=OAuth Governance(read-only)`)
+- [x] Integrations(OAuth) 페이지 scope 분기 적용(`user=OAuth Connections`, `org=OAuth Governance(edit)`, `team=OAuth Governance(read-only)`)
 - [x] Audit(Events/Settings) 페이지 scope 분기 적용(`user=개인`, `org=거버넌스`, `team=운영 read/export`)
 - [x] 페이지별 데이터 호출 스코프 일치화 완료
 - [x] Overview/Usage/Integrations/Audit 각 페이지의 org/team/user 분리 렌더링 완결
@@ -404,6 +404,7 @@
 - [x] Organization OAuth Policy API 추가(`GET/PATCH /api/organizations/{id}/oauth-policy`)
 - [x] OAuth policy read 응답의 member 민감 필드 마스킹 적용
 - [x] 관련 단위 테스트 추가/보정 및 통과
+- [x] Organization OAuth Governance 편집 UI 구현(owner/admin write, team read-only 유지)
 
 ### 15.5 Phase 5. QA, Migration, Rollout
 - [x] 로컬 테스트 환경에 `pytest` 구성(.venv)

@@ -25,6 +25,16 @@
 - 비고:
   - `mobile manual qa log check`는 `REQUIRE_MOBILE_MANUAL_QA=1`에서만 강제되며 현재는 optional skip.
 
+## OAuth Governance UI Update (2026-03-08)
+
+- 변경:
+  - Organization scope의 `OAuth Governance` 페이지에 정책 편집 UI 추가
+  - owner/admin은 `allowed/required/blocked providers` 저장 가능
+  - team scope는 read-only 유지
+- 검증:
+  - frontend typecheck PASS
+  - dashboard static checks(query/mobile) PASS
+
 ## Dashboard Scope/Menu Follow-up (2026-03-08, Local Validation)
 
 - 목적:
