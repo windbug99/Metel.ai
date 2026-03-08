@@ -29,6 +29,8 @@ export const GLOBAL_QUERY_KEYS = ["scope", "org", "team", "range"] as const;
 export const PAGE_QUERY_KEYS: Record<string, string[]> = {
   overview: ["overview_window"],
   profile: ["profile_tab"],
+  requests: ["requests_tab"],
+  security: ["security_tab"],
   apiKeys: ["keys_status"],
   organizations: ["orgs_tab"],
   teamPolicy: ["team_tab"],
@@ -45,6 +47,12 @@ export const PAGE_QUERY_KEYS: Record<string, string[]> = {
 export function currentPageKey(pathname: string): keyof typeof PAGE_QUERY_KEYS {
   if (pathname.startsWith("/dashboard/profile")) {
     return "profile";
+  }
+  if (pathname.startsWith("/dashboard/requests")) {
+    return "requests";
+  }
+  if (pathname.startsWith("/dashboard/security")) {
+    return "security";
   }
   if (pathname.startsWith("/dashboard/access/api-keys")) {
     return "apiKeys";
@@ -85,6 +93,12 @@ export function currentPageKey(pathname: string): keyof typeof PAGE_QUERY_KEYS {
 export function pageTitle(pathname: string): string {
   if (pathname.startsWith("/dashboard/profile")) {
     return "Profile";
+  }
+  if (pathname.startsWith("/dashboard/requests")) {
+    return "My Requests";
+  }
+  if (pathname.startsWith("/dashboard/security")) {
+    return "Security";
   }
   if (pathname.startsWith("/dashboard/access/api-keys")) {
     return "API Keys";
@@ -136,6 +150,10 @@ export function buildBreadcrumb(pathname: string, scope: "org" | "team" | "user"
     menu = "Control";
   } else if (pathname.startsWith("/dashboard/profile")) {
     menu = "Profile";
+  } else if (pathname.startsWith("/dashboard/requests")) {
+    menu = "Requests";
+  } else if (pathname.startsWith("/dashboard/security")) {
+    menu = "Security";
   } else if (pathname.startsWith("/dashboard/admin/")) {
     menu = "Admin";
   }
@@ -169,6 +187,8 @@ export function buildNavItems(permissionSnapshot: PermissionSnapshot | null): Na
     { key: "team-audit-events", href: "/dashboard/control/audit-events", label: "Audit Events", visible: true, section: "team" },
 
     { key: "user-profile", href: "/dashboard/profile", label: "Profile", visible: true, section: "user" },
+    { key: "user-my-requests", href: "/dashboard/requests", label: "My Requests", visible: true, section: "user" },
+    { key: "user-security", href: "/dashboard/security", label: "Security", visible: true, section: "user" },
     { key: "user-oauth-connections", href: "/dashboard/integrations/oauth", label: "OAuth Connections", visible: true, section: "user" },
   ];
 }
