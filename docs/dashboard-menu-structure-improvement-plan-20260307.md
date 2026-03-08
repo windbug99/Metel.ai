@@ -440,6 +440,7 @@
   - [x] 모바일 레이아웃 검증(정적): drawer 펼침/접힘, 탭 타겟, overflow 정적 점검 PASS
   - [x] 권한 기반 가시성 재검증: `run_dashboard_v2_menu_rbac_smoke.sh`를 IA 메뉴 키 기준으로 갱신
   - [x] 정적 점검 스크립트 업데이트: 메뉴 구조 변경에 맞게 `run_dashboard_v2_*_static_check.sh` 갱신
+  - [x] 전이(transition) 점검 스크립트 현행화: `legacy` 참조 제거 및 `Organization/Team/User` 섹션 라벨 기준 점검으로 교체
   - [x] QA stage gate 재실행 및 PASS 기록 (`pass=6 fail=0 skip=1`, mobile manual qa는 optional skip)
 - 완료 기준(DoD):
   - [x] 사이드바에서 `Organization / Team / User` 3개 대분류가 명확히 구분된다.

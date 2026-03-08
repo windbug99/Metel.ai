@@ -6,8 +6,8 @@ SCRIPT_DIR="${ROOT_DIR}/backend/scripts"
 STRICT_WARN_AS_FAIL="${STRICT_WARN_AS_FAIL:-0}"
 
 DASHBOARD_ROOT_PAGE="${ROOT_DIR}/frontend/app/dashboard/page.tsx"
-LEGACY_PAGE="${ROOT_DIR}/frontend/app/dashboard/legacy/page.tsx"
 FRONTEND_ENV_EXAMPLE="${ROOT_DIR}/frontend/.env.example"
+NAV_MAIN_PAGE="${ROOT_DIR}/frontend/components/dashboard-v2/sidebar07/nav-main.tsx"
 
 PASS=0
 FAIL=0
@@ -47,28 +47,19 @@ else
 fi
 
 if [[ -f "${FRONTEND_ENV_EXAMPLE}" ]] \
-  && match_pattern '^NEXT_PUBLIC_DASHBOARD_LEGACY_ENABLED=false$' "${FRONTEND_ENV_EXAMPLE}"; then
-  pass "legacy feature flag defaults to disabled in frontend/.env.example"
+  && match_pattern '^NEXT_PUBLIC_DASHBOARD_GLOBAL_SEARCH_ENABLED=' "${FRONTEND_ENV_EXAMPLE}"; then
+  pass "frontend env example includes dashboard v2 flags"
 else
-  fail "frontend/.env.example missing NEXT_PUBLIC_DASHBOARD_LEGACY_ENABLED=false"
+  fail "frontend/.env.example missing dashboard v2 flag entries"
 fi
 
-if [[ -f "${LEGACY_PAGE}" ]]; then
-  if match_pattern 'NEXT_PUBLIC_DASHBOARD_LEGACY_ENABLED === "true"' "${LEGACY_PAGE}" \
-    && match_pattern 'router.replace\(`/dashboard/overview\$\{query\}`\)' "${LEGACY_PAGE}"; then
-    pass "legacy route is feature-gated (default redirect to /dashboard/overview)"
-  else
-    warn "legacy dashboard page still exists (/dashboard/legacy) without explicit feature gate"
-  fi
-  if match_pattern 'href: "/dashboard/overview"' "${LEGACY_PAGE}" \
-    && match_pattern 'href: "/dashboard/access/api-keys"' "${LEGACY_PAGE}" \
-    && match_pattern 'href: "/dashboard/control/audit-events"' "${LEGACY_PAGE}"; then
-    pass "migrated menu entries point to route-based pages"
-  else
-    fail "legacy menu still contains non-route navigation for migrated entries"
-  fi
+if [[ -f "${NAV_MAIN_PAGE}" ]] \
+  && match_pattern 'Organization' "${NAV_MAIN_PAGE}" \
+  && match_pattern 'Team' "${NAV_MAIN_PAGE}" \
+  && match_pattern 'User' "${NAV_MAIN_PAGE}"; then
+  pass "sidebar section labels (Organization/Team/User) configured"
 else
-  pass "legacy dashboard page removed"
+  fail "sidebar section labels missing in nav-main"
 fi
 
 if "${SCRIPT_DIR}/run_dashboard_v2_qa_stage_gate.sh"; then
