@@ -15,6 +15,7 @@ import {
 } from "@/components/ui/dialog";
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { usePathname, useRouter, useSearchParams } from "next/navigation";
+import { Loader2 } from "lucide-react";
 
 import { buildNextPath, dashboardApiGet, dashboardApiRequest } from "../../../../../lib/dashboard-v2-client";
 import AlertBanner from "../../../../../components/dashboard-v2/alert-banner";
@@ -559,6 +560,20 @@ export default function DashboardOrganizationsPage() {
     }
   }, [me?.user_id, roleRequestRequestedRole, selectedOrgRole]);
 
+  if (loading) {
+    return (
+      <section className="space-y-4">
+        <h1 className="text-2xl font-semibold">Organizations</h1>
+        <p className="text-sm text-muted-foreground">
+          Owner/Admin can manage members and invites. Role requests can be created by all roles, and only owner can approve.
+        </p>
+        <div className="ds-card flex min-h-[220px] items-center justify-center p-4">
+          <Loader2 className="h-5 w-5 animate-spin text-muted-foreground" />
+        </div>
+      </section>
+    );
+  }
+
   return (
     <section className="space-y-4">
       <h1 className="text-2xl font-semibold">Organizations</h1>
@@ -567,7 +582,6 @@ export default function DashboardOrganizationsPage() {
       </p>
 
       {error ? <AlertBanner message={error} tone="danger" /> : null}
-      {loading ? <p className="text-sm text-muted-foreground">Loading organizations...</p> : null}
 
       <Dialog open={createOrgDialogOpen} onOpenChange={setCreateOrgDialogOpen}>
         <DialogContent className="sm:max-w-md">

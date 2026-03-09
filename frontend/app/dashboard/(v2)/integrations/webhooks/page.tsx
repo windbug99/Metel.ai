@@ -4,6 +4,7 @@ import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { usePathname, useRouter, useSearchParams } from "next/navigation";
+import { Loader2 } from "lucide-react";
 
 import { buildNextPath, dashboardApiGet, dashboardApiRequest } from "../../../../../lib/dashboard-v2-client";
 import { resolveDashboardScope } from "../../../../../lib/dashboard-scope";
@@ -231,6 +232,18 @@ export default function DashboardIntegrationsWebhooksPage() {
     };
   }, [fetchIntegrations, pathname]);
 
+  if (loading) {
+    return (
+      <section className="space-y-4">
+        <h1 className="text-2xl font-semibold">Integrations (Webhook)</h1>
+        <p className="text-sm text-muted-foreground">Manage event subscriptions, delivery status, and retry processing.</p>
+        <div className="ds-card flex min-h-[220px] items-center justify-center p-4">
+          <Loader2 className="h-5 w-5 animate-spin text-muted-foreground" />
+        </div>
+      </section>
+    );
+  }
+
   return (
     <section className="space-y-4">
       <h1 className="text-2xl font-semibold">Integrations (Webhook)</h1>
@@ -277,7 +290,6 @@ export default function DashboardIntegrationsWebhooksPage() {
         </div>
       </div>
 
-      {loading ? <p className="text-sm text-muted-foreground">Loading webhooks...</p> : null}
       {error ? (
         <div className="rounded-md border border-destructive/40 bg-destructive/10 px-3 py-2 text-sm text-destructive">
           {error}

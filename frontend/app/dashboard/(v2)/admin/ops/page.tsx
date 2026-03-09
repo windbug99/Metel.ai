@@ -3,8 +3,10 @@
 import { Select } from "@/components/ui/select";
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
+import { Checkbox } from "@/components/ui/checkbox";
 import { useCallback, useEffect, useState } from "react";
 import { usePathname, useRouter } from "next/navigation";
+import { Loader2 } from "lucide-react";
 
 import { buildNextPath, dashboardApiGet, dashboardApiRequest } from "../../../../../lib/dashboard-v2-client";
 import AlertBanner from "../../../../../components/dashboard-v2/alert-banner";
@@ -340,6 +342,29 @@ export default function DashboardAdminOpsPage() {
     };
   }, [fetchAdminOps, pathname]);
 
+  if (loading) {
+    return (
+      <section className="space-y-5">
+        <div className="flex flex-wrap items-center justify-between gap-2">
+          <div>
+            <h1 className="text-2xl font-semibold">Admin / Ops</h1>
+            <p className="text-sm text-muted-foreground">Connector diagnostics, rate-limit events, system health, and incident workflow.</p>
+          </div>
+          <Button
+            type="button"
+            disabled
+            className="ds-btn h-11 rounded-md px-3 text-sm disabled:cursor-not-allowed disabled:opacity-60 md:h-9"
+          >
+            Loading...
+          </Button>
+        </div>
+        <div className="ds-card flex min-h-[220px] items-center justify-center p-4">
+          <Loader2 className="h-5 w-5 animate-spin text-muted-foreground" />
+        </div>
+      </section>
+    );
+  }
+
   return (
     <section className="space-y-5">
       <div className="flex flex-wrap items-center justify-between gap-2">
@@ -369,7 +394,7 @@ export default function DashboardAdminOpsPage() {
 
       {canReadAdminOps ? (
         <>
-          <div className="grid gap-2 sm:grid-cols-2">
+          <div className="grid gap-2">
             <article className="ds-card p-4">
               <p className="text-xs font-medium text-muted-foreground">System Health</p>
               <p className="mt-1 text-sm font-semibold text-[var(--text-primary)]">{systemHealth?.status ?? "unknown"}</p>
@@ -384,10 +409,9 @@ export default function DashboardAdminOpsPage() {
               <p className="text-xs font-medium text-muted-foreground">Incident Banner</p>
               <div className="mt-2 flex flex-wrap items-center gap-2">
                 <label className="inline-flex items-center gap-1 text-xs text-muted-foreground">
-                  <Input
-                    type="checkbox"
+                  <Checkbox
                     checked={incidentEnabledDraft}
-                    onChange={(event) => setIncidentEnabledDraft(event.target.checked)}
+                    onCheckedChange={setIncidentEnabledDraft}
                     disabled={!canManageIncidentBanner}
                   />
                   enabled

@@ -3,8 +3,10 @@
 import { Select } from "@/components/ui/select";
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
+import { Checkbox } from "@/components/ui/checkbox";
 import { useCallback, useEffect, useState } from "react";
 import { usePathname, useRouter, useSearchParams } from "next/navigation";
+import { Loader2 } from "lucide-react";
 
 import { buildNextPath, dashboardApiGet, dashboardApiRequest } from "../../../../../lib/dashboard-v2-client";
 import { resolveDashboardScope } from "../../../../../lib/dashboard-scope";
@@ -325,7 +327,11 @@ export default function DashboardAuditSettingsPage() {
       {error ? <AlertBanner message={error} tone="danger" /> : null}
       {message ? <p className="text-sm text-chart-2">{message}</p> : null}
 
-      {loading ? <p className="text-sm text-muted-foreground">Loading audit settings...</p> : null}
+      {loading ? (
+        <div className="ds-card flex min-h-[220px] items-center justify-center p-4">
+          <Loader2 className="h-5 w-5 animate-spin text-muted-foreground" />
+        </div>
+      ) : null}
 
       {!loading && isUserScope ? (
         <div className="ds-card p-4">
@@ -354,10 +360,9 @@ export default function DashboardAuditSettingsPage() {
                 className="ds-input h-11 w-28 rounded-md px-3 text-sm md:h-9"
               />
               <label className="inline-flex items-center gap-2 text-sm text-muted-foreground">
-                <Input
-                  type="checkbox"
+                <Checkbox
                   checked={exportEnabledDraft}
-                  onChange={(event) => setExportEnabledDraft(event.target.checked)}
+                  onCheckedChange={setExportEnabledDraft}
                   disabled={!canUpdateSettings}
                 />
                 Export enabled
