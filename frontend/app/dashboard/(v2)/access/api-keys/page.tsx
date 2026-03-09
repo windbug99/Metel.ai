@@ -4,10 +4,17 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@
 import { Select } from "@/components/ui/select";
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import { usePathname, useRouter } from "next/navigation";
 import { ChevronsUpDown, Loader2 } from "lucide-react";
-import { DropdownMenu, DropdownMenuCheckboxItem, DropdownMenuContent, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
+import {
+  DropdownMenu,
+  DropdownMenuCheckboxItem,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuSeparator,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu";
 
 import { buildNextPath, dashboardApiGet, dashboardApiRequest } from "../../../../../lib/dashboard-v2-client";
 import StatusBadge from "../../../../../components/dashboard-v2/status-badge";
@@ -163,6 +170,10 @@ export default function DashboardApiKeysPage() {
 
   const [drilldownById, setDrilldownById] = useState<Record<number, DrilldownPayload | null>>({});
   const [drilldownLoadingId, setDrilldownLoadingId] = useState<number | null>(null);
+  const allToolNamesCsv = useMemo(
+    () => Array.from(new Set(toolOptions.map((tool) => tool.tool_name.trim()).filter((name) => name.length > 0))).join(", "),
+    [toolOptions]
+  );
 
   const fetchApiKeys = useCallback(async () => {
     setLoading(true);
@@ -507,6 +518,29 @@ export default function DashboardApiKeysPage() {
             </DropdownMenuTrigger>
             <DropdownMenuContent align="start" className="max-h-72 w-[var(--radix-dropdown-menu-trigger-width)] overflow-y-auto">
               {toolOptions.length === 0 ? <p className="px-2 py-1 text-xs text-muted-foreground">No tool options</p> : null}
+              {toolOptions.length > 0 ? (
+                <>
+                  <DropdownMenuItem
+                    onSelect={(event) => {
+                      event.preventDefault();
+                      setCreateAllowedTools(allToolNamesCsv);
+                    }}
+                    className="text-xs"
+                  >
+                    전체선택
+                  </DropdownMenuItem>
+                  <DropdownMenuItem
+                    onSelect={(event) => {
+                      event.preventDefault();
+                      setCreateAllowedTools("");
+                    }}
+                    className="text-xs"
+                  >
+                    전체선택해제
+                  </DropdownMenuItem>
+                  <DropdownMenuSeparator />
+                </>
+              ) : null}
               {toolOptions.map((tool) => (
                 <DropdownMenuCheckboxItem
                   key={`create-tool-${tool.tool_name}`}
@@ -611,6 +645,35 @@ export default function DashboardApiKeysPage() {
                     </DropdownMenuTrigger>
                     <DropdownMenuContent align="start" className="max-h-72 w-[var(--radix-dropdown-menu-trigger-width)] overflow-y-auto">
                       {toolOptions.length === 0 ? <p className="px-2 py-1 text-xs text-muted-foreground">No tool options</p> : null}
+                      {toolOptions.length > 0 ? (
+                        <>
+                          <DropdownMenuItem
+                            onSelect={(event) => {
+                              event.preventDefault();
+                              setAllowedToolsDraft((prev) => ({
+                                ...prev,
+                                [item.id]: allToolNamesCsv,
+                              }));
+                            }}
+                            className="text-xs"
+                          >
+                            전체선택
+                          </DropdownMenuItem>
+                          <DropdownMenuItem
+                            onSelect={(event) => {
+                              event.preventDefault();
+                              setAllowedToolsDraft((prev) => ({
+                                ...prev,
+                                [item.id]: "",
+                              }));
+                            }}
+                            className="text-xs"
+                          >
+                            전체선택해제
+                          </DropdownMenuItem>
+                          <DropdownMenuSeparator />
+                        </>
+                      ) : null}
                       {toolOptions.map((tool) => (
                         <DropdownMenuCheckboxItem
                           key={`edit-${item.id}-tool-${tool.tool_name}`}
