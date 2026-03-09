@@ -9,10 +9,13 @@ from app.core.authz import AuthzContext, Role
 from app.routes.users import (
     UserRequestCreateRequest,
     UserRequestCancelRequest,
+    UserSecurityUpdateRequest,
     cancel_my_request,
     create_my_request,
+    get_my_security,
     get_my_request,
     list_my_requests,
+    update_my_security,
 )
 
 
@@ -52,6 +55,11 @@ class _Query:
         self.payload = payload
         return self
 
+    def upsert(self, payload: dict, **_kwargs):
+        self.mode = "upsert"
+        self.payload = payload
+        return self
+
     def eq(self, key: str, value):
         self.eq_calls.append((key, value))
         return self
@@ -69,10 +77,27 @@ class _Query:
     def execute(self):
         if self.mode == "select" and self.table_name == "org_memberships":
             return SimpleNamespace(data=[{"role": "member"}])
+        if self.mode == "select" and self.table_name == "user_security_settings":
+            if ("user_id", "member-user") in self.eq_calls and self.client.security_select_mode == "existing":
+                return SimpleNamespace(
+                    data=[
+                        {
+                            "user_id": "member-user",
+                            "mfa_enabled": True,
+                            "session_timeout_minutes": 45,
+                            "password_rotation_days": 60,
+                            "updated_at": "2026-03-08T01:00:00+00:00",
+                        }
+                    ]
+                )
+            return SimpleNamespace(data=[])
         if self.mode == "insert" and self.table_name == "org_role_change_requests":
             payload = dict(self.payload or {})
             payload["id"] = 10
             return SimpleNamespace(data=[payload])
+        if self.mode == "upsert" and self.table_name == "user_security_settings":
+            self.client.security_upsert_payload = dict(self.payload or {})
+            return SimpleNamespace(data=[self.payload])
         if self.mode == "select" and self.table_name == "organizations":
             if self.eq_calls:
                 return SimpleNamespace(data=[{"id": 1, "name": "Acme"}])
@@ -129,6 +154,8 @@ class _Query:
 class _Client:
     def __init__(self):
         self.updated_payload = None
+        self.security_upsert_payload = None
+        self.security_select_mode = "default"
 
     def table(self, name: str):
         query = _Query(self, name)
@@ -194,3 +221,32 @@ def test_cancel_my_request_updates_status(_client):
     assert _client.updated_payload is not None
     assert _client.updated_payload.get("status") == "cancelled"
     assert _client.updated_payload.get("review_reason") == "No longer needed"
+
+
+def test_get_my_security_defaults(_client):
+    out = asyncio.run(get_my_security(_request("/api/users/me/security")))
+    assert out["user_id"] == "member-user"
+    assert out["mfa_enabled"] is False
+    assert out["session_timeout_minutes"] == 60
+    assert out["password_rotation_days"] == 90
+
+
+def test_get_my_security_existing_row(_client):
+    _client.security_select_mode = "existing"
+    out = asyncio.run(get_my_security(_request("/api/users/me/security")))
+    assert out["mfa_enabled"] is True
+    assert out["session_timeout_minutes"] == 45
+    assert out["password_rotation_days"] == 60
+
+
+def test_update_my_security_upsert(_client):
+    out = asyncio.run(
+        update_my_security(
+            _request("/api/users/me/security", "PATCH"),
+            UserSecurityUpdateRequest(mfa_enabled=True, session_timeout_minutes=30, password_rotation_days=120),
+        )
+    )
+    assert out["mfa_enabled"] is True
+    assert out["session_timeout_minutes"] == 30
+    assert out["password_rotation_days"] == 120
+    assert _client.security_upsert_payload is not None

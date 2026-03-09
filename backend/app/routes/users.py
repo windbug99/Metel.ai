@@ -28,6 +28,12 @@ class UserRequestCancelRequest(BaseModel):
     reason: str | None = Field(default=None, max_length=400)
 
 
+class UserSecurityUpdateRequest(BaseModel):
+    mfa_enabled: bool | None = None
+    session_timeout_minutes: int | None = Field(default=None, ge=15, le=1440)
+    password_rotation_days: int | None = Field(default=None, ge=30, le=365)
+
+
 def _org_member_role(*, supabase, user_id: str, organization_id: str | int) -> str | None:
     rows = (
         supabase.table("org_memberships")
@@ -84,6 +90,81 @@ def _serialize_row(row: dict[str, Any], org_name_map: dict[int, str]) -> dict[st
         "created_at": row.get("created_at"),
         "updated_at": row.get("updated_at"),
     }
+
+
+def _default_security_settings(*, user_id: str) -> dict[str, Any]:
+    return {
+        "user_id": user_id,
+        "mfa_enabled": False,
+        "session_timeout_minutes": 60,
+        "password_rotation_days": 90,
+        "updated_at": datetime.now(timezone.utc).isoformat(),
+    }
+
+
+def _load_security_settings(*, supabase, user_id: str) -> dict[str, Any]:
+    rows = (
+        supabase.table("user_security_settings")
+        .select("user_id,mfa_enabled,session_timeout_minutes,password_rotation_days,updated_at")
+        .eq("user_id", user_id)
+        .limit(1)
+        .execute()
+    ).data or []
+    if rows:
+        row = rows[0]
+        return {
+            "user_id": user_id,
+            "mfa_enabled": bool(row.get("mfa_enabled")),
+            "session_timeout_minutes": int(row.get("session_timeout_minutes") or 60),
+            "password_rotation_days": int(row.get("password_rotation_days") or 90),
+            "updated_at": row.get("updated_at"),
+        }
+    return _default_security_settings(user_id=user_id)
+
+
+@router.get("/security")
+async def get_my_security(request: Request):
+    user_id = await get_authenticated_user_id(request)
+    settings = get_settings()
+    supabase = create_client(settings.supabase_url, settings.supabase_service_role_key)
+    authz_ctx = await get_authz_context(request, user_id=user_id, supabase=supabase)
+    require_min_role(authz_ctx, Role.MEMBER, method=request.method)
+
+    return _load_security_settings(supabase=supabase, user_id=user_id)
+
+
+@router.patch("/security")
+async def update_my_security(request: Request, body: UserSecurityUpdateRequest):
+    user_id = await get_authenticated_user_id(request)
+    settings = get_settings()
+    supabase = create_client(settings.supabase_url, settings.supabase_service_role_key)
+    authz_ctx = await get_authz_context(request, user_id=user_id, supabase=supabase)
+    require_min_role(authz_ctx, Role.MEMBER, method=request.method)
+
+    current = _load_security_settings(supabase=supabase, user_id=user_id)
+    payload: dict[str, Any] = {
+        "user_id": user_id,
+        "mfa_enabled": current["mfa_enabled"] if body.mfa_enabled is None else bool(body.mfa_enabled),
+        "session_timeout_minutes": current["session_timeout_minutes"]
+        if body.session_timeout_minutes is None
+        else int(body.session_timeout_minutes),
+        "password_rotation_days": current["password_rotation_days"]
+        if body.password_rotation_days is None
+        else int(body.password_rotation_days),
+        "updated_at": datetime.now(timezone.utc).isoformat(),
+    }
+
+    rows = supabase.table("user_security_settings").upsert(payload, on_conflict="user_id").execute().data or []
+    if rows:
+        row = rows[0]
+        return {
+            "user_id": user_id,
+            "mfa_enabled": bool(row.get("mfa_enabled")),
+            "session_timeout_minutes": int(row.get("session_timeout_minutes") or payload["session_timeout_minutes"]),
+            "password_rotation_days": int(row.get("password_rotation_days") or payload["password_rotation_days"]),
+            "updated_at": row.get("updated_at") or payload["updated_at"],
+        }
+    return payload
 
 
 @router.get("/requests")
