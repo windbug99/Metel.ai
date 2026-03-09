@@ -1,568 +1,460 @@
-# metel User Guide (v2)
+# metel User Guide Source
 
-작성일: 2026-03-09  
-대상: metel Dashboard v2를 처음 사용하는 사용자(Owner/Admin/Member)
+This document is the source of truth for the dashboard User Guide page.
+The page parser reads this file and renders content automatically.
 
----
-
-## 0. 이 문서의 목적과 사용 순서
-이 문서는 metel을 처음 도입할 때 아래 목표를 달성하도록 설계되었습니다.
-- 조직(Organization) 생성과 기본 거버넌스 설정
-- Admin/Member 초대 및 권한 체계 정립
-- 감사(Audit), OAuth, API Key 정책 설정
-- 팀(Team) 생성 및 팀 단위 정책/운영 설정
-- 사용자(User) 개인 보안/연결 설정
-
-권장 읽기 순서
-1. Organization 설정
-2. Team 설정
-3. User 설정
-4. 메뉴별 상세 가이드(Reference)
+## Language Sections
+- `### [en]` for English
+- `### [ko]` for Korean
 
 ---
 
-## 1. 시작 전 체크리스트
+### [en]
 
-### 1.1 필수 전제
-- 로그인 가능한 계정이 준비되어 있음
-- 현재 역할(Role)을 알고 있음: `owner` / `admin` / `member`
-- 초기 구축 담당자는 `owner` 권한 사용을 권장
+#### meta
+- title: User Guide
+- tooltip: Step-by-step onboarding guide for Organization, Team, and User setup.
+- contents_label: Contents
+- quick_start_label: Quick Start
+- quick_start_text: Recommended order: Organization baseline setup -> Team policy and API key rollout -> User security and OAuth setup -> Usage and audit checks.
+- org_setup_label: Organization Setup
+- team_setup_label: Team Setup
+- user_setup_label: User Setup
+- menu_reference_label: Menu Reference
+- faq_label: Ops / FAQ
+- show_label: Show
+- hide_label: Hide
 
-### 1.2 Scope 이해
-metel은 화면과 데이터가 `scope` 기준으로 분리됩니다.
-- `Organization`: 조직 전체 정책, 보안 기준선, 감사 설정
-- `Team`: 팀 운영 정책, API Key, 사용량/감사 이벤트
-- `User`: 개인 계정 보안, OAuth 연결, 본인 요청
+#### organization_setup
 
-중요 원칙
-- Organization 정책은 baseline(최소 기준)입니다.
-- Team 정책은 baseline보다 느슨하게 설정할 수 없습니다.
-- User 설정은 본인 계정에만 적용됩니다.
+##### Step O-1. Create Organization
+- menu: Organization > Organizations
+- menu_href: /dashboard/access/organizations
+- what: Create the base operating unit for governance and ownership.
+- values: Organization name should clearly identify legal entity or business unit.
+- why: Teams, memberships, policies, integrations, and audit controls are scoped by organization.
+- done: Organization appears in list and can be selected as current scope.
+- caution: Separate production and test organizations clearly, for example by suffix.
+
+##### Step O-2. Invite Admin and Members
+- menu: Organization > Organizations
+- menu_href: /dashboard/access/organizations
+- what: Invite operating admins and initial members.
+- values: Invite email, role, and invite expiration window.
+- why: Reduces single-owner risk and distributes daily operations.
+- done: At least one admin has accepted invite and can operate independently.
+- caution: Avoid over-assigning admin role and keep role-change rationale auditable.
+
+##### Step O-3. Finalize Role Model
+- menu: Organization > Organizations
+- menu_href: /dashboard/access/organizations
+- what: Define clear responsibility boundaries for owner, admin, and member.
+- values: Role matrix with allowed actions and review responsibilities.
+- why: Prevents confusion between UI visibility and actual API execution rights.
+- done: Team shares and follows an approved role matrix.
+- caution: Keep owner role limited to minimal required users.
+
+##### Step O-4. Configure OAuth Governance
+- menu: Organization > OAuth Governance
+- menu_href: /dashboard/integrations/oauth
+- what: Control allowed and required OAuth providers for the organization.
+- values: Allowed providers list and required providers list.
+- why: Enforces secure and consistent connection policy across users.
+- done: Policy saved and violation status is visible.
+- caution: Overly strict required-provider policy can block onboarding.
+
+##### Step O-5. Configure Audit Settings
+- menu: Organization > Audit Settings
+- menu_href: /dashboard/control/audit-settings
+- what: Define retention and collection level for audit data.
+- values: Retention period and event collection level/category.
+- why: Required for incident investigation, traceability, and compliance evidence.
+- done: Policy persisted and reflected in current settings view.
+- caution: Do not set retention too short for your compliance requirements.
+
+##### Step O-6. Maintain Organization Settings
+- menu: Organization > Organizations
+- menu_href: /dashboard/access/organizations
+- what: Perform rename and controlled deletion operations for organization lifecycle.
+- values: New organization name for rename, exact organization name for deletion confirmation.
+- why: Maintains clean organization inventory and safe decommissioning.
+- done: Rename is reflected or deletion completes with guard checks.
+- caution: Deletion is owner-only and removes related organization-scoped records.
+
+#### team_setup
+
+##### Step T-1. Create Teams and Assign Members
+- menu: Team > Team Policy
+- menu_href: /dashboard/access/team-policy
+- what: Create team operating boundaries under the selected organization.
+- values: Team name, description, and team member roles.
+- why: Team-level policy, keys, and audit flows depend on team scope.
+- done: Target teams exist and member assignments are complete.
+- caution: Ensure each team has at least one operational owner/admin.
+
+##### Step T-2. Author Team Policy
+- menu: Team > Team Policy
+- menu_href: /dashboard/access/team-policy
+- what: Define team-level allowed tools and restricted actions.
+- values: Policy metadata and policy rule payload.
+- why: Enforces least-privilege controls tailored to team operations.
+- done: Policy revision is saved and visible in history.
+- caution: Team policy cannot weaken organization baseline.
+
+##### Step T-3. Validate with Policy Simulator
+- menu: Team > Policy Simulator
+- menu_href: /dashboard/control/policy-simulator
+- what: Test allow/deny results before policy rollout.
+- values: API key, tool name, and representative argument payload.
+- why: Prevents production outages from unexpected denials.
+- done: Critical scenarios match expected allow or deny outcomes.
+- caution: Use real operational scenarios, not synthetic-only samples.
+
+##### Step T-4. Issue and Rotate API Keys
+- menu: Team > API Keys
+- menu_href: /dashboard/access/api-keys
+- what: Manage key lifecycle for service integrations.
+- values: Key name, allowed tools, expiration time, and metadata.
+- why: Reduces blast radius from credential leaks and over-permission.
+- done: Key works in test call and rotation schedule is documented.
+- caution: Never share plaintext keys in chat or docs.
+
+##### Step T-5. Run Usage and Audit Monitoring
+- menu: Team > Usage
+- menu_href: /dashboard/control/mcp-usage
+- what: Track usage trends, failures, and audit events regularly.
+- values: Time window and user or tool filters.
+- why: Detect anomalies early and shorten incident response time.
+- done: Baseline metrics and review cadence are defined.
+- caution: If anomalies appear, review policy, keys, and OAuth state together.
+
+#### user_setup
+
+##### Step U-1. Configure Profile
+- menu: User > Profile
+- menu_href: /dashboard/profile
+- what: Set clear user identity information.
+- values: Display name and profile defaults.
+- why: Improves accountability in logs and collaboration contexts.
+- done: User can be uniquely identified by team operators.
+- caution: Follow naming conventions used in your organization.
+
+##### Step U-2. Strengthen Security
+- menu: User > Security
+- menu_href: /dashboard/security
+- what: Apply account-level security controls.
+- values: Password update and supported authentication settings.
+- why: User account compromise can cascade to organization risk.
+- done: Security policy requirements are satisfied.
+- caution: Review active sessions on shared or temporary devices.
+
+##### Step U-3. Connect OAuth Providers
+- menu: User > OAuth Connections
+- menu_href: /dashboard/integrations/oauth
+- what: Connect required providers for user-context tool execution.
+- values: Provider connect or disconnect operations.
+- why: Enables stable execution for provider-backed tools.
+- done: Required providers are connected and healthy.
+- caution: Disconnect unused providers to reduce exposure.
+
+##### Step U-4. Track My Requests
+- menu: User > My Requests
+- menu_href: /dashboard/requests
+- what: Monitor request approval and processing state.
+- values: Status and date filters.
+- why: Prevents missed approvals and delayed access changes.
+- done: Pending and completed requests are actively tracked.
+- caution: Keep request reasons clear and auditable.
+
+#### menu_reference
+
+##### Organization > Organizations
+- menu_href: /dashboard/access/organizations
+- what: Manage organizations, memberships, invites, role requests, and settings.
+- values: Organization name, user identifier, invite email, and role fields.
+- why: Central source for organization ownership and access boundaries.
+
+##### Organization > Integrations
+- menu_href: /dashboard/integrations/webhooks
+- what: Configure webhooks and delivery targets.
+- values: Endpoint URL, event type selection, and verification secret.
+- why: Enables controlled automation to external systems.
+
+##### Organization > OAuth Governance
+- menu_href: /dashboard/integrations/oauth
+- what: Define provider-level governance policy.
+- values: Allowed provider list and required provider list.
+- why: Enforces standardized external connection policy.
+
+##### Organization > Audit Settings
+- menu_href: /dashboard/control/audit-settings
+- what: Configure audit retention and event policy.
+- values: Retention period and category-level controls.
+- why: Supports compliance and forensic investigations.
+
+##### Team > Team Policy
+- menu_href: /dashboard/access/team-policy
+- what: Manage team policy revisions and team-level governance.
+- values: Team metadata and policy payload.
+- why: Applies least-privilege controls at team scope.
+
+##### Team > API Keys
+- menu_href: /dashboard/access/api-keys
+- what: Create, rotate, and revoke team keys.
+- values: Key name, allowed tools, expiry, and optional metadata.
+- why: Controls machine-to-machine access safely.
+
+##### Team > Policy Simulator
+- menu_href: /dashboard/control/policy-simulator
+- what: Simulate policy outcome before rollout.
+- values: API key, tool, and argument payload.
+- why: Reduces production policy misconfiguration risk.
+
+##### Team > Usage / Audit Events
+- menu_href: /dashboard/control/mcp-usage
+- what: Monitor usage trend and audit trail.
+- values: Time range and filter dimensions.
+- why: Maintains operational reliability and governance visibility.
+
+##### User > Security / OAuth / My Requests
+- menu_href: /dashboard/security
+- what: Manage personal security, connection state, and request tracking.
+- values: Security controls, provider links, and request filters.
+- why: Keeps user-level posture secure and operational.
+
+#### faq
+
+##### Q: Why is a menu missing?
+- a: Verify your role and current scope first. Some menus are intentionally hidden based on access control.
+
+##### Q: Why does tool execution fail even with an API key?
+- a: Check allowed tools, key expiration, OAuth connection state, and policy denials in order.
+
+##### Q: Why is Team data empty?
+- a: Team scope requires valid organization and team selection. Re-select scope values and reload.
 
 ---
 
-## 2. Organization 설정 (초기 구축 핵심)
-
-> 목표: 조직 운영에 필요한 기본 거버넌스와 보안 통제를 먼저 고정한다.
-
-### Step O-1. Organization 생성
-경로: `Organization > Organizations`
-
-무엇을 하나요
-- 신규 Organization을 생성하고 기본 운영 단위를 만든다.
-
-입력 항목(예시)
-- Organization Name: `Acme Corp` (실제 회사/법인 기준)
-
-왜 필요한가
-- 모든 Team, Member, 정책, 감사 로그가 Organization 단위로 귀속되기 때문
-
-완료 기준
-- Organization 목록에 신규 조직이 생성됨
-- 조직 상세 조회가 가능함
-
-실수 방지
-- 테스트 조직과 운영 조직 이름을 명확히 분리(`-dev`, `-prod` 접미사 권장)
-
----
-
-### Step O-2. 첫 관리자(Admin)와 운영 멤버 초대
-경로: `Organization > Organizations` (Users/Invites/Requests 탭)
-
-무엇을 하나요
-- 운영에 필요한 사용자들을 초대하고 역할을 부여한다.
-
-입력 항목(예시)
-- Email: `admin@company.com`, `ops@company.com`
-- Role: `admin` 또는 `member`
-- Invite Expiration(있다면): 7~14일 권장
-
-왜 필요한가
-- Owner 1인 체제는 운영 리스크가 높음(휴가/퇴사/장애 대응)
-- 운영/감사 업무 분리를 위해 최소 2명 이상의 admin 권장
-
-완료 기준
-- 초대 상태가 `pending` 또는 `accepted`로 확인됨
-- 최소 1명 이상의 admin이 onboarding 완료
-
-실수 방지
-- 일반 사용자에게 admin을 과도하게 부여하지 않기
-- 역할 변경 시 사유를 남겨 감사 추적성 확보
-
----
-
-### Step O-3. 역할/권한 운영 원칙 확정
-경로: `Organization > Organizations` (Role 관리)
-
-무엇을 하나요
-- 역할별 책임 범위를 문서화하고 실제 역할에 반영한다.
-
-권장 권한 모델
-- owner: 조직 정책 최종 승인, 고위험 변경
-- admin: 초대/승인/정책 운영, 감사 설정 관리
-- member: 조회 및 제한된 작업 수행
-
-왜 필요한가
-- UI 접근 가능 여부와 실제 API 실행 권한 불일치 리스크를 줄이기 위해
-
-완료 기준
-- 역할 매트릭스가 팀에 공유됨
-- 실제 사용자 역할이 매트릭스와 일치
-
----
-
-### Step O-4. OAuth Governance 설정
-경로: `Organization > OAuth Governance`
-
-무엇을 하나요
-- 조직 차원에서 허용 Provider와 필수 Provider를 정의한다.
-
-입력 항목(화면 기준)
-- Allowed Providers: 사용 허용할 Provider 목록
-- Required Providers: 필수 연결 Provider 목록
-- (있다면) 정책 저장/배포 버튼
-
-권장 초기값
-- Allowed: 실제 업무에 필요한 Provider만 선택(Notion, Linear 등)
-- Required: 반드시 필요한 항목만 최소화
-
-왜 필요한가
-- 구성원마다 임의 연결 시 보안/컴플라이언스 위험 증가
-- 필수 연결 강제로 운영 표준화 가능
-
-완료 기준
-- 정책 저장 성공
-- 정책 위반 사용자 상태를 확인 가능
-
-실수 방지
-- Required를 과도하게 설정하면 초기 사용자 이탈 증가
-- 정책 변경 전 영향받는 팀/사용자 공지
-
----
-
-### Step O-5. Audit Settings 설정
-경로: `Organization > Audit Settings`
-
-무엇을 하나요
-- 감사 로그의 보존기간, 수집 수준 등 감사 정책을 정한다.
-
-입력 항목(화면 기준)
-- Retention Days/Window
-- Audit Level 또는 Event Category(지원되는 경우)
-- 기타 정책 JSON/옵션
-
-권장 초기값
-- 보존기간: 내부 규정이 없으면 최소 90일 이상
-- 민감 작업(권한 변경, 키 회전, 정책 수정) 이벤트는 항상 기록
-
-왜 필요한가
-- 사고 대응, 원인 분석, 내부통제 증적 확보에 필수
-
-완료 기준
-- 정책 저장 후 반영된 설정 조회 가능
-
-실수 방지
-- 보존기간을 너무 짧게 잡으면 사후 추적 불가
-
----
-
-### Step O-6. Admin/Ops 운영 절차 정리
-경로: `Organization > Admin / Ops`
-
-무엇을 하나요
-- 운영용 액션(점검/복구/관리)을 실행하기 전 표준 절차를 정한다.
-
-필수 운영 원칙
-- 실행 전: 목적, 영향 범위, 롤백 가능 여부 확인
-- 실행 후: 결과 로그와 수행자 기록 남기기
-
-왜 필요한가
-- 고위험 운영 액션의 오남용 방지
-
-완료 기준
-- Admin/Ops 실행 체크리스트를 팀에 공유
-
----
-
-## 3. Team 설정 (서비스 운영 단위)
-
-> 목표: 팀별 정책과 API 사용 통제를 구성하고 운영 모니터링 체계를 만든다.
-
-### Step T-1. Team 생성 및 멤버 배치
-경로: `Team > Team Policy` (팀 생성/멤버 관리 영역)
-
-무엇을 하나요
-- Organization 내부에 Team을 만들고 멤버를 배치한다.
-
-입력 항목(예시)
-- Team Name: `product-ai`, `ops-automation`
-- Description(있다면): 팀 목적과 담당 업무
-- Member Role: 팀 관리자는 최소 1명 지정
-
-왜 필요한가
-- 정책/API Key/감사 이벤트를 팀 단위로 분리해 운영하기 위해
-
-완료 기준
-- Team 목록에서 신규 팀 확인
-- 팀별 멤버가 정상 배정
-
----
-
-### Step T-2. Team Policy 작성
-경로: `Team > Team Policy`
-
-무엇을 하나요
-- 팀에서 허용할 도구/행위 범위를 정책으로 정의한다.
-
-입력 항목(화면 기준)
-- Policy Name/Version
-- Policy JSON 또는 Rule 입력 필드
-- Effective Scope(팀 적용 범위)
-
-작성 가이드
-- 최소권한 원칙: 필요한 도구만 허용
-- 고위험 액션(삭제, 대량 변경)은 명시적으로 제한
-- Organization baseline 위반 없이 동일/강화 방향으로 작성
-
-왜 필요한가
-- 팀별 운영 특성에 맞춘 보안 통제 가능
-
-완료 기준
-- 정책 저장 성공
-- 정책 Revision 이력에 기록됨
-
-실수 방지
-- JSON 문법 오류 방지: 저장 전 검증
-- 단번에 큰 정책 변경 대신 소규모 변경 후 검증
-
----
-
-### Step T-3. Policy Simulator 사전 검증
-경로: `Team > Policy Simulator`
-
-무엇을 하나요
-- 실제 배포 전에 허용/차단 결과를 시뮬레이션한다.
-
-입력 항목(화면 기준)
-- API Key 선택
-- Tool Name
-- Arguments(JSON)
-
-왜 필요한가
-- 배포 후 차단 사고/업무 중단을 사전에 줄이기 위해
-
-완료 기준
-- 핵심 시나리오에 대해 Allow/Deny 결과가 기대와 일치
-
-실수 방지
-- 실제 운영에 쓰는 대표 시나리오를 반드시 테스트
-
----
-
-### Step T-4. Team API Key 생성/회전 정책 적용
-경로: `Team > API Keys`
-
-무엇을 하나요
-- 팀에서 사용하는 API Key를 생성하고 수명주기(회전/폐기)를 관리한다.
-
-입력 항목(화면 기준)
-- Name: `team-purpose-env` 형식 권장 (`ops-bot-prod`)
-- Allowed Tools: 필요한 도구만 선택
-- Expires At(있다면): 단기 만료 우선
-- Description/Metadata: 사용처 명시
-
-왜 필요한가
-- 키 유출 및 과권한 사용 리스크를 줄이기 위해
-
-완료 기준
-- 키 생성 후 1회 테스트 호출 성공
-- 키 보관 위치(Secret Manager 등) 확정
-- 회전 일정(예: 30/60/90일) 수립
-
-실수 방지
-- 키를 채팅/문서에 평문 공유 금지
-- 퇴사/권한 변경 시 즉시 폐기
-
----
-
-### Step T-5. Usage 모니터링 기준선 설정
-경로: `Team > Usage`
-
-무엇을 하나요
-- 호출량, 실패율, 지연시간 등 운영 지표를 기준선으로 정의한다.
-
-입력/조작 항목
-- 기간 필터(`24h`, `7d`)
-- 도구/상태 필터(있다면)
-
-왜 필요한가
-- 이상 징후(급증, 실패율 상승)를 조기 감지하기 위해
-
-완료 기준
-- 팀별 정상 범위(평시 호출량, 허용 실패율)를 문서화
-
----
-
-### Step T-6. Audit Events 운영 루틴화
-경로: `Team > Audit Events`
-
-무엇을 하나요
-- 누가, 언제, 어떤 액션을 수행했는지 팀 단위로 추적한다.
-
-입력/조작 항목
-- User / Tool / Action 필터
-- 기간 필터
-- Event detail 조회
-
-왜 필요한가
-- 정책 위반, 오남용, 장애 원인 분석 속도 향상
-
-완료 기준
-- 주기적 점검 루틴(일/주 단위) 확정
-
----
-
-### Step T-7. Agent Guide 활용
-경로: `Team > Agent Guide`
-
-무엇을 하나요
-- `list_tools`, `call_tool` JSON-RPC 예시를 복사해 통합 테스트를 수행한다.
-
-왜 필요한가
-- API Key/정책/OAuth가 실제 호출에 문제없는지 빠르게 검증 가능
-
-완료 기준
-- 핵심 도구 1개 이상 `call_tool` 성공
-
----
-
-## 4. User 설정 (개인 계정 준비)
-
-> 목표: 각 사용자가 안전하고 일관된 상태로 서비스를 사용하도록 한다.
-
-### Step U-1. Profile 설정
-경로: `User > Profile`
-
-무엇을 하나요
-- 사용자 표시명/기본 정보를 점검한다.
-
-입력 항목
-- 표시명, 프로필 관련 필드
-
-왜 필요한가
-- 감사 로그와 협업 시 식별 정확도 향상
-
-완료 기준
-- 팀이 사용자 식별 가능
-
----
-
-### Step U-2. Security 강화
-경로: `User > Security`
-
-무엇을 하나요
-- 계정 보안 설정을 강화한다.
-
-입력 항목
-- 비밀번호 변경
-- 2FA/MFA(지원 시)
-- 세션 점검
-
-왜 필요한가
-- 계정 탈취 시 조직 전체 리스크로 확산될 수 있음
-
-완료 기준
-- 보안 정책 준수 상태 확인
-
----
-
-### Step U-3. OAuth Connections 연결
-경로: `User > OAuth Connections`
-
-무엇을 하나요
-- 본인 업무에 필요한 Provider를 연결한다.
-
-입력/조작 항목
-- Provider별 Connect/Disconnect
-- 연결 상태 확인
-
-왜 필요한가
-- 도구 호출 시 사용자 OAuth 기반 권한이 필요할 수 있음
-
-완료 기준
-- 필수 Provider 연결 완료
-- 불필요 연결 해제 완료
-
----
-
-### Step U-4. My Requests 사용
-경로: `User > My Requests`
-
-무엇을 하나요
-- 본인 요청 이력과 승인 상태를 확인한다.
-
-왜 필요한가
-- 권한 요청/변경 요청 처리 상태를 추적 가능
-
-완료 기준
-- 미처리 요청과 완료 요청을 구분해 관리
-
----
-
-## 5. 역할별 권장 온보딩 플로우
-
-### 5.1 Owner
-1. Organization 생성
-2. Admin 1~2명 지정
-3. OAuth Governance/Audit Settings 설정
-4. Team 구조 확정
-5. Team Policy/API Key 운영 승인
-
-### 5.2 Admin
-1. Member 초대 및 역할 정리
-2. Team 생성/멤버 배치
-3. Team Policy + Simulator 검증
-4. Usage/Audit 운영 루틴 수립
-
-### 5.3 Member
-1. Profile/Security/OAuth 개인 설정
-2. Team 정책 범위 내 업무 수행
-3. 필요 시 My Requests로 권한 요청
-
----
-
-## 6. 메뉴별 상세 가이드 (현재 화면 기준)
-
-> 아래 항목은 “무엇을 설정하는 메뉴인지”, “어떤 값을 넣는지”, “왜 필요한지”를 기준으로 정리했습니다.
-
-### 6.1 Organization > Organizations
-- 무엇: 조직/멤버/초대/요청 관리
-- 어떤 값을 넣나
-  - 조직명: 실제 조직 식별 가능한 명칭
-  - 초대 이메일: 회사 도메인 사용 권장
-  - 역할: owner/admin/member 중 최소권한
-- 왜: 조직 단위 거버넌스와 책임 경계 설정
-
-### 6.2 Organization > Integrations (Webhooks)
-- 무엇: 조직 이벤트 외부 연동
-- 어떤 값을 넣나
-  - Endpoint URL: 수신 서버 HTTPS URL
-  - Event Type: 필요한 이벤트만 선택
-  - Secret: 랜덤 고강도 문자열
-- 왜: 외부 시스템과 자동화 연동
-
-### 6.3 Organization > OAuth Governance
-- 무엇: OAuth 공급자 허용/필수 정책
-- 어떤 값을 넣나
-  - Allowed Providers: 허용 목록
-  - Required Providers: 필수 목록
-- 왜: 조직 보안 표준 및 연결 일관성 유지
-
-### 6.4 Organization > Audit Settings
-- 무엇: 감사 수집/보존 정책
-- 어떤 값을 넣나
-  - Retention Days: 규정 기반(예: 90/180/365)
-  - 감사 레벨: 민감 이벤트 포함
-- 왜: 사고 대응/컴플라이언스 증빙
-
-### 6.5 Organization > Admin / Ops
-- 무엇: 운영자 전용 점검/운영 액션
-- 어떤 값을 넣나
-  - 실행 대상/파라미터/사유
-- 왜: 장애 대응 및 운영 유지보수
-
-### 6.6 Team > Overview
-- 무엇: 팀 핵심 지표 대시보드
-- 어떤 값을 넣나
-  - 기간 필터(24h/7d)
-- 왜: 팀 상태를 빠르게 파악
-
-### 6.7 Team > Usage
-- 무엇: 도구 호출량/실패율/트렌드
-- 어떤 값을 넣나
-  - 기간, 도구, 상태 필터
-- 왜: 비용/품질/안정성 모니터링
-
-### 6.8 Team > Team Policy
-- 무엇: 팀 정책 규칙 및 멤버십 관리
-- 어떤 값을 넣나
-  - Policy JSON/Rule
-  - 팀 생성/멤버 역할
-- 왜: 팀별 최소권한/운영 통제
-
-### 6.9 Team > Agent Guide
-- 무엇: JSON-RPC 호출 예시
-- 어떤 값을 넣나
-  - API Key, tool_name, arguments
-- 왜: 연동 테스트 시작점 제공
-
-### 6.10 Team > API Keys
-- 무엇: 팀 API Key 수명주기 관리
-- 어떤 값을 넣나
-  - Name, Allowed Tools, Expires At
-- 왜: 인증/권한 통제 및 키 유출 대응
-
-### 6.11 Team > Policy Simulator
-- 무엇: 정책 사전 검증
-- 어떤 값을 넣나
-  - API Key, Tool Name, Arguments
-- 왜: 배포 전 차단 사고 예방
-
-### 6.12 Team > Audit Events
-- 무엇: 팀 단위 감사 이벤트 조회
-- 어떤 값을 넣나
-  - 사용자/도구/기간 필터
-- 왜: 문제 원인 추적 및 내부통제
-
-### 6.13 User > My Requests
-- 무엇: 개인 요청 이력 확인
-- 어떤 값을 넣나
-  - 상태/기간 필터
-- 왜: 승인/처리 진행상태 추적
-
-### 6.14 User > Security
-- 무엇: 개인 보안 설정
-- 어떤 값을 넣나
-  - 비밀번호/인증/세션 관련 값
-- 왜: 계정 보안 강화
-
-### 6.15 User > OAuth Connections
-- 무엇: 개인 OAuth 연결 관리
-- 어떤 값을 넣나
-  - Provider 연결/해제
-- 왜: 사용자 컨텍스트 도구 사용 보장
-
----
-
-## 7. 권장 운영 기준(초기 2주)
-- Day 1-2: Organization/OAuth/Audit baseline 완료
-- Day 3-5: Team 정책 및 API Key 배포
-- Day 6-10: Usage/Audit 모니터링으로 튜닝
-- Day 11-14: 역할/권한/정책 리뷰 및 문서 업데이트
-
----
-
-## 8. 자주 발생하는 문제와 해결
-
-### 문제 1. 특정 메뉴가 보이지 않음
-- 원인: 역할 부족 또는 scope 불일치
-- 해결: 역할 확인 후 `scope`(org/team/user) 재선택
-
-### 문제 2. 정책 저장은 되는데 호출이 차단됨
-- 원인: Organization baseline 또는 OAuth 정책 위반
-- 해결: Team Policy와 Organization 정책 동시 점검
-
-### 문제 3. API Key는 있는데 실행 실패
-- 원인: Allowed Tools 미설정, 만료, OAuth 미연결
-- 해결: 키 스코프/만료/연결 상태 재확인
-
-### 문제 4. 감사 로그가 충분하지 않음
-- 원인: Audit Settings 보존기간/수집수준 과소 설정
-- 해결: Organization Audit Settings 상향
-
----
-
-## 9. 문서 유지관리 원칙
-- UI 필드/메뉴 구조 변경 시 즉시 문서 업데이트
-- 정책 JSON 예시는 운영 반영 전 시뮬레이터로 검증
-- 분기별 1회 이상 역할/권한 모델 리뷰
+### [ko]
+
+#### meta
+- title: 사용자 가이드
+- tooltip: Organization, Team, User 설정을 단계별로 안내하는 온보딩 가이드입니다.
+- contents_label: 목차
+- quick_start_label: 빠른 시작
+- quick_start_text: 권장 순서: Organization 기준선 설정 -> Team 정책과 API Key 배포 -> User 보안과 OAuth 설정 -> Usage 및 Audit 점검.
+- org_setup_label: Organization 설정
+- team_setup_label: Team 설정
+- user_setup_label: User 설정
+- menu_reference_label: 메뉴 상세 가이드
+- faq_label: 운영 / FAQ
+- show_label: 보기
+- hide_label: 접기
+
+#### organization_setup
+
+##### Step O-1. Organization 생성
+- menu: Organization > Organizations
+- menu_href: /dashboard/access/organizations
+- what: 거버넌스와 소유권 관리를 위한 기본 운영 단위를 생성합니다.
+- values: 실제 조직이나 사업 단위를 식별할 수 있는 조직명 입력.
+- why: 팀, 멤버십, 정책, 연동, 감사 설정이 Organization 스코프에 귀속됩니다.
+- done: 조직 목록에 생성되고 현재 범위로 선택할 수 있습니다.
+- caution: 운영 조직과 테스트 조직은 이름 규칙으로 명확히 분리하세요.
+
+##### Step O-2. Admin/Member 초대
+- menu: Organization > Organizations
+- menu_href: /dashboard/access/organizations
+- what: 운영 담당 admin과 초기 member를 초대합니다.
+- values: 초대 이메일, 역할, 만료시간 설정.
+- why: Owner 1인 체계를 피하고 운영 책임을 분산합니다.
+- done: 최소 1명의 admin이 초대를 수락해 운영 가능합니다.
+- caution: admin 역할 과다 부여를 피하고 변경 사유를 남기세요.
+
+##### Step O-3. 권한 모델 확정
+- menu: Organization > Organizations
+- menu_href: /dashboard/access/organizations
+- what: owner, admin, member 역할 경계를 확정합니다.
+- values: 역할 매트릭스 문서와 실행 권한 규칙.
+- why: 화면 노출 권한과 API 실행 권한 불일치를 줄입니다.
+- done: 승인된 역할 매트릭스를 팀이 공유하고 준수합니다.
+- caution: owner 권한은 최소 인원에게만 부여하세요.
+
+##### Step O-4. OAuth Governance 설정
+- menu: Organization > OAuth Governance
+- menu_href: /dashboard/integrations/oauth
+- what: 조직 차원의 허용 및 필수 OAuth provider를 관리합니다.
+- values: Allowed provider 목록, Required provider 목록.
+- why: 사용자별 연결 편차를 줄이고 연결 정책을 표준화합니다.
+- done: 정책 저장 후 위반 상태를 확인할 수 있습니다.
+- caution: 필수 provider를 과도하게 강제하면 온보딩이 지연됩니다.
+
+##### Step O-5. Audit Settings 설정
+- menu: Organization > Audit Settings
+- menu_href: /dashboard/control/audit-settings
+- what: 감사 데이터 보존 기간과 수집 수준을 설정합니다.
+- values: 보존 기간, 이벤트 카테고리 또는 수준.
+- why: 사고 분석, 추적성, 컴플라이언스 증빙에 필요합니다.
+- done: 저장 후 현재 설정에 반영됩니다.
+- caution: 규정 대비 보존 기간을 지나치게 짧게 설정하지 마세요.
+
+##### Step O-6. Organization Settings 유지보수
+- menu: Organization > Organizations
+- menu_href: /dashboard/access/organizations
+- what: 조직명 변경과 안전한 조직 삭제 절차를 운영합니다.
+- values: Rename용 새 조직명, Delete용 조직명 확인 입력.
+- why: 조직 목록 정합성과 안전한 폐기 절차를 유지합니다.
+- done: 이름 변경 반영 또는 검증 조건을 만족한 삭제 완료.
+- caution: 삭제는 owner 전용이며 관련 조직 데이터가 함께 제거됩니다.
+
+#### team_setup
+
+##### Step T-1. Team 생성 및 멤버 배치
+- menu: Team > Team Policy
+- menu_href: /dashboard/access/team-policy
+- what: 선택된 Organization 아래 팀 운영 경계를 생성합니다.
+- values: 팀명, 설명, 멤버 역할 지정.
+- why: 팀 단위 정책, 키, 감사 흐름이 팀 스코프에 의존합니다.
+- done: 대상 팀 생성 및 멤버 배치 완료.
+- caution: 각 팀에 최소 1명 이상의 운영 관리자 지정.
+
+##### Step T-2. Team Policy 작성
+- menu: Team > Team Policy
+- menu_href: /dashboard/access/team-policy
+- what: 팀 단위 허용 도구와 제한 액션 규칙을 정의합니다.
+- values: 정책 메타데이터와 정책 페이로드.
+- why: 팀 운영 특성에 맞춘 최소권한 통제를 적용합니다.
+- done: 정책 revision 저장 및 이력 확인 가능.
+- caution: Team 정책은 Organization 기준선보다 완화할 수 없습니다.
+
+##### Step T-3. Policy Simulator 검증
+- menu: Team > Policy Simulator
+- menu_href: /dashboard/control/policy-simulator
+- what: 배포 전 허용 및 차단 결과를 시뮬레이션합니다.
+- values: API Key, Tool 이름, 대표 인자(JSON).
+- why: 정책 오설정으로 인한 운영 장애를 사전 차단합니다.
+- done: 핵심 시나리오가 기대 결과와 일치합니다.
+- caution: 실제 운영 시나리오 기반으로 검증하세요.
+
+##### Step T-4. API Key 생성 및 회전
+- menu: Team > API Keys
+- menu_href: /dashboard/access/api-keys
+- what: 팀 연동용 키의 수명주기를 관리합니다.
+- values: Key 이름, 허용 도구, 만료 시점, 메타데이터.
+- why: 키 유출과 과권한 리스크를 줄입니다.
+- done: 테스트 호출 성공 및 회전 일정 문서화.
+- caution: 평문 키를 채팅이나 문서에 노출하지 마세요.
+
+##### Step T-5. Usage 및 Audit 모니터링
+- menu: Team > Usage
+- menu_href: /dashboard/control/mcp-usage
+- what: 사용량 추세, 실패율, 감사 이벤트를 정기 점검합니다.
+- values: 기간 범위와 사용자 또는 도구 필터.
+- why: 이상 징후를 조기에 탐지하고 대응 시간을 단축합니다.
+- done: 기준선 지표와 점검 주기가 정의됩니다.
+- caution: 이상 징후 시 정책, 키, OAuth 상태를 함께 점검하세요.
+
+#### user_setup
+
+##### Step U-1. Profile 설정
+- menu: User > Profile
+- menu_href: /dashboard/profile
+- what: 사용자 식별 정보를 명확하게 설정합니다.
+- values: 표시명과 기본 프로필 값.
+- why: 로그 추적성과 협업 정확도를 높입니다.
+- done: 운영자가 사용자 식별을 명확히 할 수 있습니다.
+- caution: 조직 내 네이밍 규칙을 따르세요.
+
+##### Step U-2. Security 강화
+- menu: User > Security
+- menu_href: /dashboard/security
+- what: 계정 보안 제어를 적용합니다.
+- values: 비밀번호 변경과 지원되는 인증 설정.
+- why: 사용자 계정 침해가 조직 리스크로 확산되는 것을 방지합니다.
+- done: 보안 정책 기준을 충족합니다.
+- caution: 공용 장비 사용 시 활성 세션을 정기 점검하세요.
+
+##### Step U-3. OAuth 연결
+- menu: User > OAuth Connections
+- menu_href: /dashboard/integrations/oauth
+- what: 사용자 컨텍스트 실행에 필요한 provider를 연결합니다.
+- values: provider 연결 또는 해제 작업.
+- why: provider 기반 도구의 안정적 실행을 보장합니다.
+- done: 필수 provider 연결이 완료되고 상태가 정상입니다.
+- caution: 사용하지 않는 provider는 해제해 노출면을 줄이세요.
+
+##### Step U-4. My Requests 추적
+- menu: User > My Requests
+- menu_href: /dashboard/requests
+- what: 권한 및 변경 요청 상태를 추적합니다.
+- values: 상태 및 기간 필터.
+- why: 승인 누락과 처리 지연을 방지합니다.
+- done: 대기 요청과 완료 요청을 지속적으로 관리합니다.
+- caution: 요청 사유는 감사 가능한 문장으로 작성하세요.
+
+#### menu_reference
+
+##### Organization > Organizations
+- menu_href: /dashboard/access/organizations
+- what: 조직, 멤버십, 초대, 역할요청, 설정을 관리합니다.
+- values: 조직명, 사용자 식별자, 초대 이메일, 역할 필드.
+- why: 조직 소유권과 접근 경계의 중심 메뉴입니다.
+
+##### Organization > Integrations
+- menu_href: /dashboard/integrations/webhooks
+- what: Webhook 대상과 전송 설정을 관리합니다.
+- values: Endpoint URL, 이벤트 선택, 검증용 시크릿.
+- why: 외부 시스템 자동화 연동을 안전하게 운영합니다.
+
+##### Organization > OAuth Governance
+- menu_href: /dashboard/integrations/oauth
+- what: provider 수준의 연결 정책을 설정합니다.
+- values: 허용 provider 목록, 필수 provider 목록.
+- why: 조직 표준 연결 정책을 일관되게 적용합니다.
+
+##### Organization > Audit Settings
+- menu_href: /dashboard/control/audit-settings
+- what: 감사 보존기간과 이벤트 정책을 정의합니다.
+- values: 보존 기간과 카테고리별 제어값.
+- why: 컴플라이언스와 사고 조사 대응력을 보장합니다.
+
+##### Team > Team Policy
+- menu_href: /dashboard/access/team-policy
+- what: 팀 정책 revision과 팀 운영 규칙을 관리합니다.
+- values: 팀 메타데이터와 정책 페이로드.
+- why: 팀 단위 최소권한 통제를 적용합니다.
+
+##### Team > API Keys
+- menu_href: /dashboard/access/api-keys
+- what: 팀 키 생성, 회전, 폐기를 수행합니다.
+- values: 키 이름, 허용 도구, 만료, 메타데이터.
+- why: 기계 계정 접근을 안전하게 관리합니다.
+
+##### Team > Policy Simulator
+- menu_href: /dashboard/control/policy-simulator
+- what: 정책 배포 전 결과를 시뮬레이션합니다.
+- values: API Key, Tool, 인자 페이로드.
+- why: 운영 정책 오설정 위험을 줄입니다.
+
+##### Team > Usage / Audit Events
+- menu_href: /dashboard/control/mcp-usage
+- what: 사용량 추세와 감사 로그를 점검합니다.
+- values: 기간 범위와 필터 조건.
+- why: 운영 신뢰성과 거버넌스 가시성을 유지합니다.
+
+##### User > Security / OAuth / My Requests
+- menu_href: /dashboard/security
+- what: 개인 보안, 연결 상태, 요청 이력을 관리합니다.
+- values: 보안 설정, provider 연결 상태, 요청 필터.
+- why: 사용자 보안 상태와 업무 연속성을 유지합니다.
+
+#### faq
+
+##### Q: 메뉴가 보이지 않는 이유는 무엇인가요?
+- a: 먼저 현재 역할과 scope를 확인하세요. 접근 제어에 따라 일부 메뉴는 숨김 처리됩니다.
+
+##### Q: API Key가 있는데도 실행이 실패하는 이유는 무엇인가요?
+- a: 허용 도구, 키 만료, OAuth 연결 상태, 정책 차단 여부를 순서대로 점검하세요.
+
+##### Q: Team 데이터가 비어있는 이유는 무엇인가요?
+- a: Team scope에는 유효한 Organization과 Team 선택이 필요합니다. 범위를 다시 선택한 후 새로고침하세요.
