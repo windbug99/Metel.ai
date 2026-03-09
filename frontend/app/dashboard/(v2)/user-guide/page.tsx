@@ -1,7 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import { useMemo, useState } from "react";
+import { useState } from "react";
 
 import PageTitleWithTooltip from "@/components/dashboard-v2/page-title-with-tooltip";
 import { Button } from "@/components/ui/button";
@@ -311,94 +311,26 @@ function StepCard({ item }: { item: StepItem }) {
 }
 
 export default function DashboardUserGuidePage() {
-  const [roleFilter, setRoleFilter] = useState<Role | "all">("all");
   const [openMenus, setOpenMenus] = useState<Record<string, boolean>>(
     Object.fromEntries(MENU_GUIDES.map((item) => [item.id, false]))
   );
 
-  const filterByRole = (items: StepItem[]) => {
-    if (roleFilter === "all") {
-      return items;
-    }
-    return items.filter((item) => item.roles.includes(roleFilter));
-  };
-
-  const orgSteps = useMemo(() => filterByRole(ORG_STEPS), [roleFilter]);
-  const teamSteps = useMemo(() => filterByRole(TEAM_STEPS), [roleFilter]);
-  const userSteps = useMemo(() => filterByRole(USER_STEPS), [roleFilter]);
-
-  const expandAllMenus = () => {
-    setOpenMenus(Object.fromEntries(MENU_GUIDES.map((item) => [item.id, true])));
-  };
-
-  const collapseAllMenus = () => {
-    setOpenMenus(Object.fromEntries(MENU_GUIDES.map((item) => [item.id, false])));
-  };
-
   return (
     <section className="space-y-4">
-      <div className="flex flex-wrap items-center justify-between gap-2">
-        <PageTitleWithTooltip
-          title="User Guide"
-          tooltip="초기 구축부터 운영 점검까지, Organization/Team/User 기준으로 따라하는 가이드입니다."
-        />
-        <div className="flex items-center gap-2">
-          <Button type="button" variant="outline" className="h-8 px-3 text-xs" onClick={() => window.scrollTo({ top: 0, behavior: "smooth" })}>
-            처음부터 보기
-          </Button>
-          <Button type="button" variant="outline" className="h-8 px-3 text-xs" onClick={expandAllMenus}>
-            전체 펼치기
-          </Button>
-          <Button type="button" variant="outline" className="h-8 px-3 text-xs" onClick={collapseAllMenus}>
-            전체 접기
-          </Button>
-        </div>
-      </div>
+      <PageTitleWithTooltip
+        title="User Guide"
+        tooltip="초기 구축부터 운영 점검까지, Organization/Team/User 기준으로 따라하는 가이드입니다."
+      />
 
-      <div className="ds-card p-4" id="quick-start">
-        <p className="text-sm font-semibold">Quick Start</p>
-        <p className="mt-1 text-sm text-muted-foreground">
-          권장 순서: Organization baseline 설정 → Team 정책/키 배포 → User 개인 보안/연결 설정 → Usage/Audit 점검
-        </p>
-        <div className="mt-3 grid gap-2 md:grid-cols-2">
-          <div>
-            <p className="mb-1 text-xs text-muted-foreground">역할 필터</p>
-            <Select
-              value={roleFilter}
-              onChange={(event) => setRoleFilter(event.target.value as Role | "all")}
-              className="ds-input h-9 w-full rounded-md px-3 text-sm"
-            >
-              <option value="all">All roles</option>
-              <option value="owner">Owner</option>
-              <option value="admin">Admin</option>
-              <option value="member">Member</option>
-            </Select>
+      <div className="grid gap-4 lg:h-[calc(100svh-12rem)] lg:grid-cols-[minmax(0,1fr)_260px]">
+        <div className="no-scrollbar space-y-4 lg:overflow-y-auto lg:pr-2">
+          <div className="ds-card p-4" id="quick-start">
+            <p className="text-sm font-semibold">Quick Start</p>
+            <p className="mt-1 text-sm text-muted-foreground">
+              권장 순서: Organization baseline 설정 → Team 정책/키 배포 → User 개인 보안/연결 설정 → Usage/Audit 점검
+            </p>
           </div>
-          <div className="rounded-md border border-border bg-background p-3 text-xs text-muted-foreground">
-            역할 필터를 적용하면 해당 역할에서 필요한 단계만 노출됩니다.
-          </div>
-        </div>
-      </div>
 
-      <div className="grid gap-4 lg:grid-cols-[220px,1fr]">
-        <aside className="hidden lg:block">
-          <nav className="sticky top-4 rounded-md border border-border bg-card p-3">
-            <p className="mb-2 text-xs font-medium text-muted-foreground">Contents</p>
-            <div className="space-y-1">
-              {SECTION_ITEMS.map((section) => (
-                <a
-                  key={section.id}
-                  href={`#${section.id}`}
-                  className="block rounded px-2 py-1 text-sm text-muted-foreground transition-colors hover:bg-accent hover:text-accent-foreground"
-                >
-                  {section.label}
-                </a>
-              ))}
-            </div>
-          </nav>
-        </aside>
-
-        <div className="space-y-4">
           <div className="lg:hidden">
             <Select
               defaultValue="quick-start"
@@ -420,21 +352,21 @@ export default function DashboardUserGuidePage() {
 
           <div id="org-setup" className="space-y-3">
             <p className="text-lg font-semibold">Organization Setup</p>
-            {orgSteps.map((item) => (
+            {ORG_STEPS.map((item) => (
               <StepCard key={item.id} item={item} />
             ))}
           </div>
 
           <div id="team-setup" className="space-y-3">
             <p className="text-lg font-semibold">Team Setup</p>
-            {teamSteps.map((item) => (
+            {TEAM_STEPS.map((item) => (
               <StepCard key={item.id} item={item} />
             ))}
           </div>
 
           <div id="user-setup" className="space-y-3">
             <p className="text-lg font-semibold">User Setup</p>
-            {userSteps.map((item) => (
+            {USER_STEPS.map((item) => (
               <StepCard key={item.id} item={item} />
             ))}
           </div>
@@ -489,6 +421,23 @@ export default function DashboardUserGuidePage() {
             </div>
           </div>
         </div>
+
+        <aside className="hidden lg:block">
+          <nav className="sticky top-4 rounded-md border border-border bg-card p-3">
+            <p className="mb-2 text-xs font-medium text-muted-foreground">Contents</p>
+            <div className="space-y-1">
+              {SECTION_ITEMS.map((section) => (
+                <a
+                  key={section.id}
+                  href={`#${section.id}`}
+                  className="block rounded px-2 py-1 text-sm text-muted-foreground transition-colors hover:bg-accent hover:text-accent-foreground"
+                >
+                  {section.label}
+                </a>
+              ))}
+            </div>
+          </nav>
+        </aside>
       </div>
     </section>
   );
