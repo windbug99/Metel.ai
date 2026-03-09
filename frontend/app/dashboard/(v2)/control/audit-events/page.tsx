@@ -278,65 +278,75 @@ export default function DashboardAuditEventsPage() {
       </p>
 
       <div className="ds-card p-4">
-        <div className="flex flex-wrap items-center gap-2">
-          <Select
-            value={statusFilter}
-            onChange={(event) => setStatusFilter(event.target.value as "all" | "success" | "fail")}
-            className="ds-input h-11 rounded-md px-3 text-sm md:h-9"
-          >
-            <option value="all">All status</option>
-            <option value="success">Success</option>
-            <option value="fail">Fail</option>
-          </Select>
-          <Select
-            value={decisionFilter}
-            onChange={(event) =>
-              setDecisionFilter(
-                event.target.value as "all" | "allowed" | "policy_blocked" | "access_denied" | "failed" | "policy_override_allowed"
-              )
-            }
-            className="ds-input h-11 rounded-md px-3 text-sm md:h-9"
-          >
-            <option value="all">All decisions</option>
-            <option value="allowed">allowed</option>
-            <option value="policy_blocked">policy_blocked</option>
-            <option value="access_denied">access_denied</option>
-            <option value="failed">failed</option>
-            <option value="policy_override_allowed">policy_override_allowed</option>
-          </Select>
-          <Input
-            value={toolNameFilter}
-            onChange={(event) => setToolNameFilter(event.target.value)}
-            placeholder="Tool name"
-            className="ds-input h-11 rounded-md px-3 text-sm md:h-9"
-          />
-          {isOrgScope ? (
+        <div className="space-y-2">
+          <div className={isOrgScope ? "grid gap-2 lg:grid-cols-4" : "grid gap-2 lg:grid-cols-3"}>
             <Select
-              value={teamFilter}
-              onChange={(event) => setTeamFilter(event.target.value)}
+              value={statusFilter}
+              onChange={(event) => setStatusFilter(event.target.value as "all" | "success" | "fail")}
               className="ds-input h-11 rounded-md px-3 text-sm md:h-9"
             >
-              <option value="">All teams in org</option>
-              {teams.map((team) => (
-                <option key={`audit-team-${team.id}`} value={String(team.id)}>
-                  Team #{team.id} - {team.name}
+              <option value="all">All status</option>
+              <option value="success">Success</option>
+              <option value="fail">Fail</option>
+            </Select>
+            <Select
+              value={decisionFilter}
+              onChange={(event) =>
+                setDecisionFilter(
+                  event.target.value as "all" | "allowed" | "policy_blocked" | "access_denied" | "failed" | "policy_override_allowed"
+                )
+              }
+              className="ds-input h-11 rounded-md px-3 text-sm md:h-9"
+            >
+              <option value="all">All decisions</option>
+              <option value="allowed">allowed</option>
+              <option value="policy_blocked">policy_blocked</option>
+              <option value="access_denied">access_denied</option>
+              <option value="failed">failed</option>
+              <option value="policy_override_allowed">policy_override_allowed</option>
+            </Select>
+            <Input
+              value={toolNameFilter}
+              onChange={(event) => setToolNameFilter(event.target.value)}
+              placeholder="Tool name"
+              className="ds-input h-11 rounded-md px-3 text-sm md:h-9"
+            />
+            {isOrgScope ? (
+              <Select
+                value={teamFilter}
+                onChange={(event) => setTeamFilter(event.target.value)}
+                className="ds-input h-11 rounded-md px-3 text-sm md:h-9"
+              >
+                <option value="">All teams in org</option>
+                {teams.map((team) => (
+                  <option key={`audit-team-${team.id}`} value={String(team.id)}>
+                    Team #{team.id} - {team.name}
+                  </option>
+                ))}
+              </Select>
+            ) : null}
+          </div>
+
+          <div className="grid items-center gap-2 lg:grid-cols-[minmax(220px,1fr)_minmax(220px,1fr)_minmax(220px,1fr)_auto]">
+            <Select value={agentFilter} onChange={(event) => setAgentFilter(event.target.value)} className="ds-input h-11 rounded-md px-3 text-sm md:h-9">
+              <option value="">All agents</option>
+              {agents.map((agent) => (
+                <option key={`audit-agent-${String(agent.agent_id ?? "none")}`} value={agent.agent_id === null ? "" : String(agent.agent_id)}>
+                  {agent.agent_id === null ? "Unassigned (no filter)" : `Agent #${agent.agent_id} - ${agent.agent_name ?? "Unnamed"}`}
                 </option>
               ))}
             </Select>
-          ) : null}
-          <Select value={agentFilter} onChange={(event) => setAgentFilter(event.target.value)} className="ds-input h-11 rounded-md px-3 text-sm md:h-9">
-            <option value="">All agents</option>
-            {agents.map((agent) => (
-              <option key={`audit-agent-${String(agent.agent_id ?? "none")}`} value={agent.agent_id === null ? "" : String(agent.agent_id)}>
-                {agent.agent_id === null ? "Unassigned (no filter)" : `Agent #${agent.agent_id} - ${agent.agent_name ?? "Unnamed"}`}
-              </option>
-            ))}
-          </Select>
-          <Input type="datetime-local" value={fromFilter} onChange={(event) => setFromFilter(event.target.value)} className="ds-input h-11 rounded-md px-3 text-sm md:h-9" />
-          <Input type="datetime-local" value={toFilter} onChange={(event) => setToFilter(event.target.value)} className="ds-input h-11 rounded-md px-3 text-sm md:h-9" />
-          <Button type="button" onClick={() => void fetchAuditEvents()} disabled={loading} className="ds-btn h-11 rounded-md px-3 text-sm disabled:opacity-60 md:h-9">
-            {loading ? "Loading..." : "Apply"}
-          </Button>
+            <Input type="datetime-local" value={fromFilter} onChange={(event) => setFromFilter(event.target.value)} className="ds-input h-11 rounded-md px-3 text-sm md:h-9" />
+            <Input type="datetime-local" value={toFilter} onChange={(event) => setToFilter(event.target.value)} className="ds-input h-11 rounded-md px-3 text-sm md:h-9" />
+            <Button
+              type="button"
+              onClick={() => void fetchAuditEvents()}
+              disabled={loading}
+              className="ds-btn h-11 whitespace-nowrap rounded-md px-3 text-sm disabled:opacity-60 md:h-9"
+            >
+              {loading ? "Loading..." : "Apply"}
+            </Button>
+          </div>
         </div>
       </div>
 

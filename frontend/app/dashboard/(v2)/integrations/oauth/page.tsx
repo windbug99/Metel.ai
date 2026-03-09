@@ -4,6 +4,7 @@ import { Button } from "@/components/ui/button";
 import { Checkbox } from "@/components/ui/checkbox";
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { usePathname, useRouter, useSearchParams } from "next/navigation";
+import { Loader2 } from "lucide-react";
 
 import { buildNextPath, dashboardApiGet, dashboardApiRequest } from "../../../../../lib/dashboard-v2-client";
 import { resolveDashboardScope } from "../../../../../lib/dashboard-scope";
@@ -122,9 +123,10 @@ export default function DashboardOAuthConnectionsPage() {
   const [notionError, setNotionError] = useState<string | null>(null);
   const [linearError, setLinearError] = useState<string | null>(null);
 
+  const [statusLoading, setStatusLoading] = useState(true);
   const [notionBusy, setNotionBusy] = useState(false);
   const [linearBusy, setLinearBusy] = useState(false);
-  const [policyLoading, setPolicyLoading] = useState(false);
+  const [policyLoading, setPolicyLoading] = useState(true);
   const [policyError, setPolicyError] = useState<string | null>(null);
   const [oauthPolicy, setOauthPolicy] = useState<OrganizationOAuthPolicyPayload["item"] | null>(null);
   const [canManagePolicy, setCanManagePolicy] = useState(false);
@@ -142,8 +144,10 @@ export default function DashboardOAuthConnectionsPage() {
 
   const fetchStatus = useCallback(async () => {
     if (scope.scope !== "user") {
+      setStatusLoading(false);
       return;
     }
+    setStatusLoading(true);
     const [notionRes, linearRes] = await Promise.all([
       dashboardApiGet<OAuthStatus>("/api/oauth/notion/status"),
       dashboardApiGet<OAuthStatus>("/api/oauth/linear/status"),
@@ -151,6 +155,7 @@ export default function DashboardOAuthConnectionsPage() {
 
     if (notionRes.status === 401 || linearRes.status === 401) {
       handle401();
+      setStatusLoading(false);
       return;
     }
 
@@ -167,15 +172,18 @@ export default function DashboardOAuthConnectionsPage() {
     } else {
       setLinearError("Failed to load Linear status.");
     }
+    setStatusLoading(false);
   }, [handle401, scope.scope]);
 
   const fetchOrgPolicy = useCallback(async () => {
     if (scope.scope === "user") {
+      setPolicyLoading(false);
       return;
     }
     if (scope.organizationId === null) {
       setOauthPolicy(null);
       setPolicyError("Organization scope is required to view OAuth governance.");
+      setPolicyLoading(false);
       return;
     }
     setPolicyLoading(true);
@@ -352,10 +360,6 @@ export default function DashboardOAuthConnectionsPage() {
     };
   }, [fetchOrgPolicy, fetchStatus, pathname, scope.scope]);
 
-  const policyJson = oauthPolicy?.policy_json ?? {};
-  const allowedProviders = Array.isArray(policyJson.allowed_providers) ? policyJson.allowed_providers : [];
-  const requiredProviders = Array.isArray(policyJson.required_providers) ? policyJson.required_providers : [];
-  const blockedProviders = Array.isArray(policyJson.blocked_providers) ? policyJson.blocked_providers : [];
   const providerCatalog = useMemo(() => {
     return Array.from(new Set(["notion", "linear", ...allowedDraft, ...requiredDraft, ...blockedDraft])).sort();
   }, [allowedDraft, blockedDraft, requiredDraft]);
@@ -375,28 +379,18 @@ export default function DashboardOAuthConnectionsPage() {
         ) : null}
 
         <div className="ds-card space-y-3 p-4">
-          {policyLoading ? <p className="text-sm text-muted-foreground">Loading OAuth policy...</p> : null}
+          {policyLoading ? (
+            <div className="flex min-h-[180px] items-center justify-center">
+              <Loader2 className="h-5 w-5 animate-spin text-muted-foreground" />
+            </div>
+          ) : null}
           {!policyLoading ? (
             <>
-              <div className="grid gap-3 sm:grid-cols-3">
-                <article className="rounded-md border border-border p-3">
-                  <p className="text-xs font-medium">Allowed Providers</p>
-                  <p className="mt-1 text-sm">{allowedProviders.length > 0 ? allowedProviders.join(", ") : "None configured"}</p>
-                </article>
-                <article className="rounded-md border border-border p-3">
-                  <p className="text-xs font-medium">Required Providers</p>
-                  <p className="mt-1 text-sm">{requiredProviders.length > 0 ? requiredProviders.join(", ") : "None required"}</p>
-                </article>
-                <article className="rounded-md border border-border p-3">
-                  <p className="text-xs font-medium">Blocked Providers</p>
-                  <p className="mt-1 text-sm">{blockedProviders.length > 0 ? blockedProviders.join(", ") : "None blocked"}</p>
-                </article>
-              </div>
               <p className="text-xs text-muted-foreground">
                 Version: {oauthPolicy?.version ?? 1} | Updated: {formatDate(oauthPolicy?.updated_at ?? null)}
               </p>
               {scope.scope === "org" ? (
-                <div className="space-y-3 rounded-md border border-border p-3">
+                <div className="space-y-3">
                   <p className="text-sm font-medium">Policy Editor</p>
                   <div className="flex flex-wrap items-center gap-2">
                     {[
@@ -474,22 +468,30 @@ export default function DashboardOAuthConnectionsPage() {
       <p className="text-sm text-muted-foreground">Connect Notion and Linear to expose MCP tools.</p>
 
       <div className="ds-card space-y-3 p-4">
-        <ServiceRow
-          name="Notion"
-          status={notionStatus}
-          error={notionError}
-          busy={notionBusy}
-          onConnect={() => void handleConnect("notion")}
-          onDisconnect={() => void handleDisconnect("notion")}
-        />
-        <ServiceRow
-          name="Linear"
-          status={linearStatus}
-          error={linearError}
-          busy={linearBusy}
-          onConnect={() => void handleConnect("linear")}
-          onDisconnect={() => void handleDisconnect("linear")}
-        />
+        {statusLoading ? (
+          <div className="flex min-h-[180px] items-center justify-center">
+            <Loader2 className="h-5 w-5 animate-spin text-muted-foreground" />
+          </div>
+        ) : (
+          <>
+            <ServiceRow
+              name="Notion"
+              status={notionStatus}
+              error={notionError}
+              busy={notionBusy}
+              onConnect={() => void handleConnect("notion")}
+              onDisconnect={() => void handleDisconnect("notion")}
+            />
+            <ServiceRow
+              name="Linear"
+              status={linearStatus}
+              error={linearError}
+              busy={linearBusy}
+              onConnect={() => void handleConnect("linear")}
+              onDisconnect={() => void handleDisconnect("linear")}
+            />
+          </>
+        )}
       </div>
     </section>
   );
