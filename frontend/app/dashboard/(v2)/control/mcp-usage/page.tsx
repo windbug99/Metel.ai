@@ -230,7 +230,7 @@ export default function DashboardMcpUsagePage() {
     return (
       <section className="space-y-4">
         <PageTitleWithTooltip
-          title="MCP Usage"
+          title="Usage"
           tooltip="Analyze recent tool calls, trends, failures, and connector health."
         />
         <p className="text-sm text-muted-foreground">Recent tool calls, 24h execution summary, and 7d usage trends.</p>
@@ -244,7 +244,7 @@ export default function DashboardMcpUsagePage() {
   return (
     <section className="space-y-4">
       <PageTitleWithTooltip
-        title="MCP Usage"
+        title="Usage"
         tooltip="Analyze recent tool calls, trends, failures, and connector health."
       />
       <p className="text-sm text-muted-foreground">Recent tool calls, 24h execution summary, and 7d usage trends.</p>

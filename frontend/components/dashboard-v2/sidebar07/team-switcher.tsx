@@ -21,7 +21,6 @@ const ORG_ICONS = [GalleryVerticalEnd, AudioWaveform, Command] as const;
 export function TeamSwitcher({
   currentOrg,
   orgIds,
-  isMemberRole,
   setGlobalQuery,
   onAddOrganization,
   roleLabel,
@@ -50,15 +49,6 @@ export function TeamSwitcher({
         className="w-[--radix-dropdown-menu-trigger-width] min-w-56 rounded-lg border-border bg-card/95 text-foreground shadow-md backdrop-blur"
       >
         <DropdownMenuLabel className="text-xs font-light text-muted-foreground">Organizations</DropdownMenuLabel>
-        {orgIds.length > 1 && !isMemberRole ? (
-          <DropdownMenuItem className="gap-2 p-2 text-sm font-light" onClick={() => setGlobalQuery({ scope: "user", org: "all", team: "all" })}>
-            <div className="flex h-6 w-6 items-center justify-center rounded-md border">
-              <GalleryVerticalEnd className="h-3.5 w-3.5" strokeWidth={1.5} />
-            </div>
-            All Organizations
-            <DropdownMenuShortcut>⌘0</DropdownMenuShortcut>
-          </DropdownMenuItem>
-        ) : null}
         {orgIds.length === 0 ? <DropdownMenuItem className="text-sm font-light" disabled>Org: None</DropdownMenuItem> : null}
         {orgIds.map((id, index) => {
           const Icon = ORG_ICONS[index % ORG_ICONS.length];

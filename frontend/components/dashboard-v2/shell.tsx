@@ -1,10 +1,19 @@
 "use client";
 
 import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog";
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { usePathname, useRouter, useSearchParams } from "next/navigation";
 
-import { dashboardApiGet } from "../../lib/dashboard-v2-client";
+import { dashboardApiGet, dashboardApiRequest } from "../../lib/dashboard-v2-client";
 import { supabase } from "../../lib/supabase";
 import DashboardAppSidebar from "./app-sidebar";
 import AlertBanner from "./alert-banner";
@@ -84,6 +93,10 @@ export default function DashboardV2Shell({ children }: { children: React.ReactNo
   const [viewerEmail, setViewerEmail] = useState("");
   const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
   const [mobileSidebarOpen, setMobileSidebarOpen] = useState(false);
+  const [createOrgDialogOpen, setCreateOrgDialogOpen] = useState(false);
+  const [createOrgName, setCreateOrgName] = useState("");
+  const [creatingOrg, setCreatingOrg] = useState(false);
+  const [createOrgError, setCreateOrgError] = useState<string | null>(null);
   const isMobile = useIsMobile();
 
   const title = useMemo(() => pageTitle(pathname), [pathname]);
@@ -383,19 +396,99 @@ export default function DashboardV2Shell({ children }: { children: React.ReactNo
   }, [isMobile]);
 
   const openCreateOrganizationModal = useCallback(() => {
-    if (pathname.startsWith("/dashboard/access/organizations")) {
-      window.dispatchEvent(new Event("dashboard:v2:open-create-organization"));
-      return;
-    }
-    window.sessionStorage.setItem("dashboard:v2:open-create-organization", "1");
-    router.push(buildNavHref("/dashboard/access/organizations"));
+    setCreateOrgError(null);
+    setCreateOrgDialogOpen(true);
     if (isMobile) {
       setMobileSidebarOpen(false);
     }
-  }, [buildNavHref, isMobile, pathname, router]);
+  }, [isMobile]);
+
+  const handleCreateOrganization = useCallback(async () => {
+    const name = createOrgName.trim();
+    if (!name) {
+      setCreateOrgError("Organization name is required.");
+      return;
+    }
+    setCreatingOrg(true);
+    setCreateOrgError(null);
+
+    const result = await dashboardApiRequest("/api/organizations", {
+      method: "POST",
+      body: { name },
+    });
+    if (result.status === 401) {
+      const nextPath = typeof window !== "undefined" ? `${window.location.pathname}${window.location.search}` : pathname;
+      const next = encodeURIComponent(nextPath);
+      router.replace(`/?next=${next}`);
+      setCreatingOrg(false);
+      return;
+    }
+    if (result.status === 403) {
+      setCreateOrgError("Owner or admin role required to create organization.");
+      setCreatingOrg(false);
+      return;
+    }
+    if (!result.ok) {
+      setCreateOrgError(result.error ?? "Failed to create organization.");
+      setCreatingOrg(false);
+      return;
+    }
+
+    setCreateOrgName("");
+    setCreateOrgDialogOpen(false);
+    setCreatingOrg(false);
+    void fetchPermissions();
+    if (typeof window !== "undefined") {
+      window.dispatchEvent(
+        new CustomEvent("dashboard:v2:refresh", {
+          detail: { path: pathname, at: Date.now() },
+        })
+      );
+    }
+  }, [createOrgName, fetchPermissions, pathname, router]);
 
   return (
     <div className="h-svh overflow-hidden bg-background text-foreground">
+      <Dialog open={createOrgDialogOpen} onOpenChange={setCreateOrgDialogOpen}>
+        <DialogContent className="sm:max-w-md">
+          <DialogHeader>
+            <DialogTitle>Create organization</DialogTitle>
+            <DialogDescription>Create a new organization and refresh current organization list.</DialogDescription>
+          </DialogHeader>
+          <form
+            className="space-y-3"
+            onSubmit={(event) => {
+              event.preventDefault();
+              void handleCreateOrganization();
+            }}
+          >
+            <Input
+              value={createOrgName}
+              onChange={(event) => setCreateOrgName(event.target.value)}
+              placeholder="Organization name"
+              className="h-10"
+            />
+            {createOrgError ? <p className="text-xs text-destructive">{createOrgError}</p> : null}
+            <DialogFooter>
+              <Button
+                type="button"
+                variant="outline"
+                className="border-border bg-card text-foreground hover:bg-accent hover:text-accent-foreground"
+                onClick={() => setCreateOrgDialogOpen(false)}
+              >
+                Cancel
+              </Button>
+              <Button
+                type="submit"
+                disabled={creatingOrg}
+                className="bg-sidebar-primary text-sidebar-primary-foreground hover:bg-sidebar-primary/90"
+              >
+                {creatingOrg ? "Creating..." : "Create Organization"}
+              </Button>
+            </DialogFooter>
+          </form>
+        </DialogContent>
+      </Dialog>
       <div className="flex h-svh w-full overflow-hidden">
         <DashboardAppSidebar
           pathname={pathname}

@@ -113,10 +113,10 @@ export function pageTitle(pathname: string): string {
     return "Policy Simulator";
   }
   if (pathname.startsWith("/dashboard/control/mcp-usage")) {
-    return "MCP Usage";
+    return "Usage";
   }
   if (pathname.startsWith("/dashboard/control/mcp-guide")) {
-    return "MCP Guide";
+    return "Agent Guide";
   }
   if (pathname.startsWith("/dashboard/integrations/webhooks")) {
     return "Integrations";
@@ -177,7 +177,7 @@ export function buildNavItems(permissionSnapshot: PermissionSnapshot | null): Na
   const isAdminPlus = isOwner || isAdmin;
   const canReadAdminOps = Boolean(permissionSnapshot?.permissions?.can_read_admin_ops);
   return [
-    { key: "org-access", href: "/dashboard/access/organizations", label: "Access", visible: isAdminPlus, section: "organization" },
+    { key: "org-access", href: "/dashboard/access/organizations", label: "Organizations", visible: isAdminPlus, section: "organization" },
     { key: "org-integrations", href: "/dashboard/integrations/webhooks", label: "Integrations", visible: isAdminPlus, section: "organization" },
     { key: "org-oauth-governance", href: "/dashboard/integrations/oauth", label: "OAuth Governance", visible: isAdminPlus, section: "organization" },
     { key: "org-audit-settings", href: "/dashboard/control/audit-settings", label: "Audit Settings", visible: isAdminPlus, section: "organization" },

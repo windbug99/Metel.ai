@@ -38,7 +38,7 @@ export default function DashboardMcpGuidePage() {
   return (
     <section className="space-y-4">
       <PageTitleWithTooltip
-        title="MCP Guide"
+        title="Agent Guide"
         tooltip="Copy ready-to-use JSON-RPC examples for MCP list_tools and call_tool."
       />
       <p className="text-sm text-muted-foreground">Quick copy examples for JSON-RPC `list_tools` and `call_tool` usage.</p>

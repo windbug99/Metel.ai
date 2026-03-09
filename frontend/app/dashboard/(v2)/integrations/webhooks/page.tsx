@@ -237,7 +237,7 @@ export default function DashboardIntegrationsWebhooksPage() {
     return (
       <section className="space-y-4">
         <PageTitleWithTooltip
-          title="Integrations (Webhook)"
+          title="Integrations"
           tooltip="Manage webhook subscriptions, deliveries, and retry operations."
         />
         <p className="text-sm text-muted-foreground">Manage event subscriptions, delivery status, and retry processing.</p>
@@ -256,7 +256,7 @@ export default function DashboardIntegrationsWebhooksPage() {
   return (
     <section className="space-y-4">
       <PageTitleWithTooltip
-        title="Integrations (Webhook)"
+        title="Integrations"
         tooltip="Manage webhook subscriptions, deliveries, and retry operations."
       />
       <p className="text-sm text-muted-foreground">Manage event subscriptions, delivery status, and retry processing.</p>
