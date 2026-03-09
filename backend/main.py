@@ -21,6 +21,7 @@ from app.routes.organizations import router as organizations_router
 from app.routes.policies import router as policies_router
 from app.routes.teams import router as teams_router
 from app.routes.tool_calls import router as tool_calls_router
+from app.routes.users import router as users_router
 
 settings = get_settings()
 logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(name)s %(message)s")
@@ -155,3 +156,4 @@ app.include_router(policies_router)
 app.include_router(teams_router)
 app.include_router(integrations_router)
 app.include_router(admin_router)
+app.include_router(users_router)

@@ -48,6 +48,7 @@ class OrganizationRoleRequestCreateRequest(BaseModel):
 
 class OrganizationRoleRequestReviewRequest(BaseModel):
     decision: str = Field(min_length=1, max_length=20)
+    reason: str | None = Field(default=None, max_length=400)
 
 
 class OrganizationPolicyUpdateRequest(BaseModel):
@@ -637,7 +638,10 @@ async def list_organization_role_requests(request: Request, organization_id: str
 
     query = (
         supabase.table("org_role_change_requests")
-        .select("id,organization_id,target_user_id,requested_role,reason,status,requested_by,reviewed_by,reviewed_at,created_at,updated_at")
+        .select(
+            "id,organization_id,target_user_id,requested_role,reason,request_type,status,requested_by,"
+            "reviewed_by,reviewed_at,review_reason,cancelled_by,cancelled_at,created_at,updated_at"
+        )
         .eq("organization_id", organization_id)
     )
     if role == "member":
@@ -670,6 +674,7 @@ async def create_organization_role_request(request: Request, organization_id: st
         "target_user_id": target_user_id,
         "requested_role": requested_role,
         "reason": (body.reason or "").strip() or None,
+        "request_type": "change_request",
         "status": "pending",
         "requested_by": requested_by,
         "created_at": now,
@@ -710,9 +715,16 @@ async def review_organization_role_request(
         raise HTTPException(status_code=409, detail="role_request_already_reviewed")
     now = datetime.now(timezone.utc).isoformat()
     status = "approved" if decision == "approve" else "rejected"
-    supabase.table("org_role_change_requests").update({"status": status, "reviewed_by": reviewer_id, "reviewed_at": now, "updated_at": now}).eq(
-        "id", request_id
-    ).eq("organization_id", organization_id).execute()
+    review_reason = (body.reason or "").strip() or None
+    supabase.table("org_role_change_requests").update(
+        {
+            "status": status,
+            "reviewed_by": reviewer_id,
+            "reviewed_at": now,
+            "review_reason": review_reason,
+            "updated_at": now,
+        }
+    ).eq("id", request_id).eq("organization_id", organization_id).execute()
     if status == "approved":
         supabase.table("org_memberships").upsert(
             {

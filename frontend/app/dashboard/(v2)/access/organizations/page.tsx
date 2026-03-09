@@ -457,12 +457,16 @@ export default function DashboardOrganizationsPage() {
       if (!selectedOrgId) {
         return;
       }
+      const reason =
+        decision === "reject"
+          ? window.prompt("Enter rejection reason (optional). This will be visible to the requester.")?.trim() || null
+          : null;
       const reviewKey = `${requestId}:${decision}`;
       setReviewingRoleRequestAction(reviewKey);
       setError(null);
       const result = await dashboardApiRequest(`/api/organizations/${selectedOrgId}/role-requests/${requestId}/review`, {
         method: "POST",
-        body: { decision },
+        body: { decision, reason },
       });
       if (result.status === 401) {
         handle401();
