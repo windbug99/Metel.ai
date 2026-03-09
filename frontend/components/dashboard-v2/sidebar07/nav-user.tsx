@@ -1,7 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import { ChevronsUpDown, LogOut, Settings } from "lucide-react";
+import { ChevronsUpDown, CircleUser, LogOut, Settings } from "lucide-react";
 
 import { Button } from "@/components/ui/button";
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuSeparator, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
@@ -21,6 +21,7 @@ export function NavUser({ signingOut, onSignOut, collapsed, username, email }: N
       <DropdownMenu>
         <DropdownMenuTrigger asChild>
           <Button variant="ghost" className={cn("h-auto w-full justify-between gap-2 rounded-lg px-2 py-2", collapsed && "justify-center px-0")}>
+            <CircleUser className="h-4 w-4 shrink-0" strokeWidth={1.5} />
             {!collapsed ? (
               <div className="grid flex-1 text-left text-sm leading-tight">
                 <span className="truncate font-semibold">{username}</span>

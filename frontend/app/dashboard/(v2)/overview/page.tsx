@@ -1,12 +1,23 @@
 "use client";
 
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import { Loader2 } from "lucide-react";
+import {
+  Bar,
+  BarChart,
+  CartesianGrid,
+  PolarAngleAxis,
+  RadialBar,
+  RadialBarChart,
+  XAxis,
+  YAxis,
+} from "recharts";
 
 import { buildNextPath, dashboardApiGet } from "../../../../lib/dashboard-v2-client";
 import { resolveDashboardScope } from "../../../../lib/dashboard-scope";
 import PageTitleWithTooltip from "@/components/dashboard-v2/page-title-with-tooltip";
+import { ChartContainer, ChartTooltip, ChartTooltipContent } from "@/components/ui/chart";
 
 type OverviewPayload = {
   window_hours: number;
@@ -100,6 +111,32 @@ export default function DashboardOverviewPage() {
     };
   }, [fetchOverview, pathname]);
 
+  const successRate = Math.max(0, Math.min(100, (data?.kpis.success_rate ?? 0) * 100));
+  const failRate = Math.max(0, Math.min(100, (data?.kpis.fail_rate ?? 0) * 100));
+  const retryRate = Math.max(0, Math.min(100, (data?.kpis.retry_rate ?? 0) * 100));
+  const policyBlockRate = Math.max(0, Math.min(100, (data?.kpis.policy_block_rate ?? 0) * 100));
+
+  const topCalledChart = useMemo(
+    () => (data?.top?.called_tools ?? []).slice(0, 5).map((item) => ({ name: item.tool_name, value: item.count })),
+    [data?.top?.called_tools]
+  );
+  const topFailedChart = useMemo(
+    () => (data?.top?.failed_tools ?? []).slice(0, 5).map((item) => ({ name: item.tool_name, value: item.count })),
+    [data?.top?.failed_tools]
+  );
+  const topBlockedChart = useMemo(
+    () => (data?.top?.blocked_tools ?? []).slice(0, 5).map((item) => ({ name: item.tool_name, value: item.count })),
+    [data?.top?.blocked_tools]
+  );
+  const anomalyBySeverity = useMemo(() => {
+    const counts = new Map<string, number>();
+    for (const anomaly of data?.anomalies ?? []) {
+      const severity = (anomaly.severity || "unknown").toLowerCase();
+      counts.set(severity, (counts.get(severity) ?? 0) + 1);
+    }
+    return Array.from(counts.entries()).map(([severity, count]) => ({ severity, count }));
+  }, [data?.anomalies]);
+
   if (loading) {
     return (
       <section className="space-y-4">
@@ -129,14 +166,43 @@ export default function DashboardOverviewPage() {
             <article className="ds-card p-4">
               <p className="text-xs text-muted-foreground">Total Calls</p>
               <p className="mt-2 text-2xl font-semibold">{data.kpis.total_calls}</p>
+              <ChartContainer
+                className="mt-2 h-20 w-full"
+                config={{ calls: { label: "Calls", color: "hsl(var(--chart-1))" } }}
+              >
+                <BarChart data={[{ label: "calls", calls: data.kpis.total_calls }]}>
+                  <Bar dataKey="calls" fill="var(--color-calls)" radius={4} />
+                  <ChartTooltip cursor={false} content={<ChartTooltipContent />} />
+                </BarChart>
+              </ChartContainer>
             </article>
             <article className="ds-card p-4">
               <p className="text-xs text-muted-foreground">Success Rate</p>
-              <p className="mt-2 text-2xl font-semibold text-chart-2">{(data.kpis.success_rate * 100).toFixed(1)}%</p>
+              <p className="mt-2 text-2xl font-semibold text-chart-2">{successRate.toFixed(1)}%</p>
+              <ChartContainer
+                className="mt-2 h-20 w-full"
+                config={{ success: { label: "Success Rate", color: "hsl(var(--chart-2))" } }}
+              >
+                <RadialBarChart data={[{ name: "success", success: successRate }]} innerRadius="62%" outerRadius="100%" startAngle={90} endAngle={-270}>
+                  <PolarAngleAxis type="number" domain={[0, 100]} dataKey="success" tick={false} />
+                  <RadialBar dataKey="success" cornerRadius={10} fill="var(--color-success)" background />
+                  <ChartTooltip cursor={false} content={<ChartTooltipContent />} />
+                </RadialBarChart>
+              </ChartContainer>
             </article>
             <article className="ds-card p-4">
               <p className="text-xs text-muted-foreground">Fail Rate</p>
-              <p className="mt-2 text-2xl font-semibold text-destructive">{(data.kpis.fail_rate * 100).toFixed(1)}%</p>
+              <p className="mt-2 text-2xl font-semibold text-destructive">{failRate.toFixed(1)}%</p>
+              <ChartContainer
+                className="mt-2 h-20 w-full"
+                config={{ fail: { label: "Fail Rate", color: "hsl(var(--destructive))" } }}
+              >
+                <RadialBarChart data={[{ name: "fail", fail: failRate }]} innerRadius="62%" outerRadius="100%" startAngle={90} endAngle={-270}>
+                  <PolarAngleAxis type="number" domain={[0, 100]} dataKey="fail" tick={false} />
+                  <RadialBar dataKey="fail" cornerRadius={10} fill="var(--color-fail)" background />
+                  <ChartTooltip cursor={false} content={<ChartTooltipContent />} />
+                </RadialBarChart>
+              </ChartContainer>
             </article>
             <article className="ds-card p-4">
               <p className="text-xs text-muted-foreground">Avg Latency</p>
@@ -149,50 +215,106 @@ export default function DashboardOverviewPage() {
             <article className="ds-card p-4">
               <p className="text-xs text-muted-foreground">Retry / Policy Block</p>
               <p className="mt-2 text-lg font-semibold">
-                {((data.kpis.retry_rate ?? 0) * 100).toFixed(1)}% / {((data.kpis.policy_block_rate ?? 0) * 100).toFixed(1)}%
+                {retryRate.toFixed(1)}% / {policyBlockRate.toFixed(1)}%
               </p>
+              <ChartContainer
+                className="mt-2 h-20 w-full"
+                config={{
+                  retry: { label: "Retry", color: "hsl(var(--chart-3))" },
+                  blocked: { label: "Policy Block", color: "hsl(var(--chart-4))" },
+                }}
+              >
+                <BarChart data={[{ label: "rate", retry: retryRate, blocked: policyBlockRate }]}>
+                  <Bar dataKey="retry" fill="var(--color-retry)" radius={4} />
+                  <Bar dataKey="blocked" fill="var(--color-blocked)" radius={4} />
+                  <ChartTooltip cursor={false} content={<ChartTooltipContent />} />
+                </BarChart>
+              </ChartContainer>
             </article>
+          </div>
+
+          <div className="ds-card p-4">
+            <p className="text-sm font-semibold">Latency Compare</p>
+            <ChartContainer
+              className="mt-3 h-56 w-full"
+              config={{
+                avg: { label: "Avg Latency", color: "hsl(var(--chart-1))" },
+                p95: { label: "P95 Latency", color: "hsl(var(--chart-5))" },
+              }}
+            >
+              <BarChart
+                data={[
+                  { name: "latency", avg: Math.round(data.kpis.avg_latency_ms), p95: Math.round(data.kpis.p95_latency_ms) },
+                ]}
+                margin={{ top: 8, right: 8, left: 8, bottom: 0 }}
+              >
+                <CartesianGrid vertical={false} />
+                <XAxis dataKey="name" tick={false} />
+                <YAxis />
+                <Bar dataKey="avg" fill="var(--color-avg)" radius={4} />
+                <Bar dataKey="p95" fill="var(--color-p95)" radius={4} />
+                <ChartTooltip cursor={false} content={<ChartTooltipContent />} />
+              </BarChart>
+            </ChartContainer>
           </div>
 
           <div className="grid gap-3 lg:grid-cols-3">
             <article className="ds-card p-4">
               <p className="text-sm font-semibold">Top Called Tools</p>
-              <div className="mt-2 space-y-1">
-                {(data.top?.called_tools ?? []).slice(0, 5).map((item) => (
-                  <p key={`called-${item.tool_name}`} className="text-xs text-muted-foreground">
-                    {item.tool_name}: {item.count}
-                  </p>
-                ))}
-                {(data.top?.called_tools ?? []).length === 0 ? <p className="text-xs text-muted-foreground">No data.</p> : null}
-              </div>
+              <ChartContainer className="mt-2 h-52 w-full" config={{ value: { label: "Calls", color: "hsl(var(--chart-1))" } }}>
+                <BarChart data={topCalledChart} layout="vertical" margin={{ top: 0, right: 8, left: 8, bottom: 0 }}>
+                  <CartesianGrid horizontal={false} />
+                  <XAxis type="number" />
+                  <YAxis dataKey="name" type="category" width={90} tickLine={false} axisLine={false} />
+                  <Bar dataKey="value" fill="var(--color-value)" radius={4} />
+                  <ChartTooltip cursor={false} content={<ChartTooltipContent />} />
+                </BarChart>
+              </ChartContainer>
+              {topCalledChart.length === 0 ? <p className="mt-2 text-xs text-muted-foreground">No data.</p> : null}
             </article>
             <article className="ds-card p-4">
               <p className="text-sm font-semibold">Top Failed Tools</p>
-              <div className="mt-2 space-y-1">
-                {(data.top?.failed_tools ?? []).slice(0, 5).map((item) => (
-                  <p key={`failed-${item.tool_name}`} className="text-xs text-muted-foreground">
-                    {item.tool_name}: {item.count}
-                  </p>
-                ))}
-                {(data.top?.failed_tools ?? []).length === 0 ? <p className="text-xs text-muted-foreground">No data.</p> : null}
-              </div>
+              <ChartContainer className="mt-2 h-52 w-full" config={{ value: { label: "Fails", color: "hsl(var(--destructive))" } }}>
+                <BarChart data={topFailedChart} layout="vertical" margin={{ top: 0, right: 8, left: 8, bottom: 0 }}>
+                  <CartesianGrid horizontal={false} />
+                  <XAxis type="number" />
+                  <YAxis dataKey="name" type="category" width={90} tickLine={false} axisLine={false} />
+                  <Bar dataKey="value" fill="var(--color-value)" radius={4} />
+                  <ChartTooltip cursor={false} content={<ChartTooltipContent />} />
+                </BarChart>
+              </ChartContainer>
+              {topFailedChart.length === 0 ? <p className="mt-2 text-xs text-muted-foreground">No data.</p> : null}
             </article>
             <article className="ds-card p-4">
               <p className="text-sm font-semibold">Top Blocked Tools</p>
-              <div className="mt-2 space-y-1">
-                {(data.top?.blocked_tools ?? []).slice(0, 5).map((item) => (
-                  <p key={`blocked-${item.tool_name}`} className="text-xs text-muted-foreground">
-                    {item.tool_name}: {item.count}
-                  </p>
-                ))}
-                {(data.top?.blocked_tools ?? []).length === 0 ? <p className="text-xs text-muted-foreground">No data.</p> : null}
-              </div>
+              <ChartContainer className="mt-2 h-52 w-full" config={{ value: { label: "Blocked", color: "hsl(var(--chart-4))" } }}>
+                <BarChart data={topBlockedChart} layout="vertical" margin={{ top: 0, right: 8, left: 8, bottom: 0 }}>
+                  <CartesianGrid horizontal={false} />
+                  <XAxis type="number" />
+                  <YAxis dataKey="name" type="category" width={90} tickLine={false} axisLine={false} />
+                  <Bar dataKey="value" fill="var(--color-value)" radius={4} />
+                  <ChartTooltip cursor={false} content={<ChartTooltipContent />} />
+                </BarChart>
+              </ChartContainer>
+              {topBlockedChart.length === 0 ? <p className="mt-2 text-xs text-muted-foreground">No data.</p> : null}
             </article>
           </div>
 
           {(data.anomalies ?? []).length > 0 ? (
             <div className="rounded-md border border-chart-4/40 bg-chart-4/10 p-3">
               <p className="text-xs font-medium text-chart-4">Recent anomalies</p>
+              <ChartContainer
+                className="mt-2 h-44 w-full"
+                config={{ count: { label: "Count", color: "hsl(var(--chart-4))" } }}
+              >
+                <BarChart data={anomalyBySeverity} margin={{ top: 8, right: 8, left: 8, bottom: 0 }}>
+                  <CartesianGrid vertical={false} />
+                  <XAxis dataKey="severity" />
+                  <YAxis allowDecimals={false} />
+                  <Bar dataKey="count" fill="var(--color-count)" radius={4} />
+                  <ChartTooltip cursor={false} content={<ChartTooltipContent />} />
+                </BarChart>
+              </ChartContainer>
               <div className="mt-2 space-y-1">
                 {(data.anomalies ?? []).slice(0, 8).map((anomaly, idx) => (
                   <p key={`${anomaly.type}-${idx}`} className="text-xs text-muted-foreground">

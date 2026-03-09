@@ -114,6 +114,9 @@ export default function DashboardOrganizationsPage() {
   const [loadingRoleRequests, setLoadingRoleRequests] = useState(false);
   const [creatingRoleRequest, setCreatingRoleRequest] = useState(false);
   const [reviewingRoleRequestAction, setReviewingRoleRequestAction] = useState<string | null>(null);
+  const [rejectRoleRequestDialogOpen, setRejectRoleRequestDialogOpen] = useState(false);
+  const [rejectRoleRequestId, setRejectRoleRequestId] = useState<number | null>(null);
+  const [rejectRoleRequestReason, setRejectRoleRequestReason] = useState("");
   const [activeTab, setActiveTab] = useState<"users" | "invites" | "requests" | "settings">("users");
   const [organizationNameDraft, setOrganizationNameDraft] = useState("");
   const [savingOrganizationSettings, setSavingOrganizationSettings] = useState(false);
@@ -538,14 +541,11 @@ export default function DashboardOrganizationsPage() {
   }, [handle401, loadRoleRequests, me?.user_id, roleRequestReason, roleRequestRequestedRole, roleRequestTargetUserId, selectedOrgId, selectedOrgRole]);
 
   const reviewRoleRequest = useCallback(
-    async (requestId: number, decision: "approve" | "reject") => {
+    async (requestId: number, decision: "approve" | "reject", reasonInput?: string | null) => {
       if (!selectedOrgId) {
-        return;
+        return false;
       }
-      const reason =
-        decision === "reject"
-          ? window.prompt("Enter rejection reason (optional). This will be visible to the requester.")?.trim() || null
-          : null;
+      const reason = decision === "reject" ? reasonInput?.trim() || null : null;
       const reviewKey = `${requestId}:${decision}`;
       setReviewingRoleRequestAction(reviewKey);
       setError(null);
@@ -556,23 +556,42 @@ export default function DashboardOrganizationsPage() {
       if (result.status === 401) {
         handle401();
         setReviewingRoleRequestAction(null);
-        return;
+        return false;
       }
       if (result.status === 403 || result.status === 404) {
         setError("Owner role required for role request review.");
         setReviewingRoleRequestAction(null);
-        return;
+        return false;
       }
       if (!result.ok) {
         setError(result.error ?? "Failed to review role request.");
         setReviewingRoleRequestAction(null);
-        return;
+        return false;
       }
       await Promise.all([loadRoleRequests(), loadMembers()]);
       setReviewingRoleRequestAction(null);
+      return true;
     },
     [handle401, loadMembers, loadRoleRequests, selectedOrgId]
   );
+
+  const openRejectRoleRequestDialog = useCallback((requestId: number) => {
+    setRejectRoleRequestId(requestId);
+    setRejectRoleRequestReason("");
+    setRejectRoleRequestDialogOpen(true);
+  }, []);
+
+  const submitRejectRoleRequest = useCallback(async () => {
+    if (rejectRoleRequestId === null) {
+      return;
+    }
+    const ok = await reviewRoleRequest(rejectRoleRequestId, "reject", rejectRoleRequestReason);
+    if (ok) {
+      setRejectRoleRequestDialogOpen(false);
+      setRejectRoleRequestId(null);
+      setRejectRoleRequestReason("");
+    }
+  }, [rejectRoleRequestId, rejectRoleRequestReason, reviewRoleRequest]);
 
   useEffect(() => {
     void loadOrganizations();
@@ -709,6 +728,50 @@ export default function DashboardOrganizationsPage() {
               </Button>
             </DialogFooter>
           </form>
+        </DialogContent>
+      </Dialog>
+
+      <Dialog
+        open={rejectRoleRequestDialogOpen}
+        onOpenChange={(open) => {
+          setRejectRoleRequestDialogOpen(open);
+          if (!open) {
+            setRejectRoleRequestId(null);
+            setRejectRoleRequestReason("");
+          }
+        }}
+      >
+        <DialogContent className="sm:max-w-md">
+          <DialogHeader>
+            <DialogTitle>Reject role request</DialogTitle>
+            <DialogDescription>Enter rejection reason (optional). This will be visible to the requester.</DialogDescription>
+          </DialogHeader>
+          <div className="space-y-3">
+            <Input
+              value={rejectRoleRequestReason}
+              onChange={(event) => setRejectRoleRequestReason(event.target.value)}
+              placeholder="reason (optional)"
+              className="h-10"
+            />
+            <DialogFooter>
+              <Button
+                type="button"
+                variant="outline"
+                className="border-border bg-card text-foreground hover:bg-accent hover:text-accent-foreground"
+                onClick={() => setRejectRoleRequestDialogOpen(false)}
+              >
+                Cancel
+              </Button>
+              <Button
+                type="button"
+                onClick={() => void submitRejectRoleRequest()}
+                disabled={rejectRoleRequestId === null || reviewingRoleRequestAction === `${rejectRoleRequestId}:reject`}
+                className="h-10 rounded-md border border-destructive/40 px-3 text-xs font-medium text-destructive disabled:opacity-60"
+              >
+                {reviewingRoleRequestAction === `${rejectRoleRequestId}:reject` ? "Rejecting..." : "Reject"}
+              </Button>
+            </DialogFooter>
+          </div>
         </DialogContent>
       </Dialog>
 
@@ -1008,7 +1071,7 @@ export default function DashboardOrganizationsPage() {
                           </Button>
                           <Button
                             type="button"
-                            onClick={() => void reviewRoleRequest(item.id, "reject")}
+                            onClick={() => openRejectRoleRequestDialog(item.id)}
                             disabled={reviewingRoleRequestAction === `${item.id}:reject`}
                             className="h-11 rounded-md border border-destructive/40 px-3 text-xs font-medium text-destructive disabled:opacity-60 md:h-9"
                           >

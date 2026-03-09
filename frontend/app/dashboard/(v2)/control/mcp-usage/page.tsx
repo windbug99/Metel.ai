@@ -7,10 +7,23 @@ import { DateRangePicker } from "@/components/ui/date-range-picker";
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import { Loader2 } from "lucide-react";
+import {
+  Bar,
+  BarChart,
+  CartesianGrid,
+  Cell,
+  ComposedChart,
+  Line,
+  Pie,
+  PieChart,
+  XAxis,
+  YAxis,
+} from "recharts";
 
 import { buildNextPath, dashboardApiGet } from "../../../../../lib/dashboard-v2-client";
 import { resolveDashboardScope } from "../../../../../lib/dashboard-scope";
 import PageTitleWithTooltip from "@/components/dashboard-v2/page-title-with-tooltip";
+import { ChartContainer, ChartTooltip, ChartTooltipContent } from "@/components/ui/chart";
 
 type ToolCallItem = {
   id: number;
@@ -224,6 +237,66 @@ export default function DashboardMcpUsagePage() {
     };
   }, [fetchToolCalls, fetchTrendAndBreakdown, pathname]);
 
+  const callCompositionData = useMemo(
+    () => [
+      { name: "success", value: toolCallsSummary?.success_24h ?? 0 },
+      { name: "fail", value: toolCallsSummary?.fail_24h ?? 0 },
+    ],
+    [toolCallsSummary?.fail_24h, toolCallsSummary?.success_24h]
+  );
+
+  const rateCompareData = useMemo(
+    () => [
+      { name: "fail", value: Number((((toolCallsSummary?.fail_rate_24h ?? 0) * 100).toFixed(2))) },
+      { name: "blocked", value: Number((((toolCallsSummary?.blocked_rate_24h ?? 0) * 100).toFixed(2))) },
+      { name: "retryable", value: Number((((toolCallsSummary?.retryable_fail_rate_24h ?? 0) * 100).toFixed(2))) },
+    ],
+    [toolCallsSummary?.blocked_rate_24h, toolCallsSummary?.fail_rate_24h, toolCallsSummary?.retryable_fail_rate_24h]
+  );
+
+  const topFailureCodes24h = useMemo(
+    () => (toolCallsSummary?.top_failure_codes ?? []).map((entry) => ({ code: entry.error_code, count: entry.count })),
+    [toolCallsSummary?.top_failure_codes]
+  );
+
+  const dailyTrendChart = useMemo(
+    () =>
+      trendPoints.slice(-7).map((point) => ({
+        day: new Date(point.bucket_start).toLocaleDateString(),
+        calls: point.calls,
+        failRate: Number((point.fail_rate * 100).toFixed(2)),
+      })),
+    [trendPoints]
+  );
+
+  const failureCategoryChart = useMemo(
+    () =>
+      (failureBreakdown?.categories ?? []).slice(0, 6).map((item) => ({
+        category: item.category,
+        count: item.count,
+        ratio: item.ratio,
+        colorKey:
+          item.category === "policy_blocked" ||
+          item.category === "quota_exceeded" ||
+          item.category === "access_denied" ||
+          item.category === "resolve_fail" ||
+          item.category === "upstream_temporary"
+            ? item.category
+            : "other",
+      })),
+    [failureBreakdown?.categories]
+  );
+
+  const connectorHealthChart = useMemo(
+    () =>
+      connectorSummary.map((item) => ({
+        connector: item.connector,
+        calls: item.calls,
+        failRate: Number((item.fail_rate * 100).toFixed(2)),
+      })),
+    [connectorSummary]
+  );
+
   const pageLoading = toolCallsLoading || trendLoading;
 
   if (pageLoading) {
@@ -308,6 +381,45 @@ export default function DashboardMcpUsagePage() {
         </article>
       </div>
 
+      <div className="grid gap-3 lg:grid-cols-2">
+        <article className="ds-card p-4">
+          <p className="text-sm font-medium">Call Composition (24h)</p>
+          <ChartContainer
+            className="mt-3 h-56 w-full"
+            config={{
+              success: { label: "Success", color: "hsl(var(--chart-2))" },
+              fail: { label: "Fail", color: "hsl(var(--destructive))" },
+            }}
+          >
+            <PieChart>
+              <Pie data={callCompositionData} dataKey="value" nameKey="name" innerRadius={48} outerRadius={78} paddingAngle={2}>
+                <Cell fill="var(--color-success)" />
+                <Cell fill="var(--color-fail)" />
+              </Pie>
+              <ChartTooltip cursor={false} content={<ChartTooltipContent />} />
+            </PieChart>
+          </ChartContainer>
+        </article>
+
+        <article className="ds-card p-4">
+          <p className="text-sm font-medium">Rate Comparison (24h)</p>
+          <ChartContainer
+            className="mt-3 h-56 w-full"
+            config={{
+              value: { label: "Rate (%)", color: "hsl(var(--chart-4))" },
+            }}
+          >
+            <BarChart data={rateCompareData} margin={{ top: 8, right: 8, left: 8, bottom: 0 }}>
+              <CartesianGrid vertical={false} />
+              <XAxis dataKey="name" />
+              <YAxis />
+              <Bar dataKey="value" fill="var(--color-value)" radius={4} />
+              <ChartTooltip cursor={false} content={<ChartTooltipContent />} />
+            </BarChart>
+          </ChartContainer>
+        </article>
+      </div>
+
       {toolCallsError ? (
         <div className="rounded-md border border-destructive/40 bg-destructive/10 px-3 py-2 text-sm text-destructive">
           {toolCallsError}
@@ -317,6 +429,17 @@ export default function DashboardMcpUsagePage() {
       <div className="ds-card space-y-2 p-4">
         <p className="text-sm font-medium">Top Failure Codes (24h)</p>
         {(toolCallsSummary?.top_failure_codes ?? []).length === 0 ? <p className="text-xs text-muted-foreground">No failure codes.</p> : null}
+        {topFailureCodes24h.length > 0 ? (
+          <ChartContainer className="h-56 w-full" config={{ count: { label: "Count", color: "hsl(var(--destructive))" } }}>
+            <BarChart data={topFailureCodes24h} layout="vertical" margin={{ top: 0, right: 8, left: 8, bottom: 0 }}>
+              <CartesianGrid horizontal={false} />
+              <XAxis type="number" />
+              <YAxis dataKey="code" type="category" width={120} tickLine={false} axisLine={false} />
+              <Bar dataKey="count" fill="var(--color-count)" radius={4} />
+              <ChartTooltip cursor={false} content={<ChartTooltipContent />} />
+            </BarChart>
+          </ChartContainer>
+        ) : null}
         <div className="flex flex-wrap gap-2">
           {(toolCallsSummary?.top_failure_codes ?? []).map((entry) => (
             <span key={`top-fail-${entry.error_code}`} className="rounded-full border border-border px-2 py-1 text-xs">
@@ -371,44 +494,93 @@ export default function DashboardMcpUsagePage() {
         <div className="grid gap-2 sm:grid-cols-2">
           <article className="rounded-md border border-border p-3">
             <p className="text-xs font-medium">Daily Calls Trend</p>
-            <div className="mt-2 space-y-1">
-              {trendPoints.slice(-7).map((point) => (
-                <p key={`trend-${point.bucket_start}`} className="text-xs">
-                  {new Date(point.bucket_start).toLocaleDateString()}: {point.calls} calls, fail {(point.fail_rate * 100).toFixed(1)}%
-                </p>
-              ))}
-            </div>
+            <ChartContainer
+              className="mt-2 h-48 w-full"
+              config={{
+                calls: { label: "Calls", color: "hsl(var(--chart-1))" },
+                failRate: { label: "Fail Rate (%)", color: "hsl(var(--destructive))" },
+              }}
+            >
+              <ComposedChart data={dailyTrendChart} margin={{ top: 8, right: 8, left: 8, bottom: 0 }}>
+                <CartesianGrid vertical={false} />
+                <XAxis dataKey="day" />
+                <YAxis yAxisId="left" />
+                <YAxis yAxisId="right" orientation="right" />
+                <Bar yAxisId="left" dataKey="calls" fill="var(--color-calls)" radius={4} />
+                <Line yAxisId="right" type="monotone" dataKey="failRate" stroke="var(--color-failRate)" strokeWidth={2} dot={false} />
+                <ChartTooltip cursor={false} content={<ChartTooltipContent />} />
+              </ComposedChart>
+            </ChartContainer>
           </article>
           <article className="rounded-md border border-border p-3">
             <p className="text-xs font-medium">Failure Categories</p>
-            <div className="mt-2 space-y-1">
-              {(failureBreakdown?.categories ?? []).slice(0, 6).map((item) => (
-                <p key={`cat-${item.category}`} className="text-xs">
-                  {item.category}: {item.count} ({(item.ratio * 100).toFixed(1)}%)
-                </p>
-              ))}
-            </div>
+            <ChartContainer
+              className="mt-2 h-48 w-full"
+              config={{
+                policy_blocked: { label: "Policy blocked", color: "hsl(var(--chart-4))" },
+                quota_exceeded: { label: "Quota exceeded", color: "hsl(var(--chart-5))" },
+                access_denied: { label: "Access denied", color: "hsl(var(--destructive))" },
+                resolve_fail: { label: "Resolve fail", color: "hsl(var(--chart-3))" },
+                upstream_temporary: { label: "Upstream temporary", color: "hsl(var(--chart-2))" },
+                other: { label: "Other", color: "hsl(var(--chart-1))" },
+              }}
+            >
+              <PieChart>
+                <Pie data={failureCategoryChart} dataKey="count" nameKey="category" innerRadius={40} outerRadius={72}>
+                  {failureCategoryChart.map((item) => (
+                    <Cell key={`cat-cell-${item.category}`} fill={`var(--color-${item.colorKey})`} />
+                  ))}
+                </Pie>
+                <ChartTooltip
+                  cursor={false}
+                  content={
+                    <ChartTooltipContent
+                      formatter={(value, name) => {
+                        const numericValue = Array.isArray(value) ? value[0] : value;
+                        const item = failureCategoryChart.find((entry) => entry.category === String(name));
+                        return `${numericValue} (${(((item?.ratio ?? 0) * 100)).toFixed(1)}%)`;
+                      }}
+                    />
+                  }
+                />
+              </PieChart>
+            </ChartContainer>
           </article>
           <article className="rounded-md border border-border p-3">
             <p className="text-xs font-medium">Top Failure Codes</p>
-            <div className="mt-2 space-y-1">
-              {(failureBreakdown?.error_codes ?? []).slice(0, 6).map((item) => (
-                <p key={`ecode-${item.error_code}`} className="text-xs">
-                  {item.error_code}: {item.count}
-                </p>
-              ))}
-            </div>
+            <ChartContainer className="mt-2 h-48 w-full" config={{ count: { label: "Count", color: "hsl(var(--destructive))" } }}>
+              <BarChart data={(failureBreakdown?.error_codes ?? []).slice(0, 6).map((item) => ({ code: item.error_code, count: item.count }))} layout="vertical" margin={{ top: 0, right: 8, left: 8, bottom: 0 }}>
+                <CartesianGrid horizontal={false} />
+                <XAxis type="number" />
+                <YAxis dataKey="code" type="category" width={110} tickLine={false} axisLine={false} />
+                <Bar dataKey="count" fill="var(--color-count)" radius={4} />
+                <ChartTooltip cursor={false} content={<ChartTooltipContent />} />
+              </BarChart>
+            </ChartContainer>
           </article>
           <article className="rounded-md border border-border p-3">
             <p className="text-xs font-medium">Connector Health</p>
-            <div className="mt-2 space-y-1">
-              {connectorSummary.map((item) => (
-                <p key={`connector-${item.connector}`} className="text-xs">
-                  {item.connector}: calls {item.calls}, fail {(item.fail_rate * 100).toFixed(1)}%, avg {Math.round(item.avg_latency_ms)}ms
-                </p>
-              ))}
-              {connectorSummary.length === 0 ? <p className="text-xs text-muted-foreground">No connector data.</p> : null}
-            </div>
+            <ChartContainer
+              className="mt-2 h-48 w-full"
+              config={{
+                calls: { label: "Calls", color: "hsl(var(--chart-1))" },
+                failRate: { label: "Fail Rate (%)", color: "hsl(var(--destructive))" },
+              }}
+            >
+              <ComposedChart
+                data={connectorHealthChart}
+                margin={{ top: 8, right: 8, left: 8, bottom: 0 }}
+              >
+                <CartesianGrid vertical={false} />
+                <XAxis dataKey="connector" />
+                <YAxis yAxisId="left" />
+                <YAxis yAxisId="right" orientation="right" />
+                <Bar yAxisId="left" dataKey="calls" fill="var(--color-calls)" radius={4} />
+                <Line yAxisId="right" type="monotone" dataKey="failRate" stroke="var(--color-failRate)" strokeWidth={2} dot={false} />
+                <ChartTooltip cursor={false} content={<ChartTooltipContent />} />
+              </ComposedChart>
+            </ChartContainer>
+            {connectorSummary.length === 0 ? <p className="text-xs text-muted-foreground">No connector data.</p> : null}
           </article>
         </div>
       </div>
