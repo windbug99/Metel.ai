@@ -32,6 +32,36 @@ class TeamMemberRequest(BaseModel):
     user_id: str = Field(min_length=1)
     role: str = Field(default="member", min_length=1, max_length=40)
 
+_ALLOWED_TEAM_MEMBER_ROLES = {"owner", "admin", "member"}
+
+
+def _normalize_member_role(raw: str) -> str:
+    role = str(raw or "").strip().lower()
+    if role not in _ALLOWED_TEAM_MEMBER_ROLES:
+        raise HTTPException(status_code=400, detail="invalid_member_role")
+    return role
+
+
+def _resolve_member_user_id(*, supabase, raw_user_ref: str) -> str:
+    user_ref = str(raw_user_ref or "").strip()
+    if not user_ref:
+        raise HTTPException(status_code=400, detail="member_user_required")
+
+    # Allow email input for member onboarding from Team Policy UI.
+    if "@" in user_ref:
+        email = user_ref.lower()
+        rows = (
+            supabase.table("users")
+            .select("id")
+            .eq("email", email)
+            .limit(1)
+            .execute()
+        ).data or []
+        if not rows or not rows[0].get("id"):
+            raise HTTPException(status_code=404, detail="member_user_not_found")
+        return str(rows[0]["id"]).strip()
+    return user_ref
+
 
 def _normalize_policy(raw: dict[str, Any] | None) -> dict[str, Any]:
     if raw is None:
@@ -396,17 +426,19 @@ async def add_team_member(request: Request, team_id: str, body: TeamMemberReques
     require_min_role(authz_ctx, Role.ADMIN, method=request.method)
 
     _require_team_access(supabase=supabase, authz_ctx=authz_ctx, team_id=team_id, write=True)
+    member_user_id = _resolve_member_user_id(supabase=supabase, raw_user_ref=body.user_id)
+    member_role = _normalize_member_role(body.role)
 
     now = datetime.now(timezone.utc).isoformat()
     row = (
         supabase.table("team_memberships")
         .upsert(
-            {"team_id": team_id, "user_id": body.user_id.strip(), "role": body.role.strip(), "created_at": now},
+            {"team_id": team_id, "user_id": member_user_id, "role": member_role, "created_at": now},
             on_conflict="team_id,user_id",
         )
         .execute()
     ).data or []
-    return {"item": row[0] if row else {"team_id": team_id, "user_id": body.user_id.strip(), "role": body.role.strip()}}
+    return {"item": row[0] if row else {"team_id": team_id, "user_id": member_user_id, "role": member_role}}
 
 
 @router.delete("/{team_id}/members/{membership_id}")

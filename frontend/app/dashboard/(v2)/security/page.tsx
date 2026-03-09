@@ -130,43 +130,45 @@ export default function DashboardSecurityPage() {
 
       {!loading ? (
         <div className="ds-card space-y-4 p-4">
-          <label className="space-y-1">
-            <span className="text-xs text-muted-foreground">MFA</span>
-            <Select
-              value={mfaDraft}
-              onChange={(event) => setMfaDraft(event.target.value as "enabled" | "disabled")}
-              className="ds-input h-11 rounded-md px-3 text-sm md:h-9"
-            >
-              <option value="enabled">Enabled</option>
-              <option value="disabled">Disabled</option>
-            </Select>
-          </label>
+          <div className="grid gap-3 xl:grid-cols-3">
+            <label className="space-y-1">
+              <span className="text-xs text-muted-foreground">MFA</span>
+              <Select
+                value={mfaDraft}
+                onChange={(event) => setMfaDraft(event.target.value as "enabled" | "disabled")}
+                className="ds-input h-11 rounded-md px-3 text-sm md:h-9"
+              >
+                <option value="enabled">Enabled</option>
+                <option value="disabled">Disabled</option>
+              </Select>
+            </label>
 
-          <label className="space-y-1">
-            <span className="text-xs text-muted-foreground">Session Timeout (minutes)</span>
-            <Input
-              type="number"
-              min={15}
-              max={1440}
-              step={1}
-              value={sessionTimeoutDraft}
-              onChange={(event) => setSessionTimeoutDraft(event.target.value)}
-              className="h-11 rounded-md px-3 text-sm md:h-9"
-            />
-          </label>
+            <label className="space-y-1">
+              <span className="text-xs text-muted-foreground">Session Timeout (minutes)</span>
+              <Input
+                type="number"
+                min={15}
+                max={1440}
+                step={1}
+                value={sessionTimeoutDraft}
+                onChange={(event) => setSessionTimeoutDraft(event.target.value)}
+                className="h-11 rounded-md px-3 text-sm md:h-9"
+              />
+            </label>
 
-          <label className="space-y-1">
-            <span className="text-xs text-muted-foreground">Password Rotation (days)</span>
-            <Input
-              type="number"
-              min={30}
-              max={365}
-              step={1}
-              value={passwordRotationDraft}
-              onChange={(event) => setPasswordRotationDraft(event.target.value)}
-              className="h-11 rounded-md px-3 text-sm md:h-9"
-            />
-          </label>
+            <label className="space-y-1">
+              <span className="text-xs text-muted-foreground">Password Rotation (days)</span>
+              <Input
+                type="number"
+                min={30}
+                max={365}
+                step={1}
+                value={passwordRotationDraft}
+                onChange={(event) => setPasswordRotationDraft(event.target.value)}
+                className="h-11 rounded-md px-3 text-sm md:h-9"
+              />
+            </label>
+          </div>
 
           <div className="flex items-center justify-between border-t border-border pt-4">
             <p className="text-xs text-muted-foreground">Last updated: {asDate(settings?.updated_at)}</p>

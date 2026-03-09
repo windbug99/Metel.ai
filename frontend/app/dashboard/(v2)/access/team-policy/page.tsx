@@ -3,6 +3,7 @@
 import { Select } from "@/components/ui/select";
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
+import { Checkbox } from "@/components/ui/checkbox";
 import { useCallback, useEffect, useState } from "react";
 import { usePathname, useRouter, useSearchParams } from "next/navigation";
 
@@ -280,7 +281,7 @@ export default function DashboardTeamPolicyPage() {
     async (teamId: number) => {
       const userId = (teamMemberUserDraft[teamId] ?? "").trim();
       if (!userId) {
-        setError("Member user ID is required.");
+        setError("Member user ID or email is required.");
         return;
       }
       setMemberSavingTeamId(teamId);
@@ -422,18 +423,20 @@ export default function DashboardTeamPolicyPage() {
       <div className="ds-card p-4">
         <p className="mb-2 text-sm font-semibold">Create team</p>
         <div className="space-y-2">
-          <Input
-            value={createName}
-            onChange={(event) => setCreateName(event.target.value)}
-            placeholder="Team name"
-            className="ds-input h-11 w-full rounded-md px-3 text-sm md:h-9"
-          />
-          <Input
-            value={createDescription}
-            onChange={(event) => setCreateDescription(event.target.value)}
-            placeholder="Description (optional)"
-            className="ds-input h-11 w-full rounded-md px-3 text-sm md:h-9"
-          />
+          <div className="grid gap-2 md:grid-cols-2">
+            <Input
+              value={createName}
+              onChange={(event) => setCreateName(event.target.value)}
+              placeholder="Team name"
+              className="ds-input h-11 w-full rounded-md px-3 text-sm md:h-9"
+            />
+            <Input
+              value={createDescription}
+              onChange={(event) => setCreateDescription(event.target.value)}
+              placeholder="Description (optional)"
+              className="ds-input h-11 w-full rounded-md px-3 text-sm md:h-9"
+            />
+          </div>
           <textarea
             value={createPolicy}
             onChange={(event) => setCreatePolicy(event.target.value)}
@@ -460,13 +463,12 @@ export default function DashboardTeamPolicyPage() {
               <p className="text-xs text-muted-foreground">policy updated {asDate(team.policy_updated_at)}</p>
             </div>
             <label className="flex items-center gap-2 text-xs">
-              <Input
-                type="checkbox"
+              <Checkbox
                 checked={Boolean(teamActiveDraft[team.id])}
-                onChange={(event) =>
+                onCheckedChange={(checked) =>
                   setTeamActiveDraft((prev) => ({
                     ...prev,
-                    [team.id]: event.target.checked,
+                    [team.id]: checked,
                   }))
                 }
               />
@@ -474,16 +476,18 @@ export default function DashboardTeamPolicyPage() {
             </label>
           </div>
 
-          <Input
-            value={teamNameDraft[team.id] ?? ""}
-            onChange={(event) => setTeamNameDraft((prev) => ({ ...prev, [team.id]: event.target.value }))}
-            className="ds-input h-11 w-full rounded-md px-3 text-sm md:h-9"
-          />
-          <Input
-            value={teamDescriptionDraft[team.id] ?? ""}
-            onChange={(event) => setTeamDescriptionDraft((prev) => ({ ...prev, [team.id]: event.target.value }))}
-            className="ds-input h-11 w-full rounded-md px-3 text-sm md:h-9"
-          />
+          <div className="grid gap-2 md:grid-cols-2">
+            <Input
+              value={teamNameDraft[team.id] ?? ""}
+              onChange={(event) => setTeamNameDraft((prev) => ({ ...prev, [team.id]: event.target.value }))}
+              className="ds-input h-11 w-full rounded-md px-3 text-sm md:h-9"
+            />
+            <Input
+              value={teamDescriptionDraft[team.id] ?? ""}
+              onChange={(event) => setTeamDescriptionDraft((prev) => ({ ...prev, [team.id]: event.target.value }))}
+              className="ds-input h-11 w-full rounded-md px-3 text-sm md:h-9"
+            />
+          </div>
           <textarea
             value={teamPolicyDraft[team.id] ?? "{}"}
             onChange={(event) => setTeamPolicyDraft((prev) => ({ ...prev, [team.id]: event.target.value }))}
@@ -546,17 +550,17 @@ export default function DashboardTeamPolicyPage() {
 
           <div className="rounded-md border border-border p-3">
             <p className="mb-2 text-sm font-medium">Members</p>
-            <div className="mb-2 flex flex-wrap items-center gap-2">
+            <div className="mb-2 grid items-center gap-2 lg:grid-cols-[minmax(260px,1fr)_140px_auto]">
               <Input
                 value={teamMemberUserDraft[team.id] ?? ""}
                 onChange={(event) => setTeamMemberUserDraft((prev) => ({ ...prev, [team.id]: event.target.value }))}
-                placeholder="User ID"
-                className="ds-input h-11 min-w-[300px] rounded-md px-3 text-sm md:h-9"
+                placeholder="User ID or Email"
+                className="ds-input h-11 w-full rounded-md px-3 text-sm md:h-9"
               />
               <Select
                 value={teamMemberRoleDraft[team.id] ?? "member"}
                 onChange={(event) => setTeamMemberRoleDraft((prev) => ({ ...prev, [team.id]: event.target.value }))}
-                className="ds-input h-11 rounded-md px-3 text-sm md:h-9"
+                className="ds-input h-11 w-full rounded-md px-3 text-sm md:h-9"
               >
                 <option value="owner">owner</option>
                 <option value="admin">admin</option>
@@ -566,7 +570,7 @@ export default function DashboardTeamPolicyPage() {
                 type="button"
                 onClick={() => void upsertTeamMember(team.id)}
                 disabled={!canManageTeams || memberSavingTeamId === team.id}
-                className="ds-btn h-11 rounded-md px-3 text-sm disabled:cursor-not-allowed disabled:opacity-60 md:h-9"
+                className="ds-btn h-11 whitespace-nowrap rounded-md px-3 text-sm disabled:cursor-not-allowed disabled:opacity-60 md:h-9"
                 title={canManageTeams ? "" : "Admin role required"}
               >
                 {memberSavingTeamId === team.id ? "Saving..." : "Add / Update Member"}
