@@ -82,13 +82,15 @@ export default function DashboardAppSidebar({
         </div>
       </div>
 
-      <div className="no-scrollbar flex-1 overflow-y-auto px-3 py-3">
-        <div className="flex h-full flex-col">
+      <div className="flex flex-1 flex-col overflow-hidden">
+        <div className="no-scrollbar flex-1 overflow-y-auto px-3 py-3">
           <NavMain pathname={pathname} navItems={navItems} buildNavHref={buildNavHref} collapsed={collapsed} />
+        </div>
+        <div className="px-3 pb-3">
           <Link
             href={buildNavHref("/dashboard/user-guide", "user")}
             className={cn(
-              "mt-3 flex items-center gap-2 rounded-md border border-sidebar-border px-3 pt-[6px] pb-[6px] text-sm font-light transition-colors",
+              "flex items-center gap-2 rounded-md border border-sidebar-border px-3 pt-[6px] pb-[6px] text-sm font-light transition-colors",
               pathname.startsWith("/dashboard/user-guide")
                 ? "bg-sidebar-accent text-sidebar-accent-foreground"
                 : "text-sidebar-foreground hover:bg-sidebar-accent/70",
