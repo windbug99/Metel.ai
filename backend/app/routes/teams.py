@@ -107,13 +107,25 @@ def _load_org_policy_baseline(*, supabase, organization_id: int | None) -> dict[
             .limit(1)
             .execute()
         ).data or []
+        oauth_rows = (
+            supabase.table("org_oauth_policies")
+            .select("policy_json")
+            .eq("organization_id", organization_id)
+            .limit(1)
+            .execute()
+        ).data or []
     except Exception:
         # Backward compatibility: table may not exist on older environments.
         return {}
-    if not rows:
-        return {}
-    raw = rows[0].get("policy_json")
-    return _normalize_policy(raw if isinstance(raw, dict) else None)
+    normalized = _normalize_policy(rows[0].get("policy_json") if rows and isinstance(rows[0].get("policy_json"), dict) else None)
+    oauth_policy = oauth_rows[0].get("policy_json") if oauth_rows and isinstance(oauth_rows[0].get("policy_json"), dict) else {}
+    allowed_providers = oauth_policy.get("allowed_providers")
+    if isinstance(allowed_providers, list):
+        merged = set(str(item).strip().lower() for item in normalized.get("allowed_services") or [] if str(item).strip())
+        merged.update(str(item).strip().lower() for item in allowed_providers if str(item).strip())
+        if merged:
+            normalized["allowed_services"] = sorted(merged)
+    return normalized
 
 
 def _enforce_team_policy_baseline(*, baseline: dict[str, Any], candidate: dict[str, Any]) -> None:

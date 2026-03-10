@@ -45,6 +45,8 @@ type OrganizationOption = {
   name: string;
 };
 
+const LAST_ORG_STORAGE_KEY = "dashboard-v2-last-org";
+
 function parseOrgId(value: string): number | null {
   const text = String(value || "").trim();
   if (!text || text === "all") {
@@ -232,6 +234,30 @@ export default function DashboardV2Shell({ children }: { children: React.ReactNo
     const hit = orgOptions.find((item) => item.id === orgId);
     return hit?.name ?? null;
   }, [currentOrg, orgOptions]);
+  const [lastOrgId, setLastOrgId] = useState<number | null>(null);
+  const displayOrgId = useMemo(() => {
+    const currentOrgId = parseOrgId(currentOrg);
+    if (currentOrgId !== null) {
+      return currentOrgId;
+    }
+    if (lastOrgId !== null && orgIds.includes(lastOrgId)) {
+      return lastOrgId;
+    }
+    if (orgOptions.length > 0) {
+      return orgOptions[0].id;
+    }
+    if (orgIds.length > 0) {
+      return Number(orgIds[0]);
+    }
+    return null;
+  }, [currentOrg, lastOrgId, orgIds, orgOptions]);
+  const displayOrgName = useMemo(() => {
+    if (displayOrgId === null) {
+      return null;
+    }
+    const hit = orgOptions.find((item) => item.id === displayOrgId);
+    return hit?.name ?? currentOrgName ?? `Org #${displayOrgId}`;
+  }, [currentOrgName, displayOrgId, orgOptions]);
 
   const setGlobalQuery = useCallback(
     (next: Partial<Record<(typeof GLOBAL_QUERY_KEYS)[number], string>>) => {
@@ -312,6 +338,22 @@ export default function DashboardV2Shell({ children }: { children: React.ReactNo
     }
     void fetchOrganizations();
   }, [fetchOrganizations, permissionSnapshot]);
+
+  useEffect(() => {
+    if (typeof window === "undefined") {
+      return;
+    }
+    const stored = window.localStorage.getItem(LAST_ORG_STORAGE_KEY);
+    const parsed = parseOrgId(stored ?? "");
+    setLastOrgId(parsed);
+  }, []);
+
+  useEffect(() => {
+    if (typeof window === "undefined" || displayOrgId === null) {
+      return;
+    }
+    window.localStorage.setItem(LAST_ORG_STORAGE_KEY, String(displayOrgId));
+  }, [displayOrgId]);
 
   useEffect(() => {
     if (!permissionSnapshot || activeOrgId === null) {
@@ -625,8 +667,8 @@ export default function DashboardV2Shell({ children }: { children: React.ReactNo
           navItems={navItems}
           buildNavHref={buildNavHref}
           roleLabel={permissionSnapshot?.role ?? "loading"}
-          currentOrg={currentOrg}
-          currentOrgName={currentOrgName}
+          currentOrg={displayOrgId !== null ? String(displayOrgId) : "all"}
+          currentOrgName={displayOrgName}
           orgIds={orgIds}
           orgOptions={orgOptions}
           isMemberRole={isMemberRole}

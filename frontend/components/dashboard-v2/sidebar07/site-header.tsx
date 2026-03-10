@@ -11,7 +11,6 @@ import {
   BreadcrumbSeparator,
 } from "@/components/ui/breadcrumb";
 import { Button } from "@/components/ui/button";
-import { Input } from "@/components/ui/input";
 import { Separator } from "@/components/ui/separator";
 
 type SiteHeaderProps = {
@@ -66,14 +65,6 @@ export function SiteHeader({
       </div>
 
       <div className="flex items-center justify-end gap-2 md:flex-nowrap">
-        <Input
-          type="search"
-          disabled={!globalSearchEnabled}
-          placeholder={
-            globalSearchEnabled ? "Search request_id / api_key / user_id / tool_name" : "Global search (coming soon)"
-          }
-          className="hidden h-8 w-64 text-xs md:block"
-        />
         <Select
           value={currentTeam}
           onChange={(event) => {

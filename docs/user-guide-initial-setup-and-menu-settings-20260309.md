@@ -180,6 +180,28 @@ The page parser reads this file and renders content automatically.
 - values: Endpoint URL, event type selection, and verification secret.
 - why: Enables controlled automation to external systems.
 
+###### Connecting Slack
+Slack is the most common webhook delivery target. Follow these steps to connect:
+
+1. **Create a Slack App** — Go to [api.slack.com/apps](https://api.slack.com/apps) and click "Create New App" > "From scratch". Choose your workspace.
+2. **Enable Incoming Webhooks** — In the app settings, navigate to Features > Incoming Webhooks and toggle it ON.
+3. **Add a Webhook to Workspace** — Click "Add New Webhook to Workspace", select the target channel (e.g. `#metel-alerts`), and authorize. Copy the generated Webhook URL (format: `https://hooks.slack.com/services/T.../B.../xxx`).
+4. **Register in metel** — Go to Organization > Integrations in the metel dashboard. Click "Create Webhook" and paste the Slack Webhook URL as the Endpoint URL.
+5. **Select Events** — Choose which events to forward. Recommended for operations:
+   - `tool_call.failed` — execution failures
+   - `policy.denied` — policy-blocked requests
+   - `dead_letter.created` — repeated failure alerts
+   - `access.denied` — RBAC access denial events
+   - `audit.export.completed` — audit export completion
+6. **Set Verification Secret** (optional) — Add a shared secret to verify webhook payloads. metel signs deliveries with `X-Metel-Signature` header using HMAC-SHA256.
+7. **Test Delivery** — Click "Send Test" in the webhook detail view. Confirm the test message arrives in the target Slack channel.
+8. **Monitor Deliveries** — Use the Deliveries tab to track delivery status. Failed deliveries can be retried individually or in batch.
+
+Troubleshooting:
+- If test delivery fails with timeout, confirm the Slack Webhook URL is valid and the Slack App is installed in the workspace.
+- If messages arrive but content is empty, verify the selected event types match actual system activity.
+- Slack Webhook URLs do not expire, but Slack Apps can be uninstalled. If deliveries suddenly fail, check Slack App status first.
+
 ##### Organization > OAuth Governance
 - menu_href: /dashboard/integrations/oauth
 - what: Define provider-level governance policy.
@@ -232,6 +254,12 @@ The page parser reads this file and renders content automatically.
 
 ##### Q: Why is Team data empty?
 - a: Team scope requires valid organization and team selection. Re-select scope values and reload.
+
+##### Q: How do I receive metel alerts in Slack?
+- a: Create a Slack App with Incoming Webhooks enabled, copy the Webhook URL, and register it in Organization > Integrations. Select relevant event types (e.g. tool_call.failed, dead_letter.created) and click Send Test to verify. See the Connecting Slack section in the Integrations menu reference for step-by-step instructions.
+
+##### Q: Slack webhook deliveries are failing. What should I check?
+- a: (1) Verify the Slack Webhook URL is still valid at api.slack.com/apps. (2) Confirm the Slack App is installed and the target channel exists. (3) Check the Deliveries tab in metel for specific error codes. (4) Try the Send Test button to isolate whether the issue is metel-side or Slack-side.
 
 ---
 
@@ -406,6 +434,28 @@ The page parser reads this file and renders content automatically.
 - values: Endpoint URL, 이벤트 선택, 검증용 시크릿.
 - why: 외부 시스템 자동화 연동을 안전하게 운영합니다.
 
+###### Slack 연결 방법
+Slack은 가장 많이 사용되는 Webhook 전송 대상입니다. 아래 절차를 따라 연결하세요:
+
+1. **Slack App 생성** — [api.slack.com/apps](https://api.slack.com/apps) 에서 "Create New App" > "From scratch"를 선택합니다. 대상 워크스페이스를 지정합니다.
+2. **Incoming Webhooks 활성화** — 앱 설정에서 Features > Incoming Webhooks 로 이동하여 토글을 ON으로 변경합니다.
+3. **워크스페이스에 Webhook 추가** — "Add New Webhook to Workspace"를 클릭하고 수신 채널(예: `#metel-alerts`)을 선택한 후 승인합니다. 생성된 Webhook URL(형식: `https://hooks.slack.com/services/T.../B.../xxx`)을 복사합니다.
+4. **metel에 등록** — metel 대시보드에서 Organization > Integrations 로 이동합니다. "Create Webhook"을 클릭하고 Slack Webhook URL을 Endpoint URL에 붙여넣습니다.
+5. **이벤트 선택** — 전달할 이벤트를 선택합니다. 운영 권장 이벤트:
+   - `tool_call.failed` — 실행 실패
+   - `policy.denied` — 정책 차단 요청
+   - `dead_letter.created` — 반복 실패 알림
+   - `access.denied` — RBAC 접근 거부 이벤트
+   - `audit.export.completed` — 감사 로그 내보내기 완료
+6. **Verification Secret 설정** (선택) — 공유 시크릿을 추가하면 metel이 `X-Metel-Signature` 헤더에 HMAC-SHA256 서명을 포함하여 전송합니다.
+7. **테스트 전송** — Webhook 상세 화면에서 "Send Test"를 클릭합니다. 대상 Slack 채널에 테스트 메시지가 도착하는지 확인합니다.
+8. **전송 상태 모니터링** — Deliveries 탭에서 전송 상태를 추적합니다. 실패한 전송은 개별 또는 일괄 재시도할 수 있습니다.
+
+트러블슈팅:
+- 테스트 전송이 timeout으로 실패하면 Slack Webhook URL이 유효한지, Slack App이 워크스페이스에 설치되어 있는지 확인하세요.
+- 메시지는 도착하지만 내용이 비어 있다면 선택한 이벤트 타입이 실제 시스템 활동과 일치하는지 확인하세요.
+- Slack Webhook URL은 만료되지 않지만 Slack App이 제거될 수 있습니다. 전송이 갑자기 실패하면 먼저 Slack App 상태를 점검하세요.
+
 ##### Organization > OAuth Governance
 - menu_href: /dashboard/integrations/oauth
 - what: provider 수준의 연결 정책을 설정합니다.
@@ -458,3 +508,9 @@ The page parser reads this file and renders content automatically.
 
 ##### Q: Team 데이터가 비어있는 이유는 무엇인가요?
 - a: Team scope에는 유효한 Organization과 Team 선택이 필요합니다. 범위를 다시 선택한 후 새로고침하세요.
+
+##### Q: metel 알림을 Slack에서 받으려면 어떻게 하나요?
+- a: Incoming Webhooks이 활성화된 Slack App을 생성하고 Webhook URL을 복사한 뒤 Organization > Integrations에 등록합니다. 이벤트 타입(예: tool_call.failed, dead_letter.created)을 선택하고 Send Test로 검증하세요. 상세 절차는 Integrations 메뉴 상세 가이드의 Slack 연결 방법 섹션을 참고하세요.
+
+##### Q: Slack webhook 전송이 실패합니다. 무엇을 점검해야 하나요?
+- a: (1) api.slack.com/apps에서 Slack Webhook URL이 유효한지 확인합니다. (2) Slack App이 설치되어 있고 대상 채널이 존재하는지 확인합니다. (3) metel의 Deliveries 탭에서 구체적인 에러 코드를 확인합니다. (4) Send Test 버튼으로 metel 측인지 Slack 측인지 원인을 분리합니다.

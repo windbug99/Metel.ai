@@ -179,6 +179,64 @@ def test_team_policy_baseline_allows_missing_allow_high_risk_when_baseline_false
     )
 
 
+def test_update_team_policy_allows_service_permitted_by_org_oauth_policy(monkeypatch):
+    class _Query:
+        def __init__(self, table_name: str):
+            self.table_name = table_name
+            self._mode = "select"
+
+        def select(self, *_args, **_kwargs):
+            self._mode = "select"
+            return self
+
+        def update(self, *_args, **_kwargs):
+            self._mode = "update"
+            return self
+
+        def insert(self, *_args, **_kwargs):
+            self._mode = "insert"
+            return self
+
+        def eq(self, *_args, **_kwargs):
+            return self
+
+        def limit(self, *_args, **_kwargs):
+            return self
+
+        def execute(self):
+            if self.table_name == "teams":
+                return SimpleNamespace(data=[{"id": 1, "organization_id": 1}])
+            if self.table_name == "team_memberships":
+                return SimpleNamespace(data=[{"id": 10}])
+            if self.table_name == "org_policies":
+                return SimpleNamespace(data=[{"policy_json": {"allowed_services": ["notion", "linear"]}}])
+            if self.table_name == "org_oauth_policies":
+                return SimpleNamespace(data=[{"policy_json": {"allowed_providers": ["notion", "linear", "github"]}}])
+            if self.table_name in {"team_policies", "policy_revisions"}:
+                return SimpleNamespace(data=[{"id": 1}])
+            return SimpleNamespace(data=[])
+
+    class _Client:
+        def table(self, name: str):
+            return _Query(name)
+
+    async def _fake_user(_request: Request) -> str:
+        return "user-1"
+
+    monkeypatch.setattr("app.routes.teams.get_authenticated_user_id", _fake_user)
+    monkeypatch.setattr("app.routes.teams.create_client", lambda *_args, **_kwargs: _Client())
+    monkeypatch.setattr("app.routes.teams.get_settings", lambda: SimpleNamespace(supabase_url="x", supabase_service_role_key="y"))
+
+    out = asyncio.run(
+        update_team(
+            _request("/api/teams/1", "PATCH"),
+            "1",
+            TeamUpdateRequest(policy_json={"allowed_services": ["notion", "linear", "github"]}),
+        )
+    )
+    assert out["ok"] is True
+
+
 def test_add_team_member_resolves_email_to_user_id(monkeypatch):
     class _Query:
         def __init__(self, client, table_name: str):
