@@ -43,6 +43,15 @@ type OverviewPayload = {
   }>;
 };
 
+const CHART_COLORS = {
+  blue: "#3b82f6",
+  green: "#22c55e",
+  red: "#ef4444",
+  amber: "#f59e0b",
+  violet: "#8b5cf6",
+  cyan: "#06b6d4",
+};
+
 export default function DashboardOverviewPage() {
   const pathname = usePathname();
   const router = useRouter();
@@ -168,7 +177,7 @@ export default function DashboardOverviewPage() {
               <p className="mt-2 text-2xl font-semibold">{data.kpis.total_calls}</p>
               <ChartContainer
                 className="mt-2 h-20 w-full"
-                config={{ calls: { label: "Calls", color: "hsl(var(--chart-1))" } }}
+                config={{ calls: { label: "Calls", color: CHART_COLORS.blue } }}
               >
                 <BarChart data={[{ label: "calls", calls: data.kpis.total_calls }]}>
                   <Bar dataKey="calls" fill="var(--color-calls)" radius={4} />
@@ -181,7 +190,7 @@ export default function DashboardOverviewPage() {
               <p className="mt-2 text-2xl font-semibold text-chart-2">{successRate.toFixed(1)}%</p>
               <ChartContainer
                 className="mt-2 h-20 w-full"
-                config={{ success: { label: "Success Rate", color: "hsl(var(--chart-2))" } }}
+                config={{ success: { label: "Success Rate", color: CHART_COLORS.green } }}
               >
                 <RadialBarChart data={[{ name: "success", success: successRate }]} innerRadius="62%" outerRadius="100%" startAngle={90} endAngle={-270}>
                   <PolarAngleAxis type="number" domain={[0, 100]} dataKey="success" tick={false} />
@@ -195,7 +204,7 @@ export default function DashboardOverviewPage() {
               <p className="mt-2 text-2xl font-semibold text-destructive">{failRate.toFixed(1)}%</p>
               <ChartContainer
                 className="mt-2 h-20 w-full"
-                config={{ fail: { label: "Fail Rate", color: "hsl(var(--destructive))" } }}
+                config={{ fail: { label: "Fail Rate", color: CHART_COLORS.red } }}
               >
                 <RadialBarChart data={[{ name: "fail", fail: failRate }]} innerRadius="62%" outerRadius="100%" startAngle={90} endAngle={-270}>
                   <PolarAngleAxis type="number" domain={[0, 100]} dataKey="fail" tick={false} />
@@ -220,8 +229,8 @@ export default function DashboardOverviewPage() {
               <ChartContainer
                 className="mt-2 h-20 w-full"
                 config={{
-                  retry: { label: "Retry", color: "hsl(var(--chart-3))" },
-                  blocked: { label: "Policy Block", color: "hsl(var(--chart-4))" },
+                  retry: { label: "Retry", color: CHART_COLORS.cyan },
+                  blocked: { label: "Policy Block", color: CHART_COLORS.violet },
                 }}
               >
                 <BarChart data={[{ label: "rate", retry: retryRate, blocked: policyBlockRate }]}>
@@ -238,8 +247,8 @@ export default function DashboardOverviewPage() {
             <ChartContainer
               className="mt-3 h-56 w-full"
               config={{
-                avg: { label: "Avg Latency", color: "hsl(var(--chart-1))" },
-                p95: { label: "P95 Latency", color: "hsl(var(--chart-5))" },
+                avg: { label: "Avg Latency", color: CHART_COLORS.blue },
+                p95: { label: "P95 Latency", color: CHART_COLORS.amber },
               }}
             >
               <BarChart
@@ -261,7 +270,7 @@ export default function DashboardOverviewPage() {
           <div className="grid gap-3 lg:grid-cols-3">
             <article className="ds-card p-4">
               <p className="text-sm font-semibold">Top Called Tools</p>
-              <ChartContainer className="mt-2 h-52 w-full" config={{ value: { label: "Calls", color: "hsl(var(--chart-1))" } }}>
+              <ChartContainer className="mt-2 h-52 w-full" config={{ value: { label: "Calls", color: CHART_COLORS.blue } }}>
                 <BarChart data={topCalledChart} layout="vertical" margin={{ top: 0, right: 8, left: 8, bottom: 0 }}>
                   <CartesianGrid horizontal={false} />
                   <XAxis type="number" />
@@ -274,7 +283,7 @@ export default function DashboardOverviewPage() {
             </article>
             <article className="ds-card p-4">
               <p className="text-sm font-semibold">Top Failed Tools</p>
-              <ChartContainer className="mt-2 h-52 w-full" config={{ value: { label: "Fails", color: "hsl(var(--destructive))" } }}>
+              <ChartContainer className="mt-2 h-52 w-full" config={{ value: { label: "Fails", color: CHART_COLORS.red } }}>
                 <BarChart data={topFailedChart} layout="vertical" margin={{ top: 0, right: 8, left: 8, bottom: 0 }}>
                   <CartesianGrid horizontal={false} />
                   <XAxis type="number" />
@@ -287,7 +296,7 @@ export default function DashboardOverviewPage() {
             </article>
             <article className="ds-card p-4">
               <p className="text-sm font-semibold">Top Blocked Tools</p>
-              <ChartContainer className="mt-2 h-52 w-full" config={{ value: { label: "Blocked", color: "hsl(var(--chart-4))" } }}>
+              <ChartContainer className="mt-2 h-52 w-full" config={{ value: { label: "Blocked", color: CHART_COLORS.violet } }}>
                 <BarChart data={topBlockedChart} layout="vertical" margin={{ top: 0, right: 8, left: 8, bottom: 0 }}>
                   <CartesianGrid horizontal={false} />
                   <XAxis type="number" />
@@ -305,7 +314,7 @@ export default function DashboardOverviewPage() {
               <p className="text-xs font-medium text-chart-4">Recent anomalies</p>
               <ChartContainer
                 className="mt-2 h-44 w-full"
-                config={{ count: { label: "Count", color: "hsl(var(--chart-4))" } }}
+                config={{ count: { label: "Count", color: CHART_COLORS.violet } }}
               >
                 <BarChart data={anomalyBySeverity} margin={{ top: 8, right: 8, left: 8, bottom: 0 }}>
                   <CartesianGrid vertical={false} />

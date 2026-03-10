@@ -92,6 +92,18 @@ type ConnectorPayload = {
   items?: ConnectorSummary[];
 };
 
+const CHART_COLORS = {
+  blue: "#3b82f6",
+  green: "#22c55e",
+  red: "#ef4444",
+  amber: "#f59e0b",
+  violet: "#8b5cf6",
+  cyan: "#06b6d4",
+  orange: "#f97316",
+  pink: "#ec4899",
+  slate: "#64748b",
+};
+
 export default function DashboardMcpUsagePage() {
   const pathname = usePathname();
   const router = useRouter();
@@ -398,8 +410,8 @@ export default function DashboardMcpUsagePage() {
           <ChartContainer
             className="mt-3 h-56 w-full"
             config={{
-              success: { label: "Success", color: "hsl(var(--chart-2))" },
-              fail: { label: "Fail", color: "hsl(var(--destructive))" },
+              success: { label: "Success", color: CHART_COLORS.green },
+              fail: { label: "Fail", color: CHART_COLORS.red },
             }}
           >
             <PieChart>
@@ -417,7 +429,7 @@ export default function DashboardMcpUsagePage() {
           <ChartContainer
             className="mt-3 h-56 w-full"
             config={{
-              value: { label: "Rate (%)", color: "hsl(var(--chart-4))" },
+              value: { label: "Rate (%)", color: CHART_COLORS.violet },
             }}
           >
             <BarChart data={rateCompareData} margin={{ top: 8, right: 8, left: 8, bottom: 0 }}>
@@ -441,7 +453,7 @@ export default function DashboardMcpUsagePage() {
         <p className="text-sm font-medium">Top Failure Codes (24h)</p>
         {(toolCallsSummary?.top_failure_codes ?? []).length === 0 ? <p className="text-xs text-muted-foreground">No failure codes.</p> : null}
         {topFailureCodes24h.length > 0 ? (
-          <ChartContainer className="h-56 w-full" config={{ count: { label: "Count", color: "hsl(var(--destructive))" } }}>
+          <ChartContainer className="h-56 w-full" config={{ count: { label: "Count", color: CHART_COLORS.red } }}>
             <BarChart data={topFailureCodes24h} layout="vertical" margin={{ top: 0, right: 8, left: 8, bottom: 0 }}>
               <CartesianGrid horizontal={false} />
               <XAxis type="number" />
@@ -508,8 +520,8 @@ export default function DashboardMcpUsagePage() {
             <ChartContainer
               className="mt-2 h-48 w-full"
               config={{
-                calls: { label: "Calls", color: "hsl(var(--chart-1))" },
-                failRate: { label: "Fail Rate (%)", color: "hsl(var(--destructive))" },
+                calls: { label: "Calls", color: CHART_COLORS.blue },
+                failRate: { label: "Fail Rate (%)", color: CHART_COLORS.red },
               }}
             >
               <ComposedChart data={dailyTrendChart} margin={{ top: 8, right: 8, left: 8, bottom: 0 }}>
@@ -528,12 +540,12 @@ export default function DashboardMcpUsagePage() {
             <ChartContainer
               className="mt-2 h-48 w-full"
               config={{
-                policy_blocked: { label: "Policy blocked", color: "hsl(var(--chart-4))" },
-                quota_exceeded: { label: "Quota exceeded", color: "hsl(var(--chart-5))" },
-                access_denied: { label: "Access denied", color: "hsl(var(--destructive))" },
-                resolve_fail: { label: "Resolve fail", color: "hsl(var(--chart-3))" },
-                upstream_temporary: { label: "Upstream temporary", color: "hsl(var(--chart-2))" },
-                other: { label: "Other", color: "hsl(var(--chart-1))" },
+                policy_blocked: { label: "Policy blocked", color: CHART_COLORS.violet },
+                quota_exceeded: { label: "Quota exceeded", color: CHART_COLORS.amber },
+                access_denied: { label: "Access denied", color: CHART_COLORS.red },
+                resolve_fail: { label: "Resolve fail", color: CHART_COLORS.cyan },
+                upstream_temporary: { label: "Upstream temporary", color: CHART_COLORS.orange },
+                other: { label: "Other", color: CHART_COLORS.slate },
               }}
             >
               <PieChart>
@@ -559,7 +571,7 @@ export default function DashboardMcpUsagePage() {
           </article>
           <article className="rounded-md border border-border p-3">
             <p className="text-xs font-medium">Top Failure Codes</p>
-            <ChartContainer className="mt-2 h-48 w-full" config={{ count: { label: "Count", color: "hsl(var(--destructive))" } }}>
+            <ChartContainer className="mt-2 h-48 w-full" config={{ count: { label: "Count", color: CHART_COLORS.red } }}>
               <BarChart data={(failureBreakdown?.error_codes ?? []).slice(0, 6).map((item) => ({ code: item.error_code, count: item.count }))} layout="vertical" margin={{ top: 0, right: 8, left: 8, bottom: 0 }}>
                 <CartesianGrid horizontal={false} />
                 <XAxis type="number" />
@@ -574,8 +586,8 @@ export default function DashboardMcpUsagePage() {
             <ChartContainer
               className="mt-2 h-48 w-full"
               config={{
-                calls: { label: "Calls", color: "hsl(var(--chart-1))" },
-                failRate: { label: "Fail Rate (%)", color: "hsl(var(--destructive))" },
+                calls: { label: "Calls", color: CHART_COLORS.blue },
+                failRate: { label: "Fail Rate (%)", color: CHART_COLORS.pink },
               }}
             >
               <ComposedChart

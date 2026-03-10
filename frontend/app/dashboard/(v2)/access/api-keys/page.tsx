@@ -141,6 +141,38 @@ function parseJsonObject(value: string): Record<string, unknown> | null {
   return parsed as Record<string, unknown>;
 }
 
+function policyDenyToolsCsv(policyText: string): string {
+  try {
+    const parsed = JSON.parse(policyText) as Record<string, unknown>;
+    const denyTools = Array.isArray(parsed?.deny_tools)
+      ? parsed.deny_tools.map((item) => String(item ?? "").trim()).filter((item) => item.length > 0)
+      : [];
+    return denyTools.join(", ");
+  } catch {
+    return "";
+  }
+}
+
+function setPolicyDenyToolsInJson(policyText: string, denyToolsCsv: string): string {
+  let parsed: Record<string, unknown> = {};
+  try {
+    const candidate = JSON.parse(policyText) as unknown;
+    if (candidate && typeof candidate === "object" && !Array.isArray(candidate)) {
+      parsed = candidate as Record<string, unknown>;
+    }
+  } catch {
+    parsed = {};
+  }
+
+  const denyTools = parseCsvList(denyToolsCsv);
+  if (denyTools && denyTools.length > 0) {
+    parsed.deny_tools = denyTools;
+  } else {
+    delete parsed.deny_tools;
+  }
+  return stringifyJson(parsed);
+}
+
 function buildPolicyFromBasic(
   allowedServices: string[],
   denyToolsCsv: string,
@@ -194,7 +226,6 @@ export default function DashboardApiKeysPage() {
   const [nameDraft, setNameDraft] = useState<Record<number, string>>({});
   const [teamDraft, setTeamDraft] = useState<Record<number, string>>({});
   const [memoDraft, setMemoDraft] = useState<Record<number, string>>({});
-  const [allowedToolsDraft, setAllowedToolsDraft] = useState<Record<number, string>>({});
   const [tagsDraft, setTagsDraft] = useState<Record<number, string>>({});
   const [policyDraft, setPolicyDraft] = useState<Record<number, string>>({});
 
@@ -219,6 +250,10 @@ export default function DashboardApiKeysPage() {
   }, [teams]);
   const editingItem = useMemo(() => items.find((item) => item.id === editingKeyId) ?? null, [editingKeyId, items]);
   const drilldownItem = useMemo(() => items.find((item) => item.id === drilldownKeyId) ?? null, [drilldownKeyId, items]);
+  const editingPolicyDenyToolsCsv = useMemo(
+    () => (editingItem ? policyDenyToolsCsv(policyDraft[editingItem.id] ?? "{}") : ""),
+    [editingItem, policyDraft]
+  );
   const activeItems = useMemo(() => items.filter((item) => item.is_active), [items]);
   const revokedItems = useMemo(() => items.filter((item) => !item.is_active), [items]);
   const visibleItems = useMemo(() => (listTab === "active" ? activeItems : revokedItems), [activeItems, listTab, revokedItems]);
@@ -257,21 +292,18 @@ export default function DashboardApiKeysPage() {
     const nextName: Record<number, string> = {};
     const nextTeam: Record<number, string> = {};
     const nextMemo: Record<number, string> = {};
-    const nextAllowedTools: Record<number, string> = {};
     const nextTags: Record<number, string> = {};
     const nextPolicy: Record<number, string> = {};
     for (const item of nextItems) {
       nextName[item.id] = item.name ?? "";
       nextTeam[item.id] = item.team_id === null ? "" : String(item.team_id);
       nextMemo[item.id] = item.memo ?? "";
-      nextAllowedTools[item.id] = (item.allowed_tools ?? []).join(", ");
       nextTags[item.id] = (item.tags ?? []).join(", ");
       nextPolicy[item.id] = stringifyJson(item.policy_json ?? {});
     }
     setNameDraft(nextName);
     setTeamDraft(nextTeam);
     setMemoDraft(nextMemo);
-    setAllowedToolsDraft(nextAllowedTools);
     setTagsDraft(nextTags);
     setPolicyDraft(nextPolicy);
 
@@ -379,7 +411,7 @@ export default function DashboardApiKeysPage() {
           name: (nameDraft[id] ?? "").trim(),
           team_id: (teamDraft[id] ?? "").trim() ? Number((teamDraft[id] ?? "").trim()) : null,
           memo: (memoDraft[id] ?? "").trim() || null,
-          allowed_tools: parseCsvList(allowedToolsDraft[id] ?? ""),
+          allowed_tools: null,
           tags: parseCsvList(tagsDraft[id] ?? ""),
           policy_json: policyJson,
         },
@@ -404,7 +436,7 @@ export default function DashboardApiKeysPage() {
       await fetchApiKeys();
       setUpdatingId(null);
     },
-    [allowedToolsDraft, fetchApiKeys, memoDraft, nameDraft, pathname, policyDraft, router, tagsDraft, teamDraft]
+    [fetchApiKeys, memoDraft, nameDraft, pathname, policyDraft, router, tagsDraft, teamDraft]
   );
 
   const handleRotateApiKey = useCallback(
@@ -932,7 +964,7 @@ export default function DashboardApiKeysPage() {
                     <DropdownMenu>
                       <DropdownMenuTrigger asChild>
                         <Button type="button" variant="outline" className="ds-input h-11 w-full justify-between rounded-md px-3 text-sm md:h-9">
-                          <span className="truncate text-left">{toolsDropdownLabel(allowedToolsDraft[editingItem.id] ?? "")}</span>
+                          <span className="truncate text-left">Deny tools: {toolsDropdownLabel(editingPolicyDenyToolsCsv, "None")}</span>
                           <ChevronsUpDown className="h-4 w-4 text-muted-foreground" />
                         </Button>
                       </DropdownMenuTrigger>
@@ -943,7 +975,10 @@ export default function DashboardApiKeysPage() {
                             <DropdownMenuItem
                               onSelect={(event) => {
                                 event.preventDefault();
-                                setAllowedToolsDraft((prev) => ({ ...prev, [editingItem.id]: allToolNamesCsv }));
+                                setPolicyDraft((prev) => ({
+                                  ...prev,
+                                  [editingItem.id]: setPolicyDenyToolsInJson(prev[editingItem.id] ?? "{}", allToolNamesCsv),
+                                }));
                               }}
                               className="text-xs"
                             >
@@ -952,7 +987,10 @@ export default function DashboardApiKeysPage() {
                             <DropdownMenuItem
                               onSelect={(event) => {
                                 event.preventDefault();
-                                setAllowedToolsDraft((prev) => ({ ...prev, [editingItem.id]: "" }));
+                                setPolicyDraft((prev) => ({
+                                  ...prev,
+                                  [editingItem.id]: setPolicyDenyToolsInJson(prev[editingItem.id] ?? "{}", ""),
+                                }));
                               }}
                               className="text-xs"
                             >
@@ -964,11 +1002,14 @@ export default function DashboardApiKeysPage() {
                         {toolOptions.map((tool) => (
                           <DropdownMenuCheckboxItem
                             key={`edit-${editingItem.id}-tool-${tool.tool_name}`}
-                            checked={csvHasValue(allowedToolsDraft[editingItem.id] ?? "", tool.tool_name)}
+                            checked={csvHasValue(editingPolicyDenyToolsCsv, tool.tool_name)}
                             onCheckedChange={(checked) =>
-                              setAllowedToolsDraft((prev) => ({
+                              setPolicyDraft((prev) => ({
                                 ...prev,
-                                [editingItem.id]: updateCsvSelection(prev[editingItem.id] ?? "", tool.tool_name, checked === true),
+                                [editingItem.id]: setPolicyDenyToolsInJson(
+                                  prev[editingItem.id] ?? "{}",
+                                  updateCsvSelection(policyDenyToolsCsv(prev[editingItem.id] ?? "{}"), tool.tool_name, checked === true)
+                                ),
                               }))
                             }
                             onSelect={(event) => event.preventDefault()}

@@ -97,6 +97,13 @@ type IncidentBannerRevisionItem = {
   updated_at: string;
 };
 
+const CHART_COLORS = {
+  blue: "#3b82f6",
+  green: "#22c55e",
+  red: "#ef4444",
+  amber: "#f59e0b",
+};
+
 function asDate(value?: string | null): string {
   if (!value) {
     return "-";
@@ -649,7 +656,7 @@ export default function DashboardAdminOpsPage() {
               <ChartContainer
                 className="mt-2 h-28 w-full"
                 config={{
-                  healthy: { label: "Healthy", color: "hsl(var(--chart-2))" },
+                  healthy: { label: "Healthy", color: CHART_COLORS.green },
                 }}
               >
                 <BarChart data={systemHealthServiceChart} layout="vertical" margin={{ left: 0, right: 0, top: 0, bottom: 0 }}>
@@ -657,7 +664,7 @@ export default function DashboardAdminOpsPage() {
                   <XAxis type="number" domain={[0, 1]} hide />
                   <YAxis type="category" dataKey="service" width={28} tickLine={false} axisLine={false} />
                   <ChartTooltip cursor={false} content={<ChartTooltipContent formatter={(value) => (Number(value) > 0 ? "ok" : "degraded")} />} />
-                  <Bar dataKey="healthy" fill="var(--color-healthy)" radius={4} maxBarSize={16} background={{ fill: "hsl(var(--muted))" }} />
+                  <Bar dataKey="healthy" fill="var(--color-healthy)" radius={4} maxBarSize={16} background={{ fill: "rgba(100,116,139,0.35)" }} />
                 </BarChart>
               </ChartContainer>
               <p className="mt-1 text-xs text-muted-foreground">
@@ -673,8 +680,8 @@ export default function DashboardAdminOpsPage() {
                 <ChartContainer
                   className="mt-2 h-28 w-full"
                   config={{
-                    ok: { label: "OK", color: "hsl(var(--chart-2))" },
-                    stale: { label: "Stale", color: "hsl(var(--destructive))" },
+                    ok: { label: "OK", color: CHART_COLORS.green },
+                    stale: { label: "Stale", color: CHART_COLORS.red },
                   }}
                 >
                   <BarChart data={connectorDiagnosticsChart} margin={{ left: 0, right: 0, top: 0, bottom: 0 }}>
@@ -706,8 +713,8 @@ export default function DashboardAdminOpsPage() {
                 <ChartContainer
                   className="mt-2 h-28 w-full"
                   config={{
-                    calls: { label: "Calls", color: "hsl(var(--chart-1))" },
-                    failRate: { label: "Fail Rate (%)", color: "hsl(var(--destructive))" },
+                    calls: { label: "Calls", color: CHART_COLORS.blue },
+                    failRate: { label: "Fail Rate (%)", color: CHART_COLORS.red },
                   }}
                 >
                   <ComposedChart data={externalHealthChart} margin={{ left: 0, right: 0, top: 0, bottom: 0 }}>
@@ -743,7 +750,7 @@ export default function DashboardAdminOpsPage() {
                 <ChartContainer
                   className="mt-2 h-28 w-full"
                   config={{
-                    count: { label: "Hits", color: "hsl(var(--destructive))" },
+                    count: { label: "Hits", color: CHART_COLORS.amber },
                   }}
                 >
                   <BarChart data={rateLimitTrendChart} margin={{ left: 0, right: 0, top: 0, bottom: 0 }}>
