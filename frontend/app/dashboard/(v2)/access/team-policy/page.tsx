@@ -226,6 +226,10 @@ export default function DashboardTeamPolicyPage() {
   const [memberSavingTeamId, setMemberSavingTeamId] = useState<number | null>(null);
   const [memberDeletingId, setMemberDeletingId] = useState<number | null>(null);
   const [rollbackRevisionId, setRollbackRevisionId] = useState<number | null>(null);
+  const [deleteTargetTeamId, setDeleteTargetTeamId] = useState<number | null>(null);
+  const [deleteConfirmName, setDeleteConfirmName] = useState("");
+  const [deleteTeamError, setDeleteTeamError] = useState<string | null>(null);
+  const [deletingTeamId, setDeletingTeamId] = useState<number | null>(null);
 
   const [membersLoadingByTeam, setMembersLoadingByTeam] = useState<Record<number, boolean>>({});
   const [revisionsLoadingByTeam, setRevisionsLoadingByTeam] = useState<Record<number, boolean>>({});
@@ -713,6 +717,39 @@ export default function DashboardTeamPolicyPage() {
   ]);
 
   const visibleTeams = useMemo(() => teams, [teams]);
+  const deleteTargetTeam = useMemo(
+    () => (deleteTargetTeamId ? visibleTeams.find((team) => team.id === deleteTargetTeamId) ?? null : null),
+    [deleteTargetTeamId, visibleTeams]
+  );
+
+  const deleteTeam = useCallback(
+    async (teamId: number) => {
+      setDeleteTeamError(null);
+      setDeletingTeamId(teamId);
+      const result = await dashboardApiRequest(`/api/teams/${teamId}`, { method: "DELETE" });
+      if (result.status === 401) {
+        handle401();
+        setDeletingTeamId(null);
+        return;
+      }
+      if (result.status === 403 || result.status === 404) {
+        setDeleteTeamError("Admin role required for team deletion.");
+        setDeletingTeamId(null);
+        return;
+      }
+      if (!result.ok) {
+        setDeleteTeamError(result.error ?? "Failed to delete team.");
+        setDeletingTeamId(null);
+        return;
+      }
+      setDeleteConfirmName("");
+      setDeleteTeamError(null);
+      setDeleteTargetTeamId(null);
+      await fetchTeams();
+      setDeletingTeamId(null);
+    },
+    [fetchTeams, handle401]
+  );
 
   if (loading) {
     return (
@@ -933,6 +970,7 @@ export default function DashboardTeamPolicyPage() {
                 <TabsTrigger value="members" className="px-3 py-1 text-xs">Members</TabsTrigger>
                 <TabsTrigger value="revisions" className="px-3 py-1 text-xs">Revisions</TabsTrigger>
                 <TabsTrigger value="policy" className="px-3 py-1 text-xs">Policy</TabsTrigger>
+                <TabsTrigger value="settings" className="px-3 py-1 text-xs">Settings</TabsTrigger>
               </TabsList>
 
               <TabsContent value="members" className="space-y-3">
@@ -1031,6 +1069,7 @@ export default function DashboardTeamPolicyPage() {
                     <label className="inline-flex items-center gap-2 text-xs text-muted-foreground">
                       <Switch
                         checked={Boolean(teamActiveDraft[team.id])}
+                        className="scale-90"
                         onCheckedChange={(checked) =>
                           setTeamActiveDraft((prev) => ({
                             ...prev,
@@ -1214,12 +1253,91 @@ export default function DashboardTeamPolicyPage() {
                   </div>
                 </div>
               </TabsContent>
+
+              <TabsContent value="settings" className="space-y-3">
+                <div className="rounded-md border border-destructive/40 bg-destructive/5 p-3">
+                  <p className="text-sm font-medium text-destructive">Danger Zone</p>
+                  <p className="mt-1 text-xs text-muted-foreground">
+                    Deleting a team removes memberships and policy history, and unscopes API keys from this team.
+                  </p>
+                  <Button
+                    type="button"
+                    variant="outline"
+                    onClick={() => {
+                      setDeleteTargetTeamId(team.id);
+                      setDeleteConfirmName("");
+                      setDeleteTeamError(null);
+                    }}
+                    disabled={!canManageTeams}
+                    className="mt-3 h-10 rounded-md px-3 text-xs disabled:cursor-not-allowed disabled:opacity-60"
+                    title={canManageTeams ? "" : "Admin role required"}
+                  >
+                    Delete Team
+                  </Button>
+                </div>
+              </TabsContent>
             </Tabs>
           </article>
         );
       })}
 
       {!loading && visibleTeams.length === 0 ? <p className="text-sm text-muted-foreground">No teams found.</p> : null}
+
+      <Dialog
+        open={deleteTargetTeam !== null}
+        onOpenChange={(open) => {
+          if (!open && deletingTeamId === null) {
+            setDeleteTargetTeamId(null);
+            setDeleteConfirmName("");
+            setDeleteTeamError(null);
+          }
+        }}
+      >
+        <DialogContent className="max-w-lg">
+          <DialogHeader>
+            <DialogTitle>Delete Team</DialogTitle>
+            <DialogDescription>
+              {deleteTargetTeam ? `Type "${deleteTargetTeam.name}" to confirm permanent deletion.` : "Confirm team deletion."}
+            </DialogDescription>
+          </DialogHeader>
+          <div className="space-y-2 py-1">
+            {deleteTeamError ? <AlertBanner message={deleteTeamError} tone="danger" /> : null}
+            <Input
+              value={deleteConfirmName}
+              onChange={(event) => setDeleteConfirmName(event.target.value)}
+              placeholder={deleteTargetTeam ? deleteTargetTeam.name : "Team name"}
+              className="ds-input h-11 rounded-md px-3 text-sm md:h-9"
+            />
+          </div>
+          <DialogFooter>
+            <Button
+              type="button"
+              variant="outline"
+              onClick={() => {
+                setDeleteTargetTeamId(null);
+                setDeleteConfirmName("");
+                setDeleteTeamError(null);
+              }}
+              disabled={deletingTeamId !== null}
+              className="h-10 rounded-md px-3 text-sm"
+            >
+              Cancel
+            </Button>
+            <Button
+              type="button"
+              onClick={() => {
+                if (deleteTargetTeam) {
+                  void deleteTeam(deleteTargetTeam.id);
+                }
+              }}
+              disabled={!deleteTargetTeam || deleteConfirmName.trim() !== deleteTargetTeam.name || deletingTeamId !== null}
+              className="h-10 rounded-md px-3 text-sm disabled:cursor-not-allowed disabled:opacity-60"
+            >
+              {deletingTeamId !== null ? "Deleting..." : "Delete Team"}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </section>
   );
 }

@@ -11,6 +11,7 @@ from app.routes.teams import (
     TeamUpdateRequest,
     _enforce_team_policy_baseline,
     add_team_member,
+    delete_team,
     delete_team_member,
     update_team,
 )
@@ -290,3 +291,83 @@ def test_add_team_member_email_not_found(monkeypatch):
         )
     assert exc_info.value.status_code == 404
     assert exc_info.value.detail == "member_user_not_found"
+
+
+def test_delete_team_success(monkeypatch):
+    class _Query:
+        def __init__(self, table_name: str):
+            self.table_name = table_name
+            self._mode = "select"
+
+        def select(self, *_args, **_kwargs):
+            self._mode = "select"
+            return self
+
+        def update(self, *_args, **_kwargs):
+            self._mode = "update"
+            return self
+
+        def delete(self):
+            self._mode = "delete"
+            return self
+
+        def eq(self, *_args, **_kwargs):
+            return self
+
+        def limit(self, *_args, **_kwargs):
+            return self
+
+        def execute(self):
+            if self.table_name == "teams" and self._mode == "select":
+                return SimpleNamespace(data=[{"id": 1, "organization_id": 1}])
+            if self.table_name == "team_memberships":
+                return SimpleNamespace(data=[{"id": 10}])
+            return SimpleNamespace(data=[])
+
+    class _Client:
+        def table(self, name: str):
+            return _Query(name)
+
+    async def _fake_user(_request: Request) -> str:
+        return "user-1"
+
+    monkeypatch.setattr("app.routes.teams.get_authenticated_user_id", _fake_user)
+    monkeypatch.setattr("app.routes.teams.create_client", lambda *_args, **_kwargs: _Client())
+    monkeypatch.setattr("app.routes.teams.get_settings", lambda: SimpleNamespace(supabase_url="x", supabase_service_role_key="y"))
+
+    out = asyncio.run(delete_team(_request("/api/teams/1", "DELETE"), "1"))
+    assert out["ok"] is True
+
+
+def test_delete_team_not_found(monkeypatch):
+    class _Query:
+        def __init__(self, table_name: str):
+            self.table_name = table_name
+
+        def select(self, *_args, **_kwargs):
+            return self
+
+        def eq(self, *_args, **_kwargs):
+            return self
+
+        def limit(self, *_args, **_kwargs):
+            return self
+
+        def execute(self):
+            return SimpleNamespace(data=[])
+
+    class _Client:
+        def table(self, name: str):
+            return _Query(name)
+
+    async def _fake_user(_request: Request) -> str:
+        return "user-1"
+
+    monkeypatch.setattr("app.routes.teams.get_authenticated_user_id", _fake_user)
+    monkeypatch.setattr("app.routes.teams.create_client", lambda *_args, **_kwargs: _Client())
+    monkeypatch.setattr("app.routes.teams.get_settings", lambda: SimpleNamespace(supabase_url="x", supabase_service_role_key="y"))
+
+    with pytest.raises(HTTPException) as exc_info:
+        asyncio.run(delete_team(_request("/api/teams/999", "DELETE"), "999"))
+    assert exc_info.value.status_code == 404
+    assert exc_info.value.detail == "team_not_found"

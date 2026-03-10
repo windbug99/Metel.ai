@@ -523,3 +523,19 @@ async def rollback_policy_revision(request: Request, team_id: str, revision_id: 
         supabase.table("team_policies").insert({"team_id": team_id, "policy_json": policy_json, "created_at": now, "updated_at": now}).execute()
     _insert_policy_revision(supabase=supabase, team_id=team_id, user_id=user_id, source="team_policy_rollback", policy_json=policy_json)
     return {"ok": True, "policy_json": policy_json}
+
+
+@router.delete("/{team_id}")
+async def delete_team(request: Request, team_id: str):
+    user_id = await get_authenticated_user_id(request)
+    settings = get_settings()
+    supabase = create_client(settings.supabase_url, settings.supabase_service_role_key)
+    authz_ctx = await get_authz_context(request, user_id=user_id, supabase=supabase)
+    require_min_role(authz_ctx, Role.ADMIN, method=request.method)
+
+    _require_team_access(supabase=supabase, authz_ctx=authz_ctx, team_id=team_id, write=True)
+
+    # Keep existing API keys and detach their team scope before deleting the team.
+    supabase.table("api_keys").update({"team_id": None}).eq("team_id", team_id).execute()
+    supabase.table("teams").delete().eq("id", team_id).execute()
+    return {"ok": True}
