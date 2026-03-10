@@ -7,10 +7,11 @@ import { Loader2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Select } from "@/components/ui/select";
+import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { buildNextPath, dashboardApiGet, dashboardApiRequest } from "../../../../lib/dashboard-v2-client";
 import PageTitleWithTooltip from "@/components/dashboard-v2/page-title-with-tooltip";
 
-type RequestType = "permission_request" | "change_request";
+type RequestType = "permission_request";
 type RequestStatus = "pending" | "approved" | "rejected" | "cancelled";
 
 type MyRequestItem = {
@@ -65,7 +66,7 @@ function formatDate(value?: string | null): string {
 }
 
 function requestTypeLabel(value: RequestType): string {
-  return value === "permission_request" ? "Permission Request" : "Change Request";
+  return "Permission Request";
 }
 
 function statusLabel(value: RequestStatus): string {
@@ -91,17 +92,16 @@ export default function DashboardMyRequestsPage() {
   const [error, setError] = useState<string | null>(null);
 
   const [statusFilter, setStatusFilter] = useState<"all" | RequestStatus>("all");
-  const [typeFilter, setTypeFilter] = useState<"all" | RequestType>("all");
-
   const [selectedRequestId, setSelectedRequestId] = useState<string | null>(null);
   const [selectedRequest, setSelectedRequest] = useState<MyRequestItem | null>(null);
   const [detailLoading, setDetailLoading] = useState(false);
   const [detailError, setDetailError] = useState<string | null>(null);
 
   const [createOrgId, setCreateOrgId] = useState("");
-  const [createType, setCreateType] = useState<RequestType>("permission_request");
   const [createRole, setCreateRole] = useState<"owner" | "admin" | "member">("admin");
   const [createReason, setCreateReason] = useState("");
+  const [createDialogOpen, setCreateDialogOpen] = useState(false);
+  const [createError, setCreateError] = useState<string | null>(null);
   const [creating, setCreating] = useState(false);
 
   const [cancellingId, setCancellingId] = useState<string | null>(null);
@@ -131,9 +131,6 @@ export default function DashboardMyRequestsPage() {
     const query = new URLSearchParams();
     if (statusFilter !== "all") {
       query.set("status", statusFilter);
-    }
-    if (typeFilter !== "all") {
-      query.set("request_type", typeFilter);
     }
     const suffix = query.toString();
 
@@ -167,7 +164,7 @@ export default function DashboardMyRequestsPage() {
       return selected ? prev : String(nextItems[0].id);
     });
     setLoading(false);
-  }, [handle401, statusFilter, typeFilter]);
+  }, [handle401, statusFilter]);
 
   const loadRequestDetail = useCallback(
     async (requestId: string) => {
@@ -193,17 +190,17 @@ export default function DashboardMyRequestsPage() {
 
   const handleCreate = useCallback(async () => {
     if (!createOrgId) {
-      setError("Organization is required.");
+      setCreateError("Organization is required.");
       return;
     }
     setCreating(true);
-    setError(null);
+    setCreateError(null);
 
     const response = await dashboardApiRequest<CreateMyRequestPayload>("/api/users/me/requests", {
       method: "POST",
       body: {
         organization_id: createOrgId,
-        request_type: createType,
+        request_type: "permission_request",
         requested_role: createRole,
         reason: createReason.trim() || null,
       },
@@ -215,16 +212,18 @@ export default function DashboardMyRequestsPage() {
       return;
     }
     if (!response.ok || !response.data?.item) {
-      setError(response.error ?? "Failed to create request.");
+      setCreateError(response.error ?? "Failed to create request.");
       setCreating(false);
       return;
     }
 
     setCreateReason("");
+    setCreateError(null);
+    setCreateDialogOpen(false);
     setSelectedRequestId(String(response.data.item.id));
     await loadRequests();
     setCreating(false);
-  }, [createOrgId, createRole, createType, createReason, handle401, loadRequests]);
+  }, [createOrgId, createRole, createReason, handle401, loadRequests]);
 
   const handleCancel = useCallback(
     async (requestId: string) => {
@@ -311,12 +310,38 @@ export default function DashboardMyRequestsPage() {
         <p className="text-sm text-muted-foreground">Submit role/access requests and track review status.</p>
       </div>
 
-      {error ? <p className="text-sm text-destructive">{error}</p> : null}
+      <div className="flex items-center justify-end">
+        <Button
+          type="button"
+          onClick={() => {
+            setCreateError(null);
+            setCreateDialogOpen(true);
+          }}
+          disabled={organizations.length === 0}
+          className="ds-btn h-10 rounded-md px-3 text-sm disabled:cursor-not-allowed disabled:opacity-60"
+        >
+          Create Request
+        </Button>
+      </div>
 
-      <div className="grid gap-4 lg:grid-cols-[1.25fr,1fr]">
-        <div className="space-y-4">
-          <div className="ds-card space-y-3 p-4">
-            <p className="text-sm font-medium">Create Request</p>
+      <Dialog
+        open={createDialogOpen}
+        onOpenChange={(open) => {
+          if (!creating) {
+            setCreateDialogOpen(open);
+            if (!open) {
+              setCreateError(null);
+            }
+          }
+        }}
+      >
+        <DialogContent className="max-w-2xl">
+          <DialogHeader>
+            <DialogTitle>Create Request</DialogTitle>
+            <DialogDescription>Submit a permission request for your current organization membership.</DialogDescription>
+          </DialogHeader>
+          <div className="space-y-3 py-2">
+            {createError ? <p className="text-sm text-destructive">{createError}</p> : null}
             <div className="grid gap-2 md:grid-cols-2">
               <label className="space-y-1">
                 <span className="text-xs text-muted-foreground">Organization</span>
@@ -334,20 +359,6 @@ export default function DashboardMyRequestsPage() {
               </label>
 
               <label className="space-y-1">
-                <span className="text-xs text-muted-foreground">Request Type</span>
-                <Select
-                  value={createType}
-                  onChange={(event) => setCreateType(event.target.value as RequestType)}
-                  className="ds-input h-10 rounded-md px-3 text-sm"
-                >
-                  <option value="permission_request">Permission Request</option>
-                  <option value="change_request">Change Request</option>
-                </Select>
-              </label>
-            </div>
-
-            <div className="grid gap-2 md:grid-cols-2">
-              <label className="space-y-1">
                 <span className="text-xs text-muted-foreground">Requested Role</span>
                 <Select
                   value={createRole}
@@ -359,30 +370,47 @@ export default function DashboardMyRequestsPage() {
                   <option value="owner">owner</option>
                 </Select>
               </label>
-
-              <label className="space-y-1">
-                <span className="text-xs text-muted-foreground">Reason</span>
-                <Input
-                  value={createReason}
-                  onChange={(event) => setCreateReason(event.target.value)}
-                  className="ds-input h-10 rounded-md px-3 text-sm"
-                  placeholder="Describe why this request is needed"
-                />
-              </label>
             </div>
 
-            <div className="flex justify-end">
-              <Button
-                type="button"
-                onClick={() => void handleCreate()}
-                disabled={creating || !createOrgId}
-                className="ds-btn h-10 rounded-md px-3 text-sm disabled:cursor-not-allowed disabled:opacity-60"
-              >
-                {creating ? "Submitting..." : "Submit Request"}
-              </Button>
-            </div>
+            <label className="space-y-1">
+              <span className="text-xs text-muted-foreground">Reason</span>
+              <Input
+                value={createReason}
+                onChange={(event) => setCreateReason(event.target.value)}
+                className="ds-input h-10 rounded-md px-3 text-sm"
+                placeholder="Describe why this request is needed"
+              />
+            </label>
           </div>
+          <DialogFooter>
+            <Button
+              type="button"
+              variant="outline"
+              onClick={() => {
+                setCreateDialogOpen(false);
+                setCreateError(null);
+              }}
+              disabled={creating}
+              className="h-10 rounded-md px-3 text-sm"
+            >
+              Cancel
+            </Button>
+            <Button
+              type="button"
+              onClick={() => void handleCreate()}
+              disabled={creating || !createOrgId}
+              className="ds-btn h-10 rounded-md px-3 text-sm disabled:cursor-not-allowed disabled:opacity-60"
+            >
+              {creating ? "Submitting..." : "Submit Request"}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
 
+      {error ? <p className="text-sm text-destructive">{error}</p> : null}
+
+      <div className="grid gap-4 lg:grid-cols-[1.25fr,1fr]">
+        <div className="space-y-4">
           <div className="ds-card space-y-3 p-4">
             <div className="flex flex-wrap gap-2">
               <Select
@@ -395,15 +423,6 @@ export default function DashboardMyRequestsPage() {
                 <option value="approved">Approved</option>
                 <option value="rejected">Rejected</option>
                 <option value="cancelled">Cancelled</option>
-              </Select>
-              <Select
-                value={typeFilter}
-                onChange={(event) => setTypeFilter(event.target.value as "all" | RequestType)}
-                className="ds-input h-10 w-[200px] rounded-md px-3 text-sm"
-              >
-                <option value="all">All Types</option>
-                <option value="permission_request">Permission Request</option>
-                <option value="change_request">Change Request</option>
               </Select>
             </div>
 

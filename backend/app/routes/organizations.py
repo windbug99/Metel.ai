@@ -687,7 +687,7 @@ async def create_organization_role_request(request: Request, organization_id: st
         "target_user_id": target_user_id,
         "requested_role": requested_role,
         "reason": (body.reason or "").strip() or None,
-        "request_type": "change_request",
+        "request_type": "permission_request",
         "status": "pending",
         "requested_by": requested_by,
         "created_at": now,

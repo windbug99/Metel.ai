@@ -14,7 +14,7 @@ from app.core.config import get_settings
 router = APIRouter(prefix="/api/users/me", tags=["users"])
 
 _ALLOWED_MEMBER_ROLES = {"owner", "admin", "member"}
-_ALLOWED_REQUEST_TYPES = {"permission_request", "change_request"}
+_ALLOWED_REQUEST_TYPES = {"permission_request"}
 
 
 class UserRequestCreateRequest(BaseModel):
@@ -50,8 +50,8 @@ def _org_member_role(*, supabase, user_id: str, organization_id: str | int) -> s
 
 def _normalize_request_type(value: str) -> str:
     normalized = str(value or "").strip().lower()
-    if normalized == "role_change":
-        normalized = "change_request"
+    if normalized in {"role_change", "change_request"}:
+        normalized = "permission_request"
     if normalized not in _ALLOWED_REQUEST_TYPES:
         raise HTTPException(status_code=400, detail="invalid_request_type")
     return normalized
@@ -69,9 +69,11 @@ def _normalize_requested_role(*, request_type: str, requested_role: str | None) 
 
 def _serialize_row(row: dict[str, Any], org_name_map: dict[int, str]) -> dict[str, Any]:
     organization_id = int(row.get("organization_id") or 0)
-    request_type = str(row.get("request_type") or "change_request").strip().lower()
+    request_type = str(row.get("request_type") or "permission_request").strip().lower()
+    if request_type in {"change_request", "role_change"}:
+        request_type = "permission_request"
     if request_type not in _ALLOWED_REQUEST_TYPES:
-        request_type = "change_request"
+        request_type = "permission_request"
     return {
         "id": row.get("id"),
         "organization_id": organization_id,
