@@ -156,6 +156,7 @@ export default function DashboardApiKeysPage() {
 
   const [creating, setCreating] = useState(false);
   const [createdApiKey, setCreatedApiKey] = useState<string | null>(null);
+  const [copyToast, setCopyToast] = useState<string | null>(null);
 
   const [nameDraft, setNameDraft] = useState<Record<number, string>>({});
   const [teamDraft, setTeamDraft] = useState<Record<number, string>>({});
@@ -429,14 +430,28 @@ export default function DashboardApiKeysPage() {
 
   const copyApiKey = useCallback(async () => {
     if (!createdApiKey) {
+      setCopyToast("No API key to copy.");
       return;
     }
     try {
       await navigator.clipboard.writeText(createdApiKey);
+      setCopyToast("API key copied to clipboard.");
     } catch {
-      // ignore clipboard failures on unsupported browsers
+      setCopyToast("Failed to copy API key.");
     }
   }, [createdApiKey]);
+
+  useEffect(() => {
+    if (!copyToast) {
+      return;
+    }
+    const timeoutId = window.setTimeout(() => {
+      setCopyToast(null);
+    }, 2400);
+    return () => {
+      window.clearTimeout(timeoutId);
+    };
+  }, [copyToast]);
 
   useEffect(() => {
     void fetchApiKeys();
@@ -469,6 +484,12 @@ export default function DashboardApiKeysPage() {
 
   return (
     <section className="space-y-4">
+      {copyToast ? (
+        <div className="fixed right-6 top-6 z-50 rounded-md border border-border bg-card px-3 py-2 text-sm text-foreground shadow-xl">
+          {copyToast}
+        </div>
+      ) : null}
+
       <PageTitleWithTooltip title="API Keys" tooltip="Create, rotate, revoke, and inspect scoped API keys." />
       <p className="text-sm text-muted-foreground">Create, update, rotate, revoke, and drill down API key activity.</p>
 
@@ -602,99 +623,106 @@ export default function DashboardApiKeysPage() {
                   <StatusBadge kind="key" value={item.is_active ? "active" : "revoked"} />
                 </div>
 
-                <div className="grid gap-2 lg:grid-cols-2">
-                  <Input
-                    value={nameDraft[item.id] ?? ""}
-                    onChange={(event) => setNameDraft((prev) => ({ ...prev, [item.id]: event.target.value }))}
-                    className="ds-input h-11 rounded-md px-3 text-sm md:h-9"
-                  />
-                  <Select
-                    value={teamDraft[item.id] ?? ""}
-                    onChange={(event) => setTeamDraft((prev) => ({ ...prev, [item.id]: event.target.value }))}
-                    className="ds-input h-11 rounded-md px-3 text-sm md:h-9"
-                  >
-                    <option value="">No team scope</option>
-                    {teams.map((team) => (
-                      <option key={`key-${item.id}-team-${team.id}`} value={String(team.id)}>
-                        Team #{team.id} - {team.name}
-                      </option>
-                    ))}
-                  </Select>
-                  <Input
-                    value={memoDraft[item.id] ?? ""}
-                    onChange={(event) => setMemoDraft((prev) => ({ ...prev, [item.id]: event.target.value }))}
-                    placeholder="Memo"
-                    className="ds-input h-11 rounded-md px-3 text-sm md:h-9"
-                  />
-                  <Input
-                    value={tagsDraft[item.id] ?? ""}
-                    onChange={(event) => setTagsDraft((prev) => ({ ...prev, [item.id]: event.target.value }))}
-                    placeholder="Tags CSV"
-                    className="ds-input h-11 rounded-md px-3 text-sm md:h-9"
-                  />
-                  <DropdownMenu>
-                    <DropdownMenuTrigger asChild>
-                      <Button
-                        type="button"
-                        variant="outline"
-                        className="ds-input h-11 w-full justify-between rounded-md px-3 text-sm md:h-9 lg:col-span-2"
-                      >
-                        <span className="truncate text-left">{toolsDropdownLabel(allowedToolsDraft[item.id] ?? "")}</span>
-                        <ChevronsUpDown className="h-4 w-4 text-muted-foreground" />
-                      </Button>
-                    </DropdownMenuTrigger>
-                    <DropdownMenuContent align="start" className="max-h-72 w-[var(--radix-dropdown-menu-trigger-width)] overflow-y-auto">
-                      {toolOptions.length === 0 ? <p className="px-2 py-1 text-xs text-muted-foreground">No tool options</p> : null}
-                      {toolOptions.length > 0 ? (
-                        <>
-                          <DropdownMenuItem
-                            onSelect={(event) => {
-                              event.preventDefault();
-                              setAllowedToolsDraft((prev) => ({
-                                ...prev,
-                                [item.id]: allToolNamesCsv,
-                              }));
-                            }}
-                            className="text-xs"
-                          >
-                            Select All
-                          </DropdownMenuItem>
-                          <DropdownMenuItem
-                            onSelect={(event) => {
-                              event.preventDefault();
-                              setAllowedToolsDraft((prev) => ({
-                                ...prev,
-                                [item.id]: "",
-                              }));
-                            }}
-                            className="text-xs"
-                          >
-                            Clear All
-                          </DropdownMenuItem>
-                          <DropdownMenuSeparator />
-                        </>
-                      ) : null}
-                      {toolOptions.map((tool) => (
-                        <DropdownMenuCheckboxItem
-                          key={`edit-${item.id}-tool-${tool.tool_name}`}
-                          checked={csvHasValue(allowedToolsDraft[item.id] ?? "", tool.tool_name)}
-                          onCheckedChange={(checked) =>
-                            setAllowedToolsDraft((prev) => ({
-                              ...prev,
-                              [item.id]: updateCsvSelection(prev[item.id] ?? "", tool.tool_name, checked === true),
-                            }))
-                          }
-                          onSelect={(event) => event.preventDefault()}
-                        >
-                          <span className="font-mono text-xs">{tool.tool_name}</span>
-                        </DropdownMenuCheckboxItem>
+                <div className="space-y-2">
+                  <div className="grid gap-2 lg:grid-cols-3">
+                    <Input
+                      value={nameDraft[item.id] ?? ""}
+                      onChange={(event) => setNameDraft((prev) => ({ ...prev, [item.id]: event.target.value }))}
+                      className="ds-input h-11 rounded-md px-3 text-sm md:h-9"
+                    />
+                    <Input
+                      value={memoDraft[item.id] ?? ""}
+                      onChange={(event) => setMemoDraft((prev) => ({ ...prev, [item.id]: event.target.value }))}
+                      placeholder="Memo"
+                      className="ds-input h-11 rounded-md px-3 text-sm md:h-9"
+                    />
+                    <Input
+                      value={tagsDraft[item.id] ?? ""}
+                      onChange={(event) => setTagsDraft((prev) => ({ ...prev, [item.id]: event.target.value }))}
+                      placeholder="Tags CSV"
+                      className="ds-input h-11 rounded-md px-3 text-sm md:h-9"
+                    />
+                  </div>
+
+                  <div className="grid gap-2 lg:grid-cols-2">
+                    <Select
+                      value={teamDraft[item.id] ?? ""}
+                      onChange={(event) => setTeamDraft((prev) => ({ ...prev, [item.id]: event.target.value }))}
+                      className="ds-input h-11 rounded-md px-3 text-sm md:h-9"
+                    >
+                      <option value="">No team scope</option>
+                      {teams.map((team) => (
+                        <option key={`key-${item.id}-team-${team.id}`} value={String(team.id)}>
+                          Team #{team.id} - {team.name}
+                        </option>
                       ))}
-                    </DropdownMenuContent>
-                  </DropdownMenu>
+                    </Select>
+
+                    <DropdownMenu>
+                      <DropdownMenuTrigger asChild>
+                        <Button
+                          type="button"
+                          variant="outline"
+                          className="ds-input h-11 w-full justify-between rounded-md px-3 text-sm md:h-9"
+                        >
+                          <span className="truncate text-left">{toolsDropdownLabel(allowedToolsDraft[item.id] ?? "")}</span>
+                          <ChevronsUpDown className="h-4 w-4 text-muted-foreground" />
+                        </Button>
+                      </DropdownMenuTrigger>
+                      <DropdownMenuContent align="start" className="max-h-72 w-[var(--radix-dropdown-menu-trigger-width)] overflow-y-auto">
+                        {toolOptions.length === 0 ? <p className="px-2 py-1 text-xs text-muted-foreground">No tool options</p> : null}
+                        {toolOptions.length > 0 ? (
+                          <>
+                            <DropdownMenuItem
+                              onSelect={(event) => {
+                                event.preventDefault();
+                                setAllowedToolsDraft((prev) => ({
+                                  ...prev,
+                                  [item.id]: allToolNamesCsv,
+                                }));
+                              }}
+                              className="text-xs"
+                            >
+                              Select All
+                            </DropdownMenuItem>
+                            <DropdownMenuItem
+                              onSelect={(event) => {
+                                event.preventDefault();
+                                setAllowedToolsDraft((prev) => ({
+                                  ...prev,
+                                  [item.id]: "",
+                                }));
+                              }}
+                              className="text-xs"
+                            >
+                              Clear All
+                            </DropdownMenuItem>
+                            <DropdownMenuSeparator />
+                          </>
+                        ) : null}
+                        {toolOptions.map((tool) => (
+                          <DropdownMenuCheckboxItem
+                            key={`edit-${item.id}-tool-${tool.tool_name}`}
+                            checked={csvHasValue(allowedToolsDraft[item.id] ?? "", tool.tool_name)}
+                            onCheckedChange={(checked) =>
+                              setAllowedToolsDraft((prev) => ({
+                                ...prev,
+                                [item.id]: updateCsvSelection(prev[item.id] ?? "", tool.tool_name, checked === true),
+                              }))
+                            }
+                            onSelect={(event) => event.preventDefault()}
+                          >
+                            <span className="font-mono text-xs">{tool.tool_name}</span>
+                          </DropdownMenuCheckboxItem>
+                        ))}
+                      </DropdownMenuContent>
+                    </DropdownMenu>
+                  </div>
+
                   <textarea
                     value={policyDraft[item.id] ?? "{}"}
                     onChange={(event) => setPolicyDraft((prev) => ({ ...prev, [item.id]: event.target.value }))}
-                    className="ds-input min-h-[120px] rounded-md px-3 py-2 text-xs font-mono lg:col-span-2"
+                    className="ds-input min-h-[120px] rounded-md px-3 py-2 text-xs font-mono"
                   />
                 </div>
 
