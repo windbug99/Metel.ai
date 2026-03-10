@@ -4,6 +4,7 @@ import { Select } from "@/components/ui/select";
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
 import { Checkbox } from "@/components/ui/checkbox";
+import { Switch } from "@/components/ui/switch";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import {
@@ -128,7 +129,9 @@ function buildPolicyFromBasic(
   allowHighRisk: boolean,
   linearTeamIdsCsv: string
 ): Record<string, unknown> {
-  const policy: Record<string, unknown> = {};
+  const policy: Record<string, unknown> = {
+    allow_high_risk: Boolean(allowHighRisk),
+  };
   const services = allowedServices
     .map((item) => item.trim().toLowerCase())
     .filter((item) => item === "notion" || item === "linear");
@@ -138,9 +141,6 @@ function buildPolicyFromBasic(
   const denyTools = parseCsvList(denyToolsCsv);
   if (denyTools.length > 0) {
     policy.deny_tools = denyTools;
-  }
-  if (allowHighRisk) {
-    policy.allow_high_risk = true;
   }
   const linearTeamIds = parseCsvList(linearTeamIdsCsv);
   if (linearTeamIds.length > 0) {
@@ -205,6 +205,7 @@ export default function DashboardTeamPolicyPage() {
   const [createPolicyDenyTools, setCreatePolicyDenyTools] = useState("");
   const [createPolicyAllowHighRisk, setCreatePolicyAllowHighRisk] = useState(false);
   const [createPolicyLinearTeamIds, setCreatePolicyLinearTeamIds] = useState("");
+  const [createDialogError, setCreateDialogError] = useState<string | null>(null);
   const [creating, setCreating] = useState(false);
 
   const [teamNameDraft, setTeamNameDraft] = useState<Record<number, string>>({});
@@ -348,9 +349,9 @@ export default function DashboardTeamPolicyPage() {
       setCreatePolicyDenyTools(basic.denyToolsCsv);
       setCreatePolicyAllowHighRisk(basic.allowHighRisk);
       setCreatePolicyLinearTeamIds(basic.linearTeamIdsCsv);
-      setError(null);
+      setCreateDialogError(null);
     } catch (applyError) {
-      setError(applyError instanceof Error ? applyError.message : "Invalid policy JSON.");
+      setCreateDialogError(applyError instanceof Error ? applyError.message : "Invalid policy JSON.");
     }
   }, [createPolicy]);
 
@@ -436,7 +437,7 @@ export default function DashboardTeamPolicyPage() {
   const createTeam = useCallback(async () => {
     const name = createName.trim();
     if (!name) {
-      setError("Team name is required.");
+      setCreateDialogError("Team name is required.");
       return;
     }
 
@@ -445,12 +446,12 @@ export default function DashboardTeamPolicyPage() {
       try {
         policyJson = parsePolicyObject(createPolicy);
       } catch (parseError) {
-        setError(parseError instanceof Error ? parseError.message : "Create policy JSON is invalid.");
+        setCreateDialogError(parseError instanceof Error ? parseError.message : "Create policy JSON is invalid.");
         return;
       }
     } else {
       if (parseCsvList(createPolicyLinearTeamIds).length > 0 && !createPolicyAllowedServices.includes("linear")) {
-        setError("If you set linear team IDs, select linear in allowed services.");
+        setCreateDialogError("If you set linear team IDs, select linear in allowed services.");
         return;
       }
       policyJson = buildPolicyFromBasic(
@@ -462,7 +463,7 @@ export default function DashboardTeamPolicyPage() {
     }
 
     setCreating(true);
-    setError(null);
+    setCreateDialogError(null);
     const result = await dashboardApiRequest("/api/teams", {
       method: "POST",
       body: {
@@ -481,12 +482,12 @@ export default function DashboardTeamPolicyPage() {
       return;
     }
     if (result.status === 403) {
-      setError("Admin role required to create team.");
+      setCreateDialogError("Admin role required to create team.");
       setCreating(false);
       return;
     }
     if (!result.ok) {
-      setError(result.error ?? "Failed to create team.");
+      setCreateDialogError(result.error ?? "Failed to create team.");
       setCreating(false);
       return;
     }
@@ -499,6 +500,7 @@ export default function DashboardTeamPolicyPage() {
     setCreatePolicyDenyTools("");
     setCreatePolicyAllowHighRisk(false);
     setCreatePolicyLinearTeamIds("");
+    setCreateDialogError(null);
     setCreateDialogOpen(false);
     await fetchTeams();
     setCreating(false);
@@ -734,7 +736,10 @@ export default function DashboardTeamPolicyPage() {
       <div className="flex items-center justify-end">
         <Button
           type="button"
-          onClick={() => setCreateDialogOpen(true)}
+          onClick={() => {
+            setCreateDialogError(null);
+            setCreateDialogOpen(true);
+          }}
           disabled={!canManageTeams}
           className="ds-btn h-11 rounded-md px-4 text-sm disabled:cursor-not-allowed disabled:opacity-60 md:h-9"
           title={canManageTeams ? "" : "Admin role required"}
@@ -748,6 +753,9 @@ export default function DashboardTeamPolicyPage() {
         onOpenChange={(open) => {
           if (!creating) {
             setCreateDialogOpen(open);
+            if (!open) {
+              setCreateDialogError(null);
+            }
           }
         }}
       >
@@ -757,6 +765,7 @@ export default function DashboardTeamPolicyPage() {
             <DialogDescription>Create a team and configure policy in Basic mode (recommended).</DialogDescription>
           </DialogHeader>
           <div className="space-y-3 py-2">
+            {createDialogError ? <AlertBanner message={createDialogError} tone="danger" /> : null}
             <div className="grid gap-2 md:grid-cols-2">
               <Input
                 value={createName}
@@ -1017,7 +1026,21 @@ export default function DashboardTeamPolicyPage() {
 
               <TabsContent value="policy" className="space-y-3">
                 <div className="rounded-md border border-border p-3">
-                  <p className="mb-2 text-sm font-medium">Team policy</p>
+                  <div className="mb-2 flex items-start justify-between gap-3">
+                    <p className="text-sm font-medium">Team policy</p>
+                    <label className="inline-flex items-center gap-2 text-xs text-muted-foreground">
+                      <Switch
+                        checked={Boolean(teamActiveDraft[team.id])}
+                        onCheckedChange={(checked) =>
+                          setTeamActiveDraft((prev) => ({
+                            ...prev,
+                            [team.id]: checked === true,
+                          }))
+                        }
+                      />
+                      Team enabled
+                    </label>
+                  </div>
                   <div className="mb-2 grid gap-2 md:grid-cols-2">
                     <Input
                       value={teamNameDraft[team.id] ?? ""}
@@ -1032,18 +1055,6 @@ export default function DashboardTeamPolicyPage() {
                       placeholder="Description"
                     />
                   </div>
-                  <label className="mb-2 flex items-center gap-2 text-xs">
-                    <Checkbox
-                      checked={Boolean(teamActiveDraft[team.id])}
-                      onCheckedChange={(checked) =>
-                        setTeamActiveDraft((prev) => ({
-                          ...prev,
-                          [team.id]: checked === true,
-                        }))
-                      }
-                    />
-                    active
-                  </label>
 
                   <Tabs value={policyMode} onValueChange={(value) => setTeamPolicyModeDraft((prev) => ({ ...prev, [team.id]: value === "advanced" ? "advanced" : "basic" }))}>
                     <TabsList className="h-9">

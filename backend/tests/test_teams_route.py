@@ -6,7 +6,14 @@ from fastapi import HTTPException
 from starlette.requests import Request
 
 from app.core.authz import AuthzContext, Role
-from app.routes.teams import TeamMemberRequest, TeamUpdateRequest, add_team_member, delete_team_member, update_team
+from app.routes.teams import (
+    TeamMemberRequest,
+    TeamUpdateRequest,
+    _enforce_team_policy_baseline,
+    add_team_member,
+    delete_team_member,
+    update_team,
+)
 
 
 def _request(path: str, method: str = "DELETE") -> Request:
@@ -161,6 +168,14 @@ def test_update_team_policy_rejects_weaker_than_org_baseline(monkeypatch):
         assert exc.detail.get("code") == "policy_baseline_violation"
     else:
         assert False, "expected HTTPException"
+
+
+def test_team_policy_baseline_allows_missing_allow_high_risk_when_baseline_false():
+    # Missing allow_high_risk is equivalent to non-escalation and should be accepted.
+    _enforce_team_policy_baseline(
+        baseline={"allow_high_risk": False},
+        candidate={},
+    )
 
 
 def test_add_team_member_resolves_email_to_user_id(monkeypatch):

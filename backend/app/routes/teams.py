@@ -120,7 +120,8 @@ def _enforce_team_policy_baseline(*, baseline: dict[str, Any], candidate: dict[s
     violations: list[str] = []
 
     baseline_allow_high_risk = baseline.get("allow_high_risk")
-    if baseline_allow_high_risk is False and candidate.get("allow_high_risk") is not False:
+    # Missing allow_high_risk should be treated as non-escalating (same as false).
+    if baseline_allow_high_risk is False and candidate.get("allow_high_risk") is True:
         violations.append("allow_high_risk")
 
     baseline_allowed_services = baseline.get("allowed_services")

@@ -218,6 +218,7 @@ export default function DashboardApiKeysPage() {
 
   const [creating, setCreating] = useState(false);
   const [createdApiKey, setCreatedApiKey] = useState<string | null>(null);
+  const [createError, setCreateError] = useState<string | null>(null);
   const [copyToast, setCopyToast] = useState<string | null>(null);
   const [createDialogOpen, setCreateDialogOpen] = useState(false);
   const [createStep, setCreateStep] = useState(1);
@@ -323,7 +324,7 @@ export default function DashboardApiKeysPage() {
   const handleCreateApiKey = useCallback(async () => {
     setCreating(true);
     setCreatedApiKey(null);
-    setError(null);
+    setCreateError(null);
 
     const policyJson = createPolicyPreview;
 
@@ -345,16 +346,17 @@ export default function DashboardApiKeysPage() {
       return;
     }
     if (result.status === 403) {
-      setError("Access denied while creating API key.");
+      setCreateError("Access denied while creating API key.");
       setCreating(false);
       return;
     }
     if (!result.ok || !result.data) {
-      setError(result.error ?? "Failed to create API key.");
+      setCreateError(result.error ?? "Failed to create API key.");
       setCreating(false);
       return;
     }
 
+    setCreateError(null);
     setCreatedApiKey(result.data.api_key ?? null);
     setCreateTeamId("");
     setCreateMemo("");
@@ -379,6 +381,7 @@ export default function DashboardApiKeysPage() {
     setCreatePolicyAllowHighRisk(false);
     setCreatePolicyLinearTeamIds("");
     setCreatedApiKey(null);
+    setCreateError(null);
   }, []);
 
   const canMoveNext = useMemo(() => {
@@ -603,6 +606,7 @@ export default function DashboardApiKeysPage() {
           type="button"
           onClick={() => {
             resetCreateWizard();
+            setCreateError(null);
             setCreateDialogOpen(true);
           }}
           className="ds-btn h-11 rounded-md px-3 text-sm md:h-9"
@@ -617,6 +621,7 @@ export default function DashboardApiKeysPage() {
           setCreateDialogOpen(open);
           if (!open) {
             setCreateStep(1);
+            setCreateError(null);
           }
         }}
       >
@@ -632,6 +637,11 @@ export default function DashboardApiKeysPage() {
           </DialogHeader>
 
           <div className="space-y-3 p-4">
+            {createError ? (
+              <div className="rounded-md border border-destructive/40 bg-destructive/10 px-3 py-2 text-sm text-destructive">
+                {createError}
+              </div>
+            ) : null}
             {createStep === 1 ? (
               <div className="grid gap-2 md:grid-cols-3">
                 <Input
