@@ -1,14 +1,16 @@
 "use client";
 
 import { Button } from "@/components/ui/button";
+import { CircleAlert } from "lucide-react";
 type AlertBannerProps = {
   message: string;
   tone?: "info" | "warning" | "danger";
   dismissible?: boolean;
   onDismiss?: () => void;
+  showLeadingIcon?: boolean;
 };
 
-export default function AlertBanner({ message, tone = "warning", dismissible = false, onDismiss }: AlertBannerProps) {
+export default function AlertBanner({ message, tone = "warning", dismissible = false, onDismiss, showLeadingIcon = false }: AlertBannerProps) {
   const classes = tone === "danger"
     ? "border-destructive/40 bg-destructive/10 text-destructive"
     : tone === "info"
@@ -18,7 +20,10 @@ export default function AlertBanner({ message, tone = "warning", dismissible = f
   return (
     <div className={`mb-4 rounded-md border px-3 py-2 text-sm ${classes}`}>
       <div className="flex items-center justify-between gap-2">
-        <p>{message}</p>
+        <div className="flex min-w-0 items-center gap-2">
+          {showLeadingIcon ? <CircleAlert className="h-4 w-4 shrink-0" /> : null}
+          <p>{message}</p>
+        </div>
         {dismissible ? (
           <Button
             type="button"

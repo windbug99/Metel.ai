@@ -434,6 +434,7 @@ export default function DashboardApiKeysPage() {
       }
 
       await fetchApiKeys();
+      setEditingKeyId(null);
       setUpdatingId(null);
     },
     [fetchApiKeys, memoDraft, nameDraft, pathname, policyDraft, router, tagsDraft, teamDraft]

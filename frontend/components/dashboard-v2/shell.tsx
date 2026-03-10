@@ -680,6 +680,7 @@ export default function DashboardV2Shell({ children }: { children: React.ReactNo
                   message={String(incidentBanner?.message || "")}
                   tone={incidentBanner?.severity === "critical" ? "danger" : incidentBanner?.severity === "info" ? "info" : "warning"}
                   dismissible
+                  showLeadingIcon
                   onDismiss={() => setDismissedIncidentUpdatedAt(incidentBanner?.updated_at ?? "manual")}
                 />
               ) : null}
