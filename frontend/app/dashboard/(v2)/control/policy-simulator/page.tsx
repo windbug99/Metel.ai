@@ -1,7 +1,6 @@
 "use client";
 
 import { Select } from "@/components/ui/select";
-import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
 import { useCallback, useEffect, useState } from "react";
 import { usePathname, useRouter } from "next/navigation";
@@ -14,6 +13,12 @@ type ApiKeyItem = {
   id: number;
   name: string;
   key_prefix: string;
+  is_active?: boolean;
+};
+
+type ToolOptionItem = {
+  tool_name: string;
+  service: string;
 };
 
 type SimulateResult = {
@@ -25,15 +30,40 @@ type SimulateResult = {
   risk?: { allowed?: boolean; reason?: string | null; risk_type?: string | null };
 };
 
+function sampleArgumentsForTool(toolName: string): Record<string, unknown> {
+  const name = toolName.trim();
+  if (!name) {
+    return {};
+  }
+  if (name === "linear_create_comment") {
+    return { issueId: "ABC-123", body: "test comment", team_id: "team-a" };
+  }
+  if (name === "linear_update_issue") {
+    return { issueId: "ABC-123", title: "updated title", team_id: "team-a" };
+  }
+  if (name.startsWith("linear_")) {
+    return { team_id: "team-a" };
+  }
+  if (name === "notion_update_page") {
+    return { page_id: "page-id", archived: false, in_trash: false };
+  }
+  if (name.startsWith("notion_")) {
+    return { query: "example" };
+  }
+  return {};
+}
+
 export default function DashboardPolicySimulatorPage() {
   const pathname = usePathname();
   const router = useRouter();
 
   const [apiKeys, setApiKeys] = useState<ApiKeyItem[]>([]);
+  const [toolOptions, setToolOptions] = useState<ToolOptionItem[]>([]);
   const [apiKeysLoading, setApiKeysLoading] = useState(true);
   const [apiKeyId, setApiKeyId] = useState("");
   const [toolName, setToolName] = useState("");
   const [argumentsJson, setArgumentsJson] = useState("{}");
+  const [showAdvancedArguments, setShowAdvancedArguments] = useState(false);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [result, setResult] = useState<SimulateResult | null>(null);
@@ -45,24 +75,31 @@ export default function DashboardPolicySimulatorPage() {
 
   const fetchApiKeys = useCallback(async () => {
     setApiKeysLoading(true);
-    const response = await dashboardApiGet<{ items?: ApiKeyItem[] }>("/api/api-keys");
-    if (response.status === 401) {
+    const [keysResponse, toolsResponse] = await Promise.all([
+      dashboardApiGet<{ items?: ApiKeyItem[] }>("/api/api-keys"),
+      dashboardApiGet<{ items?: ToolOptionItem[] }>("/api/api-keys/tool-options"),
+    ]);
+
+    if (keysResponse.status === 401 || toolsResponse.status === 401) {
       handle401();
       setApiKeysLoading(false);
       return;
     }
-    if (!response.ok || !response.data) {
+    if (!keysResponse.ok || !keysResponse.data) {
       setApiKeysLoading(false);
       return;
     }
-    setApiKeys(Array.isArray(response.data.items) ? response.data.items : []);
+    const rows = Array.isArray(keysResponse.data.items) ? keysResponse.data.items : [];
+    setApiKeys(rows.filter((item) => item.is_active !== false));
+    const toolRows = Array.isArray(toolsResponse.data?.items) ? toolsResponse.data.items : [];
+    setToolOptions(toolRows);
     setApiKeysLoading(false);
   }, [handle401]);
 
   const runSimulation = useCallback(async () => {
     const trimmedToolName = toolName.trim();
     if (!trimmedToolName) {
-      setError("Tool name is required.");
+      setError("Tool selection is required.");
       return;
     }
 
@@ -153,7 +190,7 @@ export default function DashboardPolicySimulatorPage() {
       <p className="text-sm text-muted-foreground">Preview whether a request is allowed or blocked before execution.</p>
 
       <div className="ds-card space-y-3 p-4">
-        <div className="flex flex-wrap items-center gap-2">
+        <div className="grid grid-cols-[minmax(220px,1fr)_minmax(280px,1fr)_auto] items-center gap-2">
           <Select value={apiKeyId} onChange={(event) => setApiKeyId(event.target.value)} className="ds-input h-11 rounded-md px-3 text-sm md:h-9">
             <option value="">No API key scope</option>
             {apiKeys.map((key) => (
@@ -162,27 +199,55 @@ export default function DashboardPolicySimulatorPage() {
               </option>
             ))}
           </Select>
-          <Input
-            value={toolName}
-            onChange={(event) => setToolName(event.target.value)}
-            placeholder="Tool name"
-            className="ds-input h-11 min-w-[260px] rounded-md px-3 text-sm md:h-9"
-          />
+          <Select value={toolName} onChange={(event) => setToolName(event.target.value)} className="ds-input h-11 rounded-md px-3 text-sm md:h-9">
+            <option value="">Select tool name</option>
+            {toolOptions.map((tool) => (
+              <option key={`sim-tool-${tool.tool_name}`} value={tool.tool_name}>
+                {tool.tool_name} ({tool.service})
+              </option>
+            ))}
+          </Select>
           <Button
             type="button"
             onClick={() => void runSimulation()}
             disabled={loading}
-            className="ds-btn h-11 rounded-md px-3 text-sm disabled:cursor-not-allowed disabled:opacity-60 md:h-9"
+            className="ds-btn h-11 whitespace-nowrap rounded-md px-3 text-sm disabled:cursor-not-allowed disabled:opacity-60 md:h-9"
           >
             {loading ? "Simulating..." : "Simulate"}
           </Button>
         </div>
-        <textarea
-          value={argumentsJson}
-          onChange={(event) => setArgumentsJson(event.target.value)}
-          placeholder='Arguments JSON, e.g. {"team_id":"team-a","title":"hello"}'
-          className="ds-input min-h-[120px] w-full rounded-md px-3 py-2 text-xs font-mono"
-        />
+
+        <div className="flex items-center gap-2">
+          <Button
+            type="button"
+            variant="outline"
+            onClick={() => setShowAdvancedArguments((prev) => !prev)}
+            className="h-9 rounded-md px-3 text-xs"
+          >
+            {showAdvancedArguments ? "Hide Advanced" : "Advanced"}
+          </Button>
+          <Button
+            type="button"
+            variant="outline"
+            onClick={() => setArgumentsJson(JSON.stringify(sampleArgumentsForTool(toolName), null, 2))}
+            className="h-9 rounded-md px-3 text-xs"
+          >
+            Load sample arguments
+          </Button>
+          <p className="text-xs text-muted-foreground">Basic mode runs with `{}` arguments.</p>
+        </div>
+
+        {showAdvancedArguments ? (
+          <div className="space-y-1">
+            <p className="text-xs text-muted-foreground">Optional: provide request arguments for more accurate policy simulation.</p>
+            <textarea
+              value={argumentsJson}
+              onChange={(event) => setArgumentsJson(event.target.value)}
+              placeholder='Arguments JSON, e.g. {"team_id":"team-a","title":"hello"}'
+              className="ds-input min-h-[120px] w-full rounded-md px-3 py-2 text-xs font-mono"
+            />
+          </div>
+        ) : null}
       </div>
 
       {error ? (

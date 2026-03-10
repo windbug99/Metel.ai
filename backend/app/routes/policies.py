@@ -157,6 +157,8 @@ async def simulate_policy(request: Request, body: SimulatePolicyRequest):
         if not rows:
             raise HTTPException(status_code=404, detail="api_key_not_found")
         api_key = rows[0]
+        if not bool(api_key.get("is_active")):
+            raise HTTPException(status_code=409, detail="api_key_not_active")
         team_id = api_key.get("team_id")
         team_policy_rows = (
             supabase.table("team_policies")
