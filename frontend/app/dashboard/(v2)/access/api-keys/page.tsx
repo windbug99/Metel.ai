@@ -5,6 +5,7 @@ import { Select } from "@/components/ui/select";
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
 import { Checkbox } from "@/components/ui/checkbox";
+import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { usePathname, useRouter } from "next/navigation";
@@ -188,6 +189,7 @@ export default function DashboardApiKeysPage() {
   const [copyToast, setCopyToast] = useState<string | null>(null);
   const [createDialogOpen, setCreateDialogOpen] = useState(false);
   const [createStep, setCreateStep] = useState(1);
+  const [listTab, setListTab] = useState<"active" | "revoked">("active");
 
   const [nameDraft, setNameDraft] = useState<Record<number, string>>({});
   const [teamDraft, setTeamDraft] = useState<Record<number, string>>({});
@@ -199,6 +201,8 @@ export default function DashboardApiKeysPage() {
   const [updatingId, setUpdatingId] = useState<number | null>(null);
   const [rotatingId, setRotatingId] = useState<number | null>(null);
   const [revokingId, setRevokingId] = useState<number | null>(null);
+  const [editingKeyId, setEditingKeyId] = useState<number | null>(null);
+  const [drilldownKeyId, setDrilldownKeyId] = useState<number | null>(null);
 
   const [drilldownById, setDrilldownById] = useState<Record<number, DrilldownPayload | null>>({});
   const [drilldownLoadingId, setDrilldownLoadingId] = useState<number | null>(null);
@@ -206,6 +210,18 @@ export default function DashboardApiKeysPage() {
     () => Array.from(new Set(toolOptions.map((tool) => tool.tool_name.trim()).filter((name) => name.length > 0))).join(", "),
     [toolOptions]
   );
+  const teamNameById = useMemo(() => {
+    const map = new Map<number, string>();
+    for (const team of teams) {
+      map.set(team.id, team.name);
+    }
+    return map;
+  }, [teams]);
+  const editingItem = useMemo(() => items.find((item) => item.id === editingKeyId) ?? null, [editingKeyId, items]);
+  const drilldownItem = useMemo(() => items.find((item) => item.id === drilldownKeyId) ?? null, [drilldownKeyId, items]);
+  const activeItems = useMemo(() => items.filter((item) => item.is_active), [items]);
+  const revokedItems = useMemo(() => items.filter((item) => !item.is_active), [items]);
+  const visibleItems = useMemo(() => (listTab === "active" ? activeItems : revokedItems), [activeItems, listTab, revokedItems]);
   const createPolicyPreview = useMemo(
     () => buildPolicyFromBasic(createPolicyAllowedServices, createPolicyDenyTools, createPolicyAllowHighRisk, createPolicyLinearTeamIds),
     [createPolicyAllowedServices, createPolicyDenyTools, createPolicyAllowHighRisk, createPolicyLinearTeamIds]
@@ -759,7 +775,7 @@ export default function DashboardApiKeysPage() {
           </div>
 
           <DialogFooter className="border-t border-border p-4">
-            {createStep > 1 ? (
+            {createStep > 1 && !createdApiKey ? (
               <Button type="button" variant="outline" onClick={() => setCreateStep((prev) => Math.max(1, prev - 1))} className="h-10">
                 Back
               </Button>
@@ -769,14 +785,22 @@ export default function DashboardApiKeysPage() {
               <Button type="button" onClick={() => setCreateStep((prev) => Math.min(4, prev + 1))} disabled={!canMoveNext} className="h-10">
                 Next
               </Button>
+            ) : createdApiKey ? (
+              <Button
+                type="button"
+                onClick={() => setCreateDialogOpen(false)}
+                className="h-10"
+              >
+                Done
+              </Button>
             ) : (
               <Button
                 type="button"
                 onClick={() => void handleCreateApiKey()}
-                disabled={creating || stepThreeInvalid || createdApiKey !== null}
+                disabled={creating || stepThreeInvalid}
                 className="h-10"
               >
-                {creating ? "Creating..." : createdApiKey ? "Created" : "Create API key"}
+                {creating ? "Creating..." : "Create API key"}
               </Button>
             )}
           </DialogFooter>
@@ -791,61 +815,124 @@ export default function DashboardApiKeysPage() {
 
       {!error ? (
         <div className="space-y-3">
-          {items.map((item) => {
-            const drilldown = drilldownById[item.id] ?? null;
+          <div className="flex items-center justify-between gap-2">
+            <Tabs value={listTab} onValueChange={(value) => setListTab(value === "revoked" ? "revoked" : "active")} className="w-auto">
+              <TabsList className="h-9">
+                <TabsTrigger value="active" className="px-3 py-1 text-xs">
+                  Active ({activeItems.length})
+                </TabsTrigger>
+                <TabsTrigger value="revoked" className="px-3 py-1 text-xs">
+                  Revoked ({revokedItems.length})
+                </TabsTrigger>
+              </TabsList>
+            </Tabs>
+            <p className="text-xs text-muted-foreground">
+              showing {visibleItems.length} keys
+            </p>
+          </div>
+
+          {visibleItems.map((item) => {
             return (
-              <article key={item.id} className="ds-card space-y-3 p-4">
-                <div className="flex flex-wrap items-center justify-between gap-2">
-                  <div>
+              <article key={item.id} className="ds-card p-3">
+                <div className="flex flex-wrap items-center justify-between gap-3">
+                  <div className="min-w-[220px]">
                     <p className="text-sm font-semibold">{item.name}</p>
                     <p className="font-mono text-xs text-muted-foreground">{item.key_prefix}</p>
                   </div>
-                  <StatusBadge kind="key" value={item.is_active ? "active" : "revoked"} />
-                </div>
 
+                  <div className="flex min-w-[220px] flex-1 flex-wrap items-center gap-x-3 gap-y-1 text-xs text-muted-foreground">
+                    <span>team: {item.team_id ? `#${item.team_id} · ${teamNameById.get(item.team_id) ?? "unknown"}` : "none"}</span>
+                    <span>last used: {item.last_used_at ? new Date(item.last_used_at).toLocaleString() : "-"}</span>
+                    <span>tags: {(item.tags ?? []).slice(0, 2).join(", ") || "-"}</span>
+                  </div>
+
+                  <StatusBadge kind="key" value={item.is_active ? "active" : "revoked"} />
+
+                  <div className="flex flex-wrap items-center gap-2">
+                    <Button type="button" variant="outline" onClick={() => setEditingKeyId(item.id)} className="h-9 rounded-md px-3 text-xs">
+                      Edit
+                    </Button>
+                    <Button
+                      type="button"
+                      onClick={() => void handleRotateApiKey(item.id)}
+                      disabled={rotatingId === item.id || !item.is_active}
+                      className="h-9 rounded-md px-3 text-xs disabled:opacity-60"
+                    >
+                      {rotatingId === item.id ? "Rotating..." : "Rotate"}
+                    </Button>
+                    <Button
+                      type="button"
+                      onClick={() => void handleRevokeApiKey(item.id)}
+                      disabled={revokingId === item.id || !item.is_active}
+                      className="h-9 rounded-md px-3 text-xs disabled:opacity-60"
+                    >
+                      {revokingId === item.id ? "Revoking..." : "Revoke"}
+                    </Button>
+                    <Button
+                      type="button"
+                      onClick={() => {
+                        setDrilldownKeyId(item.id);
+                        if (!drilldownById[item.id]) {
+                          void handleLoadDrilldown(item.id);
+                        }
+                      }}
+                      disabled={drilldownLoadingId === item.id}
+                      className="h-9 rounded-md px-3 text-xs disabled:opacity-60"
+                    >
+                      {drilldownLoadingId === item.id ? "Loading..." : "7d Drill-down"}
+                    </Button>
+                  </div>
+                </div>
+              </article>
+            );
+          })}
+
+          {visibleItems.length === 0 ? <p className="text-sm text-muted-foreground">No {listTab} API keys found.</p> : null}
+
+          <Dialog open={editingItem !== null} onOpenChange={(open) => !open && setEditingKeyId(null)}>
+            <DialogContent className="max-w-3xl">
+              <DialogHeader>
+                <DialogTitle>Edit API key</DialogTitle>
+                <DialogDescription>{editingItem ? `${editingItem.name} · ${editingItem.key_prefix}` : ""}</DialogDescription>
+              </DialogHeader>
+              {editingItem ? (
                 <div className="space-y-2">
                   <div className="grid gap-2 lg:grid-cols-3">
                     <Input
-                      value={nameDraft[item.id] ?? ""}
-                      onChange={(event) => setNameDraft((prev) => ({ ...prev, [item.id]: event.target.value }))}
+                      value={nameDraft[editingItem.id] ?? ""}
+                      onChange={(event) => setNameDraft((prev) => ({ ...prev, [editingItem.id]: event.target.value }))}
                       className="ds-input h-11 rounded-md px-3 text-sm md:h-9"
                     />
                     <Input
-                      value={memoDraft[item.id] ?? ""}
-                      onChange={(event) => setMemoDraft((prev) => ({ ...prev, [item.id]: event.target.value }))}
+                      value={memoDraft[editingItem.id] ?? ""}
+                      onChange={(event) => setMemoDraft((prev) => ({ ...prev, [editingItem.id]: event.target.value }))}
                       placeholder="Memo"
                       className="ds-input h-11 rounded-md px-3 text-sm md:h-9"
                     />
                     <Input
-                      value={tagsDraft[item.id] ?? ""}
-                      onChange={(event) => setTagsDraft((prev) => ({ ...prev, [item.id]: event.target.value }))}
+                      value={tagsDraft[editingItem.id] ?? ""}
+                      onChange={(event) => setTagsDraft((prev) => ({ ...prev, [editingItem.id]: event.target.value }))}
                       placeholder="Tags CSV"
                       className="ds-input h-11 rounded-md px-3 text-sm md:h-9"
                     />
                   </div>
-
                   <div className="grid gap-2 lg:grid-cols-2">
                     <Select
-                      value={teamDraft[item.id] ?? ""}
-                      onChange={(event) => setTeamDraft((prev) => ({ ...prev, [item.id]: event.target.value }))}
+                      value={teamDraft[editingItem.id] ?? ""}
+                      onChange={(event) => setTeamDraft((prev) => ({ ...prev, [editingItem.id]: event.target.value }))}
                       className="ds-input h-11 rounded-md px-3 text-sm md:h-9"
                     >
                       <option value="">No team scope</option>
                       {teams.map((team) => (
-                        <option key={`key-${item.id}-team-${team.id}`} value={String(team.id)}>
+                        <option key={`key-${editingItem.id}-team-${team.id}`} value={String(team.id)}>
                           Team #{team.id} - {team.name}
                         </option>
                       ))}
                     </Select>
-
                     <DropdownMenu>
                       <DropdownMenuTrigger asChild>
-                        <Button
-                          type="button"
-                          variant="outline"
-                          className="ds-input h-11 w-full justify-between rounded-md px-3 text-sm md:h-9"
-                        >
-                          <span className="truncate text-left">{toolsDropdownLabel(allowedToolsDraft[item.id] ?? "")}</span>
+                        <Button type="button" variant="outline" className="ds-input h-11 w-full justify-between rounded-md px-3 text-sm md:h-9">
+                          <span className="truncate text-left">{toolsDropdownLabel(allowedToolsDraft[editingItem.id] ?? "")}</span>
                           <ChevronsUpDown className="h-4 w-4 text-muted-foreground" />
                         </Button>
                       </DropdownMenuTrigger>
@@ -856,10 +943,7 @@ export default function DashboardApiKeysPage() {
                             <DropdownMenuItem
                               onSelect={(event) => {
                                 event.preventDefault();
-                                setAllowedToolsDraft((prev) => ({
-                                  ...prev,
-                                  [item.id]: allToolNamesCsv,
-                                }));
+                                setAllowedToolsDraft((prev) => ({ ...prev, [editingItem.id]: allToolNamesCsv }));
                               }}
                               className="text-xs"
                             >
@@ -868,10 +952,7 @@ export default function DashboardApiKeysPage() {
                             <DropdownMenuItem
                               onSelect={(event) => {
                                 event.preventDefault();
-                                setAllowedToolsDraft((prev) => ({
-                                  ...prev,
-                                  [item.id]: "",
-                                }));
+                                setAllowedToolsDraft((prev) => ({ ...prev, [editingItem.id]: "" }));
                               }}
                               className="text-xs"
                             >
@@ -882,12 +963,12 @@ export default function DashboardApiKeysPage() {
                         ) : null}
                         {toolOptions.map((tool) => (
                           <DropdownMenuCheckboxItem
-                            key={`edit-${item.id}-tool-${tool.tool_name}`}
-                            checked={csvHasValue(allowedToolsDraft[item.id] ?? "", tool.tool_name)}
+                            key={`edit-${editingItem.id}-tool-${tool.tool_name}`}
+                            checked={csvHasValue(allowedToolsDraft[editingItem.id] ?? "", tool.tool_name)}
                             onCheckedChange={(checked) =>
                               setAllowedToolsDraft((prev) => ({
                                 ...prev,
-                                [item.id]: updateCsvSelection(prev[item.id] ?? "", tool.tool_name, checked === true),
+                                [editingItem.id]: updateCsvSelection(prev[editingItem.id] ?? "", tool.tool_name, checked === true),
                               }))
                             }
                             onSelect={(event) => event.preventDefault()}
@@ -898,122 +979,75 @@ export default function DashboardApiKeysPage() {
                       </DropdownMenuContent>
                     </DropdownMenu>
                   </div>
-
                   <textarea
-                    value={policyDraft[item.id] ?? "{}"}
-                    onChange={(event) => setPolicyDraft((prev) => ({ ...prev, [item.id]: event.target.value }))}
-                    className="ds-input min-h-[120px] rounded-md px-3 py-2 text-xs font-mono"
+                    value={policyDraft[editingItem.id] ?? "{}"}
+                    onChange={(event) => setPolicyDraft((prev) => ({ ...prev, [editingItem.id]: event.target.value }))}
+                    className="ds-input min-h-[140px] w-full rounded-md px-3 py-2 text-xs font-mono"
                   />
                 </div>
-
-                <div className="flex flex-wrap items-center gap-2">
+              ) : null}
+              <DialogFooter>
+                <Button type="button" variant="outline" onClick={() => setEditingKeyId(null)} className="h-10">
+                  Close
+                </Button>
+                {editingItem ? (
                   <Button
                     type="button"
-                    onClick={() => void handleUpdateApiKey(item.id)}
-                    disabled={updatingId === item.id}
-                    className="ds-btn h-11 rounded-md px-3 text-xs disabled:cursor-not-allowed disabled:opacity-60 md:h-9"
+                    onClick={() => void handleUpdateApiKey(editingItem.id)}
+                    disabled={updatingId === editingItem.id}
+                    className="h-10"
                   >
-                    {updatingId === item.id ? "Saving..." : "Save"}
+                    {updatingId === editingItem.id ? "Saving..." : "Save"}
                   </Button>
-                  <Button
-                    type="button"
-                    onClick={() => void handleRotateApiKey(item.id)}
-                    disabled={rotatingId === item.id || !item.is_active}
-                    className="ds-btn h-11 rounded-md px-3 text-xs disabled:cursor-not-allowed disabled:opacity-60 md:h-9"
-                  >
-                    {rotatingId === item.id ? "Rotating..." : "Rotate"}
-                  </Button>
-                  <Button
-                    type="button"
-                    onClick={() => void handleRevokeApiKey(item.id)}
-                    disabled={revokingId === item.id || !item.is_active}
-                    className="ds-btn h-11 rounded-md px-3 text-xs disabled:cursor-not-allowed disabled:opacity-60 md:h-9"
-                  >
-                    {revokingId === item.id ? "Revoking..." : "Revoke"}
-                  </Button>
-                  <Button
-                    type="button"
-                    onClick={() => void handleLoadDrilldown(item.id)}
-                    disabled={drilldownLoadingId === item.id}
-                    className="ds-btn h-11 rounded-md px-3 text-xs disabled:cursor-not-allowed disabled:opacity-60 md:h-9"
-                  >
-                    {drilldownLoadingId === item.id ? "Loading..." : "Load 7d Drill-down"}
-                  </Button>
-                </div>
-
-                <p className="text-xs text-muted-foreground">
-                  created: {item.created_at ? new Date(item.created_at).toLocaleString() : "-"} · last used: {item.last_used_at ? new Date(item.last_used_at).toLocaleString() : "-"} · revoked: {item.revoked_at ? new Date(item.revoked_at).toLocaleString() : "-"}
-                </p>
-
-                {drilldown ? (
-                  <div className="rounded-md border border-border p-3">
-                    <p className="mb-2 text-sm font-medium">7-day Drill-down</p>
-                    <div className="grid gap-2 sm:grid-cols-2 lg:grid-cols-4">
-                      <div className="rounded border border-border p-2 text-xs">Calls: {drilldown.summary.total_calls}</div>
-                      <div className="rounded border border-border p-2 text-xs">Success: {drilldown.summary.success_count}</div>
-                      <div className="rounded border border-border p-2 text-xs">Fail: {drilldown.summary.fail_count}</div>
-                      <div className="rounded border border-border p-2 text-xs">P95: {drilldown.summary.p95_latency_ms} ms</div>
-                    </div>
-
-                    <div className="mt-3 grid gap-2 lg:grid-cols-2">
-                      <div className="rounded border border-border p-2">
-                        <p className="mb-1 text-xs font-medium">Top error codes</p>
-                        {(drilldown.top_error_codes ?? []).length === 0 ? <p className="text-xs text-muted-foreground">No errors.</p> : null}
-                        {(drilldown.top_error_codes ?? []).map((entry) => (
-                          <p key={`err-${item.id}-${entry.error_code}`} className="text-xs">
-                            {entry.error_code}: {entry.count}
-                          </p>
-                        ))}
-                      </div>
-                      <div className="rounded border border-border p-2">
-                        <p className="mb-1 text-xs font-medium">Top tools</p>
-                        {(drilldown.top_tools ?? []).length === 0 ? <p className="text-xs text-muted-foreground">No calls.</p> : null}
-                        {(drilldown.top_tools ?? []).map((entry) => (
-                          <p key={`tool-${item.id}-${entry.tool_name}`} className="text-xs">
-                            {entry.tool_name}: {entry.count}
-                          </p>
-                        ))}
-                      </div>
-                    </div>
-
-                    <div className="mt-3 overflow-x-auto rounded border border-border">
-                      <Table className="min-w-[640px] text-xs">
-                        <TableHeader className="bg-muted/60 text-left text-[11px] text-muted-foreground">
-                          <TableRow>
-                            <TableHead className="px-2 py-2">Day</TableHead>
-                            <TableHead className="px-2 py-2">Calls</TableHead>
-                            <TableHead className="px-2 py-2">Success</TableHead>
-                            <TableHead className="px-2 py-2">Fail</TableHead>
-                            <TableHead className="px-2 py-2">Success Rate</TableHead>
-                          </TableRow>
-                        </TableHeader>
-                        <TableBody>
-                          {(drilldown.trend ?? []).map((row) => (
-                            <TableRow key={`trend-${item.id}-${row.day}`} className="border-t border-border">
-                              <TableCell className="px-2 py-2">{row.day}</TableCell>
-                              <TableCell className="px-2 py-2">{row.calls}</TableCell>
-                              <TableCell className="px-2 py-2">{row.success}</TableCell>
-                              <TableCell className="px-2 py-2">{row.fail}</TableCell>
-                              <TableCell className="px-2 py-2">{(row.success_rate * 100).toFixed(1)}%</TableCell>
-                            </TableRow>
-                          ))}
-                          {(drilldown.trend ?? []).length === 0 ? (
-                            <TableRow>
-                              <TableCell className="px-2 py-3 text-muted-foreground" colSpan={5}>
-                                No trend rows.
-                              </TableCell>
-                            </TableRow>
-                          ) : null}
-                        </TableBody>
-                      </Table>
-                    </div>
-                  </div>
                 ) : null}
-              </article>
-            );
-          })}
+              </DialogFooter>
+            </DialogContent>
+          </Dialog>
 
-          {items.length === 0 ? <p className="text-sm text-muted-foreground">No API keys found.</p> : null}
+          <Dialog open={drilldownItem !== null} onOpenChange={(open) => !open && setDrilldownKeyId(null)}>
+            <DialogContent className="max-w-4xl">
+              <DialogHeader>
+                <DialogTitle>7-day Drill-down</DialogTitle>
+                <DialogDescription>{drilldownItem ? `${drilldownItem.name} · ${drilldownItem.key_prefix}` : ""}</DialogDescription>
+              </DialogHeader>
+              {drilldownItem && drilldownById[drilldownItem.id] ? (
+                <div className="space-y-3">
+                  <div className="grid gap-2 sm:grid-cols-2 lg:grid-cols-4">
+                    <div className="rounded border border-border p-2 text-xs">Calls: {drilldownById[drilldownItem.id]?.summary.total_calls ?? 0}</div>
+                    <div className="rounded border border-border p-2 text-xs">Success: {drilldownById[drilldownItem.id]?.summary.success_count ?? 0}</div>
+                    <div className="rounded border border-border p-2 text-xs">Fail: {drilldownById[drilldownItem.id]?.summary.fail_count ?? 0}</div>
+                    <div className="rounded border border-border p-2 text-xs">P95: {drilldownById[drilldownItem.id]?.summary.p95_latency_ms ?? 0} ms</div>
+                  </div>
+                  <div className="overflow-x-auto rounded border border-border">
+                    <Table className="min-w-[640px] text-xs">
+                      <TableHeader className="bg-muted/60 text-left text-[11px] text-muted-foreground">
+                        <TableRow>
+                          <TableHead className="px-2 py-2">Day</TableHead>
+                          <TableHead className="px-2 py-2">Calls</TableHead>
+                          <TableHead className="px-2 py-2">Success</TableHead>
+                          <TableHead className="px-2 py-2">Fail</TableHead>
+                          <TableHead className="px-2 py-2">Success Rate</TableHead>
+                        </TableRow>
+                      </TableHeader>
+                      <TableBody>
+                        {(drilldownById[drilldownItem.id]?.trend ?? []).map((row) => (
+                          <TableRow key={`drilldown-dialog-${drilldownItem.id}-${row.day}`} className="border-t border-border">
+                            <TableCell className="px-2 py-2">{row.day}</TableCell>
+                            <TableCell className="px-2 py-2">{row.calls}</TableCell>
+                            <TableCell className="px-2 py-2">{row.success}</TableCell>
+                            <TableCell className="px-2 py-2">{row.fail}</TableCell>
+                            <TableCell className="px-2 py-2">{(row.success_rate * 100).toFixed(1)}%</TableCell>
+                          </TableRow>
+                        ))}
+                      </TableBody>
+                    </Table>
+                  </div>
+                </div>
+              ) : (
+                <p className="text-sm text-muted-foreground">Loading drill-down...</p>
+              )}
+            </DialogContent>
+          </Dialog>
         </div>
       ) : null}
     </section>
