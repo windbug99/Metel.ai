@@ -197,7 +197,7 @@ export function buildNavItems(permissionSnapshot: PermissionSnapshot | null): Na
     { key: "team-audit-events", href: "/dashboard/control/audit-events", label: "Audit Events", visible: true, section: "team" },
 
     { key: "user-my-requests", href: "/dashboard/requests", label: "My Requests", visible: true, section: "user" },
-    { key: "user-security", href: "/dashboard/security", label: "Security", visible: true, section: "user" },
+    { key: "user-security", href: "/dashboard/security", label: "Security", visible: false, section: "user" },
     { key: "user-oauth-connections", href: "/dashboard/integrations/oauth", label: "OAuth Connections", visible: true, section: "user" },
   ];
 }
