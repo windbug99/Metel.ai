@@ -40,38 +40,6 @@ type CanvaDesignListPayload = {
   continuation?: string | null;
 };
 
-type CanvaCreateDesignPayload = {
-  ok: boolean;
-  design?: CanvaDesign;
-};
-
-type CanvaExportJob = {
-  id?: string;
-  status?: string | null;
-  urls?: string[] | null;
-};
-
-type CanvaExportPayload = {
-  ok: boolean;
-  job?: CanvaExportJob;
-};
-
-type CanvaExportFormatOption = {
-  type?: string | null;
-  label?: string | null;
-};
-
-type CanvaExportFormatsPayload = {
-  ok: boolean;
-  count: number;
-  formats?: CanvaExportFormatOption[];
-};
-
-type CanvaDesignDetailPayload = {
-  ok: boolean;
-  design?: CanvaDesign & Record<string, unknown>;
-};
-
 type ConnectorJobRun = {
   id?: number;
   provider?: string;
@@ -244,20 +212,6 @@ export default function DashboardOAuthConnectionsPage() {
   const [canvaDesigns, setCanvaDesigns] = useState<CanvaDesign[]>([]);
   const [canvaDesignsLoading, setCanvaDesignsLoading] = useState(false);
   const [canvaDesignsError, setCanvaDesignsError] = useState<string | null>(null);
-  const [canvaCreateTitle, setCanvaCreateTitle] = useState("");
-  const [canvaCreateType, setCanvaCreateType] = useState("poster");
-  const [canvaCreateBusy, setCanvaCreateBusy] = useState(false);
-  const [canvaCreateMessage, setCanvaCreateMessage] = useState<string | null>(null);
-  const [canvaCreatedDesignHref, setCanvaCreatedDesignHref] = useState<string | null>(null);
-  const [canvaExportBusyId, setCanvaExportBusyId] = useState<string | null>(null);
-  const [canvaExportStatus, setCanvaExportStatus] = useState<Record<string, CanvaExportJob>>({});
-  const [canvaExportFormat, setCanvaExportFormat] = useState<Record<string, string>>({});
-  const [canvaExportFormats, setCanvaExportFormats] = useState<Record<string, CanvaExportFormatOption[]>>({});
-  const [selectedCanvaDesignId, setSelectedCanvaDesignId] = useState<string | null>(null);
-  const [selectedCanvaDesign, setSelectedCanvaDesign] = useState<(CanvaDesign & Record<string, unknown>) | null>(null);
-  const [selectedCanvaDesignLoading, setSelectedCanvaDesignLoading] = useState(false);
-  const [selectedCanvaDesignError, setSelectedCanvaDesignError] = useState<string | null>(null);
-  const [canvaExportHistory, setCanvaExportHistory] = useState<Record<string, CanvaExportJob[]>>({});
   const [canvaServerJobRuns, setCanvaServerJobRuns] = useState<ConnectorJobRun[]>([]);
 
   const handle401 = useCallback(() => {
@@ -376,65 +330,6 @@ export default function DashboardOAuthConnectionsPage() {
     setCanvaDesignsLoading(false);
   }, [canvaStatus?.connected, handle401, scope.scope]);
 
-  const fetchCanvaExportFormats = useCallback(
-    async (designId: string) => {
-      const normalizedId = String(designId || "").trim();
-      if (!normalizedId) {
-        return;
-      }
-      const res = await dashboardApiGet<CanvaExportFormatsPayload>(`/api/oauth/canva/designs/${normalizedId}/export-formats`);
-      if (res.status === 401) {
-        handle401();
-        return;
-      }
-      if (!res.ok || !Array.isArray(res.data?.formats)) {
-        return;
-      }
-      const nextFormats = res.data.formats.filter((item) => String(item?.type || "").trim().length > 0);
-      if (nextFormats.length === 0) {
-        return;
-      }
-      setCanvaExportFormats((current) => ({
-        ...current,
-        [normalizedId]: nextFormats,
-      }));
-      setCanvaExportFormat((current) => ({
-        ...current,
-        [normalizedId]: current[normalizedId] || String(nextFormats[0]?.type || "pdf"),
-      }));
-    },
-    [handle401]
-  );
-
-  const fetchCanvaDesignDetail = useCallback(
-    async (designId: string) => {
-      const normalizedId = String(designId || "").trim();
-      if (!normalizedId) {
-        setSelectedCanvaDesign(null);
-        setSelectedCanvaDesignId(null);
-        return;
-      }
-      setSelectedCanvaDesignId(normalizedId);
-      setSelectedCanvaDesignLoading(true);
-      setSelectedCanvaDesignError(null);
-      const res = await dashboardApiGet<CanvaDesignDetailPayload>(`/api/oauth/canva/designs/${normalizedId}`);
-      if (res.status === 401) {
-        handle401();
-        setSelectedCanvaDesignLoading(false);
-        return;
-      }
-      if (!res.ok || !res.data?.design) {
-        setSelectedCanvaDesign(null);
-        setSelectedCanvaDesignError(res.error ?? "Failed to load Canva design details.");
-        setSelectedCanvaDesignLoading(false);
-        return;
-      }
-      setSelectedCanvaDesign(res.data.design);
-      setSelectedCanvaDesignLoading(false);
-    },
-    [handle401]
-  );
-
   const fetchCanvaJobRuns = useCallback(async () => {
     if (scope.scope !== "user" || !canvaStatus?.connected) {
       setCanvaServerJobRuns([]);
@@ -450,116 +345,7 @@ export default function DashboardOAuthConnectionsPage() {
     }
     const rows = res.data.items;
     setCanvaServerJobRuns(rows);
-    const grouped: Record<string, CanvaExportJob[]> = {};
-    rows
-      .filter((item) => item.job_type === "export_create" && String(item.resource_id || "").trim().length > 0)
-      .forEach((item) => {
-        const resourceId = String(item.resource_id || "").trim();
-        const job: CanvaExportJob = {
-          id: item.external_job_id || undefined,
-          status: item.status || undefined,
-          urls: Array.isArray(item.download_urls) ? item.download_urls : undefined,
-        };
-        grouped[resourceId] = [...(grouped[resourceId] || []), job].slice(0, 5);
-      });
-    setCanvaExportHistory(grouped);
   }, [canvaStatus?.connected, handle401, scope.scope]);
-
-  const handleCreateCanvaDesign = useCallback(async () => {
-    if (!canvaStatus?.connected) {
-      return;
-    }
-    setCanvaCreateBusy(true);
-    setCanvaCreateMessage(null);
-    const designTypeMap: Record<string, { type: string; name: string }> = {
-      poster: { type: "poster", name: "Poster" },
-      presentation: { type: "presentation", name: "Presentation" },
-      instagram_post: { type: "instagram-post", name: "Instagram Post" },
-    };
-    const selectedType = designTypeMap[canvaCreateType] ?? designTypeMap.poster;
-    const res = await dashboardApiRequest<CanvaCreateDesignPayload>("/api/oauth/canva/designs", {
-      method: "POST",
-      body: {
-        title: canvaCreateTitle.trim() || undefined,
-        design_type: selectedType,
-      },
-    });
-    if (res.status === 401) {
-      handle401();
-      setCanvaCreateBusy(false);
-      return;
-    }
-    if (!res.ok) {
-      setCanvaCreateMessage(res.error ?? "Failed to create Canva design.");
-      setCanvaCreatedDesignHref(null);
-      setCanvaCreateBusy(false);
-      return;
-    }
-    setCanvaCreateMessage("Canva design created.");
-    setCanvaCreatedDesignHref(res.data?.design?.edit_url || res.data?.design?.view_url || null);
-    setCanvaCreateTitle("");
-    await fetchCanvaDesigns();
-    await fetchCanvaJobRuns();
-    setCanvaCreateBusy(false);
-  }, [canvaCreateTitle, canvaCreateType, canvaStatus?.connected, fetchCanvaDesigns, fetchCanvaJobRuns, handle401]);
-
-  const handleCreateCanvaExport = useCallback(
-    async (designId: string) => {
-      const format = canvaExportFormat[designId] || "pdf";
-      setCanvaExportBusyId(designId);
-      const res = await dashboardApiRequest<CanvaExportPayload>("/api/oauth/canva/exports", {
-        method: "POST",
-        body: {
-          design_id: designId,
-          format: { type: format },
-        },
-      });
-      if (res.status === 401) {
-        handle401();
-        setCanvaExportBusyId(null);
-        return;
-      }
-      if (!res.ok || !res.data?.job?.id) {
-        setCanvaExportStatus((current) => ({
-          ...current,
-          [designId]: { status: res.error ?? "export_failed" },
-        }));
-        setCanvaExportBusyId(null);
-        return;
-      }
-      const jobId = res.data.job.id;
-      setCanvaExportStatus((current) => ({
-        ...current,
-        [designId]: res.data?.job ?? { id: jobId, status: "in_progress" },
-      }));
-      for (let attempt = 0; attempt < 5; attempt += 1) {
-        await new Promise((resolve) => window.setTimeout(resolve, 1500));
-        const statusRes = await dashboardApiGet<CanvaExportPayload>(`/api/oauth/canva/exports/${jobId}`);
-        if (statusRes.status === 401) {
-          handle401();
-          break;
-        }
-        const nextJob = statusRes.data?.job;
-        if (!statusRes.ok || !nextJob) {
-          setCanvaExportStatus((current) => ({
-            ...current,
-            [designId]: { id: jobId, status: statusRes.error ?? "export_status_failed" },
-          }));
-          break;
-        }
-        setCanvaExportStatus((current) => ({
-          ...current,
-          [designId]: nextJob,
-        }));
-        if (nextJob.status && nextJob.status !== "in_progress") {
-          break;
-        }
-      }
-      await fetchCanvaJobRuns();
-      setCanvaExportBusyId(null);
-    },
-    [canvaExportFormat, fetchCanvaJobRuns, handle401]
-  );
 
   const setProviderPolicyState = useCallback((provider: string, nextState: "allowed" | "required" | "blocked" | "off") => {
     const normalized = String(provider ?? "").trim().toLowerCase();
@@ -731,39 +517,12 @@ export default function DashboardOAuthConnectionsPage() {
     if (!canvaStatus?.connected) {
       setCanvaDesigns([]);
       setCanvaDesignsError(null);
-      setCanvaExportFormats({});
       setCanvaServerJobRuns([]);
       return;
     }
     void fetchCanvaDesigns();
     void fetchCanvaJobRuns();
   }, [canvaStatus?.connected, fetchCanvaDesigns, fetchCanvaJobRuns, scope.scope]);
-
-  useEffect(() => {
-    if (scope.scope !== "user" || !canvaStatus?.connected || canvaDesigns.length === 0) {
-      return;
-    }
-    canvaDesigns.slice(0, 5).forEach((design) => {
-      const designId = String(design.id || "").trim();
-      if (!designId || canvaExportFormats[designId]) {
-        return;
-      }
-      void fetchCanvaExportFormats(designId);
-    });
-  }, [canvaDesigns, canvaExportFormats, canvaStatus?.connected, fetchCanvaExportFormats, scope.scope]);
-
-  useEffect(() => {
-    if (scope.scope !== "user" || !canvaStatus?.connected || canvaDesigns.length === 0) {
-      return;
-    }
-    if (selectedCanvaDesignId) {
-      return;
-    }
-    const firstId = String(canvaDesigns[0]?.id || "").trim();
-    if (firstId) {
-      void fetchCanvaDesignDetail(firstId);
-    }
-  }, [canvaDesigns, canvaStatus?.connected, fetchCanvaDesignDetail, scope.scope, selectedCanvaDesignId]);
 
   useEffect(() => {
     const handler = (event: Event) => {
@@ -968,8 +727,8 @@ export default function DashboardOAuthConnectionsPage() {
       <div className="ds-card space-y-3 p-4">
         <div className="flex items-center justify-between gap-3">
           <div>
-            <p className="text-sm font-medium">Recent Canva Designs</p>
-            <p className="text-xs text-muted-foreground">Loads the most recently updated Canva designs from your connected account.</p>
+            <p className="text-sm font-medium">Canva Connection Check</p>
+            <p className="text-xs text-muted-foreground">Verify the connection with a small read-only sample of recent designs and the latest connector jobs.</p>
           </div>
           <Button
             type="button"
@@ -983,50 +742,8 @@ export default function DashboardOAuthConnectionsPage() {
           </Button>
         </div>
 
-        <div className="rounded-md border border-border p-3">
-          <p className="text-sm font-medium">Create Design</p>
-          <p className="mt-1 text-xs text-muted-foreground">Create a new Canva design directly from metel.</p>
-          <div className="mt-3 grid gap-2 sm:grid-cols-[1fr_180px_auto]">
-            <input
-              type="text"
-              value={canvaCreateTitle}
-              onChange={(event) => setCanvaCreateTitle(event.target.value)}
-              placeholder="Optional title"
-              className="h-10 rounded-md border border-input bg-background px-3 text-sm outline-none ring-0"
-            />
-            <select
-              value={canvaCreateType}
-              onChange={(event) => setCanvaCreateType(event.target.value)}
-              className="h-10 rounded-md border border-input bg-background px-3 text-sm outline-none ring-0"
-            >
-              <option value="poster">Poster</option>
-              <option value="presentation">Presentation</option>
-              <option value="instagram_post">Instagram Post</option>
-            </select>
-            <Button
-              type="button"
-              onClick={() => void handleCreateCanvaDesign()}
-              disabled={!canvaStatus?.connected || canvaCreateBusy}
-            >
-              {canvaCreateBusy ? "Creating..." : "Create"}
-            </Button>
-          </div>
-          {canvaCreateMessage ? <p className="mt-2 text-xs text-muted-foreground">{canvaCreateMessage}</p> : null}
-          {canvaCreatedDesignHref ? (
-            <a
-              href={canvaCreatedDesignHref}
-              target="_blank"
-              rel="noreferrer"
-              className="mt-2 inline-flex items-center gap-1 text-xs text-primary hover:underline"
-            >
-              Open new design
-              <ExternalLink className="h-3.5 w-3.5" />
-            </a>
-          ) : null}
-        </div>
-
         {!canvaStatus?.connected ? (
-          <p className="text-sm text-muted-foreground">Connect Canva first to load recent designs.</p>
+          <p className="text-sm text-muted-foreground">Connect Canva first to verify the account and load a recent design sample.</p>
         ) : null}
 
         {canvaDesignsError ? (
@@ -1042,165 +759,76 @@ export default function DashboardOAuthConnectionsPage() {
         ) : null}
 
         {canvaStatus?.connected && !canvaDesignsLoading && !canvaDesignsError && canvaDesigns.length === 0 ? (
-          <p className="text-sm text-muted-foreground">No Canva designs found yet.</p>
+          <p className="text-sm text-muted-foreground">No recent Canva designs were returned for this account.</p>
         ) : null}
 
-        {canvaStatus?.connected && canvaDesigns.length > 0 ? (
-          <div className="grid gap-3 lg:grid-cols-[minmax(0,1.2fr)_minmax(280px,0.8fr)]">
+        {canvaStatus?.connected && (canvaDesigns.length > 0 || canvaServerJobRuns.length > 0) ? (
+          <div className="grid gap-3 lg:grid-cols-[minmax(0,1.1fr)_minmax(280px,0.9fr)]">
             <div className="space-y-2">
-            {canvaDesigns.map((design, index) => {
-              const href = design.edit_url || design.view_url || null;
-              const designId = String(design.id || "").trim();
-              const formatOptions = canvaExportFormats[designId] || [
-                { type: "pdf", label: "PDF" },
-                { type: "png", label: "PNG" },
-                { type: "jpg", label: "JPG" },
-              ];
-              return (
-                <article key={design.id || href || `canva-design-${index}`} className="rounded-md border border-border p-3">
-                  <div className="flex items-start justify-between gap-3">
-                    <div className="min-w-0">
-                      <p className="truncate text-sm font-medium">{design.title || "Untitled design"}</p>
-                      <p className="mt-1 text-xs text-muted-foreground">ID: {design.id || "-"}</p>
-                      {design.updated_at ? (
-                        <p className="mt-1 text-xs text-muted-foreground">Updated: {formatDate(design.updated_at)}</p>
-                      ) : null}
-                    </div>
-                    {href ? (
-                      <div className="flex items-center gap-2">
-                        <Button
-                          type="button"
-                          variant="outline"
-                          size="sm"
-                          onClick={() => (design.id ? void fetchCanvaDesignDetail(design.id) : undefined)}
-                          disabled={!design.id}
-                        >
-                          Details
-                        </Button>
+              <div className="rounded-md border border-border p-3">
+                <p className="text-sm font-medium">Recent design sample</p>
+                <p className="mt-1 text-xs text-muted-foreground">
+                  This is a lightweight connectivity check only. Open Canva for editing or export workflows.
+                </p>
+              </div>
+              {canvaDesigns.map((design, index) => {
+                const href = design.edit_url || design.view_url || null;
+                return (
+                  <article key={design.id || href || `canva-design-${index}`} className="rounded-md border border-border p-3">
+                    <div className="flex items-start justify-between gap-3">
+                      <div className="min-w-0">
+                        <p className="truncate text-sm font-medium">{design.title || "Untitled design"}</p>
+                        <p className="mt-1 text-xs text-muted-foreground">ID: {design.id || "-"}</p>
+                        {design.updated_at ? (
+                          <p className="mt-1 text-xs text-muted-foreground">Updated: {formatDate(design.updated_at)}</p>
+                        ) : null}
+                      </div>
+                      {href ? (
                         <a
                           href={href}
                           target="_blank"
                           rel="noreferrer"
                           className="inline-flex h-8 items-center gap-1 rounded-md border border-border px-2 text-xs text-foreground hover:bg-accent"
                         >
-                          Open
+                          Open in Canva
                           <ExternalLink className="h-3.5 w-3.5" />
                         </a>
-                      </div>
-                    ) : null}
-                  </div>
-                  <div className="mt-3 flex flex-wrap items-center gap-2">
-                    <select
-                      value={canvaExportFormat[designId] || String(formatOptions[0]?.type || "pdf")}
-                      onChange={(event) =>
-                        setCanvaExportFormat((current) => ({
-                          ...current,
-                          [designId]: event.target.value,
-                        }))
-                      }
-                      disabled={!design.id || canvaExportBusyId === design.id}
-                      className="h-8 rounded-md border border-input bg-background px-2 text-xs outline-none ring-0"
-                    >
-                      {formatOptions.map((option) => {
-                        const optionType = String(option.type || "").trim();
-                        if (!optionType) {
-                          return null;
-                        }
-                        return (
-                          <option key={`${designId}-${optionType}`} value={optionType}>
-                            {option.label || optionType.toUpperCase()}
-                          </option>
-                        );
-                      })}
-                    </select>
-                    <Button
-                      type="button"
-                      variant="outline"
-                      size="sm"
-                      onClick={() => (design.id ? void handleCreateCanvaExport(design.id) : undefined)}
-                      disabled={!design.id || canvaExportBusyId === design.id}
-                    >
-                      {canvaExportBusyId === design.id ? "Exporting..." : "Export"}
-                    </Button>
-                    {design.id && canvaExportStatus[design.id]?.status ? (
-                      <span className="text-xs text-muted-foreground">Export: {canvaExportStatus[design.id]?.status}</span>
-                    ) : null}
-                    {design.id && canvaExportStatus[design.id]?.urls?.[0] ? (
-                      <a
-                        href={canvaExportStatus[design.id]?.urls?.[0] || "#"}
-                        target="_blank"
-                        rel="noreferrer"
-                        className="inline-flex items-center gap-1 text-xs text-primary hover:underline"
-                      >
-                        Download
-                        <ExternalLink className="h-3.5 w-3.5" />
-                      </a>
-                    ) : null}
-                  </div>
-                </article>
-              );
-            })}
+                      ) : null}
+                    </div>
+                  </article>
+                );
+              })}
             </div>
 
             <aside className="rounded-md border border-border p-3">
-              <p className="text-sm font-medium">Design Detail</p>
-              {selectedCanvaDesignLoading ? (
-                <div className="flex min-h-[120px] items-center justify-center">
-                  <Loader2 className="h-5 w-5 animate-spin text-muted-foreground" />
-                </div>
-              ) : null}
-              {selectedCanvaDesignError ? <p className="mt-2 text-xs text-destructive">{selectedCanvaDesignError}</p> : null}
-              {!selectedCanvaDesignLoading && !selectedCanvaDesignError && selectedCanvaDesign ? (
-                <div className="mt-3 space-y-2 text-sm">
-                  <p className="font-medium">{String(selectedCanvaDesign.title || "Untitled design")}</p>
-                  <p className="text-xs text-muted-foreground">ID: {String(selectedCanvaDesign.id || "-")}</p>
-                  {"updated_at" in selectedCanvaDesign ? (
-                    <p className="text-xs text-muted-foreground">Updated: {formatDate(String(selectedCanvaDesign.updated_at || ""))}</p>
-                  ) : null}
-                  {"thumbnail_url" in selectedCanvaDesign && typeof selectedCanvaDesign.thumbnail_url === "string" && selectedCanvaDesign.thumbnail_url ? (
-                    <a href={selectedCanvaDesign.thumbnail_url} target="_blank" rel="noreferrer" className="inline-flex items-center gap-1 text-xs text-primary hover:underline">
-                      Open thumbnail
-                      <ExternalLink className="h-3.5 w-3.5" />
-                    </a>
-                  ) : null}
-                  {selectedCanvaDesignId && canvaExportHistory[selectedCanvaDesignId]?.length ? (
-                    <div className="pt-2">
-                      <p className="text-xs font-medium">Recent exports</p>
-                      <div className="mt-2 space-y-2">
-                        {canvaExportHistory[selectedCanvaDesignId].map((job, idx) => (
-                          <div key={job.id || `job-${idx}`} className="rounded-md border border-border px-2 py-2 text-xs">
-                            <p>Status: {job.status || "-"}</p>
-                            {job.urls?.[0] ? (
-                              <a href={job.urls[0]} target="_blank" rel="noreferrer" className="mt-1 inline-flex items-center gap-1 text-primary hover:underline">
-                                Download export
-                                <ExternalLink className="h-3.5 w-3.5" />
-                              </a>
-                            ) : null}
-                          </div>
-                        ))}
-                      </div>
+              <p className="text-sm font-medium">Recent connector jobs</p>
+              <p className="mt-1 text-xs text-muted-foreground">Shows recent Canva-related jobs recorded by metel.</p>
+              {canvaServerJobRuns.length > 0 ? (
+                <div className="mt-3 space-y-2">
+                  {canvaServerJobRuns.slice(0, 8).map((job, idx) => (
+                    <div key={job.id || `connector-job-${idx}`} className="rounded-md border border-border px-2 py-2 text-xs">
+                      <p>
+                        {job.job_type || "job"} / {job.status || "-"}
+                      </p>
+                      {job.resource_title ? <p className="mt-1 text-muted-foreground">{job.resource_title}</p> : null}
+                      <p className="mt-1 text-muted-foreground">{formatDate(job.updated_at || job.created_at || null)}</p>
+                      {job.download_urls?.[0] ? (
+                        <a
+                          href={job.download_urls[0]}
+                          target="_blank"
+                          rel="noreferrer"
+                          className="mt-1 inline-flex items-center gap-1 text-primary hover:underline"
+                        >
+                          Open result
+                          <ExternalLink className="h-3.5 w-3.5" />
+                        </a>
+                      ) : null}
                     </div>
-                  ) : null}
-                  {canvaServerJobRuns.length > 0 ? (
-                    <div className="pt-2">
-                      <p className="text-xs font-medium">Recent connector jobs</p>
-                      <div className="mt-2 space-y-2">
-                        {canvaServerJobRuns.slice(0, 5).map((job, idx) => (
-                          <div key={job.id || `connector-job-${idx}`} className="rounded-md border border-border px-2 py-2 text-xs">
-                            <p>
-                              {job.job_type || "job"} / {job.status || "-"}
-                            </p>
-                            <p className="mt-1 text-muted-foreground">{formatDate(job.updated_at || job.created_at || null)}</p>
-                          </div>
-                        ))}
-                      </div>
-                    </div>
-                  ) : null}
+                  ))}
                 </div>
-              ) : null}
-              {!selectedCanvaDesignLoading && !selectedCanvaDesignError && !selectedCanvaDesign ? (
-                <p className="mt-2 text-sm text-muted-foreground">Choose a design to inspect details and recent exports.</p>
-              ) : null}
+              ) : (
+                <p className="mt-2 text-sm text-muted-foreground">No Canva connector jobs recorded yet.</p>
+              )}
             </aside>
           </div>
         ) : null}

@@ -23,6 +23,8 @@ import { buildNextPath, dashboardApiGet, dashboardApiRequest } from "../../../..
 import StatusBadge from "../../../../../components/dashboard-v2/status-badge";
 import PageTitleWithTooltip from "@/components/dashboard-v2/page-title-with-tooltip";
 
+const BASIC_ALLOWED_SERVICES = ["notion", "linear", "github", "canva"] as const;
+
 type ApiKeyItem = {
   id: number;
   name: string;
@@ -180,7 +182,9 @@ function buildPolicyFromBasic(
   linearTeamIdsCsv: string
 ): Record<string, unknown> | null {
   const policy: Record<string, unknown> = {};
-  const services = allowedServices.map((item) => item.trim().toLowerCase()).filter((item) => item === "notion" || item === "linear" || item === "github");
+  const services = allowedServices
+    .map((item) => item.trim().toLowerCase())
+    .filter((item) => BASIC_ALLOWED_SERVICES.includes(item as (typeof BASIC_ALLOWED_SERVICES)[number]));
   if (services.length > 0) {
     policy.allowed_services = Array.from(new Set(services));
   }
@@ -691,39 +695,19 @@ export default function DashboardApiKeysPage() {
                     <div className="rounded-md border border-border p-2">
                       <p className="text-xs font-medium text-muted-foreground">Allowed services</p>
                       <div className="mt-2 flex items-center gap-3">
-                        <label className="inline-flex items-center gap-2 text-xs">
-                          <Checkbox
-                            checked={createPolicyAllowedServices.includes("notion")}
-                            onCheckedChange={(checked) =>
-                              setCreatePolicyAllowedServices((prev) =>
-                                checked ? Array.from(new Set([...prev, "notion"])) : prev.filter((item) => item !== "notion")
-                              )
-                            }
-                          />
-                          notion
-                        </label>
-                        <label className="inline-flex items-center gap-2 text-xs">
-                          <Checkbox
-                            checked={createPolicyAllowedServices.includes("linear")}
-                            onCheckedChange={(checked) =>
-                              setCreatePolicyAllowedServices((prev) =>
-                                checked ? Array.from(new Set([...prev, "linear"])) : prev.filter((item) => item !== "linear")
-                              )
-                            }
-                          />
-                          linear
-                        </label>
-                        <label className="inline-flex items-center gap-2 text-xs">
-                          <Checkbox
-                            checked={createPolicyAllowedServices.includes("github")}
-                            onCheckedChange={(checked) =>
-                              setCreatePolicyAllowedServices((prev) =>
-                                checked ? Array.from(new Set([...prev, "github"])) : prev.filter((item) => item !== "github")
-                              )
-                            }
-                          />
-                          github
-                        </label>
+                        {BASIC_ALLOWED_SERVICES.map((service) => (
+                          <label key={`api-key-policy-service-${service}`} className="inline-flex items-center gap-2 text-xs">
+                            <Checkbox
+                              checked={createPolicyAllowedServices.includes(service)}
+                              onCheckedChange={(checked) =>
+                                setCreatePolicyAllowedServices((prev) =>
+                                  checked ? Array.from(new Set([...prev, service])) : prev.filter((item) => item !== service)
+                                )
+                              }
+                            />
+                            {service}
+                          </label>
+                        ))}
                       </div>
                     </div>
 

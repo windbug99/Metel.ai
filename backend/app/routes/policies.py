@@ -14,7 +14,7 @@ from app.core.error_codes import ERR_ACCESS_DENIED, ERR_POLICY_BLOCKED, ERR_SERV
 from app.core.risk_gate import evaluate_risk_with_policy
 
 router = APIRouter(prefix="/api/policies", tags=["policies"])
-_PHASE1_SERVICES = {"notion", "linear", "github"}
+_PHASE1_SERVICES = {"notion", "linear", "github", "canva"}
 
 
 class SimulatePolicyRequest(BaseModel):
