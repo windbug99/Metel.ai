@@ -10,6 +10,7 @@ from app.routes.admin import (
     IncidentBannerRevisionCreateRequest,
     IncidentBannerRevisionReviewRequest,
     IncidentBannerUpdateRequest,
+    _save_incident_banner_record,
     connector_diagnostics,
     create_incident_banner_revision,
     list_incident_banner_revisions,
@@ -197,6 +198,120 @@ def test_update_incident_banner_rejects_invalid_severity(monkeypatch):
         assert exc.detail == "invalid_severity"
     else:
         assert False, "expected HTTPException"
+
+
+def test_save_incident_banner_record_updates_existing_org_row():
+    class _Query:
+        def __init__(self, table_name: str, state: dict):
+            self.table_name = table_name
+            self.state = state
+            self.filters: dict[str, object] = {}
+            self.payload: dict | None = None
+            self.action = "select"
+
+        def select(self, *_args, **_kwargs):
+            self.action = "select"
+            return self
+
+        def eq(self, key: str, value):
+            self.filters[key] = value
+            return self
+
+        def limit(self, *_args, **_kwargs):
+            return self
+
+        def update(self, payload: dict):
+            self.action = "update"
+            self.payload = payload
+            return self
+
+        def insert(self, payload: dict):
+            self.action = "insert"
+            self.payload = payload
+            return self
+
+        def execute(self):
+            if self.table_name != "incident_banners":
+                return SimpleNamespace(data=[])
+            if self.action == "select":
+                if self.filters.get("organization_id") == 1:
+                    return SimpleNamespace(data=[{"id": 77, "organization_id": 1, "user_id": "user-1"}])
+                return SimpleNamespace(data=[])
+            if self.action == "update":
+                self.state["updated"] = {"filters": dict(self.filters), "payload": dict(self.payload or {})}
+                return SimpleNamespace(data=[self.payload])
+            if self.action == "insert":
+                self.state["inserted"] = dict(self.payload or {})
+                return SimpleNamespace(data=[self.payload])
+            return SimpleNamespace(data=[])
+
+    class _Client:
+        def __init__(self):
+            self.state: dict[str, object] = {}
+
+        def table(self, table_name: str):
+            return _Query(table_name, self.state)
+
+    client = _Client()
+    _save_incident_banner_record(
+        supabase=client,
+        organization_id=1,
+        user_id="user-1",
+        payload={"organization_id": 1, "user_id": "user-1", "enabled": True, "severity": "info"},
+    )
+    assert client.state["updated"]["filters"]["id"] == 77
+    assert client.state["updated"]["payload"]["severity"] == "info"
+
+
+def test_save_incident_banner_record_inserts_when_missing():
+    class _Query:
+        def __init__(self, table_name: str, state: dict):
+            self.table_name = table_name
+            self.state = state
+            self.action = "select"
+            self.payload: dict | None = None
+
+        def select(self, *_args, **_kwargs):
+            self.action = "select"
+            return self
+
+        def eq(self, *_args, **_kwargs):
+            return self
+
+        def limit(self, *_args, **_kwargs):
+            return self
+
+        def update(self, payload: dict):
+            self.action = "update"
+            self.payload = payload
+            return self
+
+        def insert(self, payload: dict):
+            self.action = "insert"
+            self.payload = payload
+            return self
+
+        def execute(self):
+            if self.action == "insert":
+                self.state["inserted"] = dict(self.payload or {})
+                return SimpleNamespace(data=[self.payload])
+            return SimpleNamespace(data=[])
+
+    class _Client:
+        def __init__(self):
+            self.state: dict[str, object] = {}
+
+        def table(self, table_name: str):
+            return _Query(table_name, self.state)
+
+    client = _Client()
+    _save_incident_banner_record(
+        supabase=client,
+        organization_id=1,
+        user_id="user-1",
+        payload={"organization_id": 1, "user_id": "user-1", "enabled": True, "severity": "info"},
+    )
+    assert client.state["inserted"]["organization_id"] == 1
 
 
 def test_create_incident_banner_revision_returns_item(monkeypatch):

@@ -87,6 +87,41 @@ def _resolve_incident_org_id(request: Request, authz_ctx, *, require_value: bool
     return None
 
 
+def _save_incident_banner_record(*, supabase, organization_id: int | None, user_id: str, payload: dict[str, Any]) -> None:
+    existing: list[dict[str, Any]] = []
+    if organization_id is not None:
+        try:
+            existing = (
+                supabase.table("incident_banners")
+                .select("id,organization_id,user_id")
+                .eq("organization_id", organization_id)
+                .limit(1)
+                .execute()
+            ).data or []
+        except Exception:
+            existing = []
+    if not existing:
+        try:
+            existing = (
+                supabase.table("incident_banners")
+                .select("id,organization_id,user_id")
+                .eq("user_id", user_id)
+                .limit(1)
+                .execute()
+            ).data or []
+        except Exception:
+            existing = []
+
+    if existing:
+        row_id = existing[0].get("id")
+        if row_id is None:
+            raise HTTPException(status_code=500, detail="incident_banner_row_missing_id")
+        supabase.table("incident_banners").update(payload).eq("id", row_id).execute()
+        return
+
+    supabase.table("incident_banners").insert(payload).execute()
+
+
 @router.get("/connectors/diagnostics")
 async def connector_diagnostics(request: Request):
     user_id = await get_authenticated_user_id(request)
@@ -307,10 +342,12 @@ async def update_incident_banner(request: Request, body: IncidentBannerUpdateReq
         "ends_at": ends_at,
         "updated_at": datetime.now(timezone.utc).isoformat(),
     }
-    try:
-        supabase.table("incident_banners").upsert(payload, on_conflict="organization_id").execute()
-    except Exception:
-        supabase.table("incident_banners").upsert(payload, on_conflict="user_id").execute()
+    _save_incident_banner_record(
+        supabase=supabase,
+        organization_id=organization_id,
+        user_id=user_id,
+        payload=payload,
+    )
     return payload
 
 
@@ -432,14 +469,10 @@ async def review_incident_banner_revision(request: Request, revision_id: str, bo
             "ends_at": revision.get("ends_at"),
             "updated_at": now,
         }
-        try:
-            supabase.table("incident_banners").upsert(
-                payload,
-                on_conflict="organization_id",
-            ).execute()
-        except Exception:
-            supabase.table("incident_banners").upsert(
-                payload,
-                on_conflict="user_id",
-            ).execute()
+        _save_incident_banner_record(
+            supabase=supabase,
+            organization_id=int(payload["organization_id"]) if payload.get("organization_id") is not None else None,
+            user_id=str(payload["user_id"]),
+            payload=payload,
+        )
     return {"ok": True, "status": status}
