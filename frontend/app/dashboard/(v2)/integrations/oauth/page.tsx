@@ -184,6 +184,14 @@ export default function DashboardOAuthConnectionsPage() {
   const router = useRouter();
   const searchParams = useSearchParams();
   const scope = useMemo(() => resolveDashboardScope(searchParams), [searchParams]);
+  const oauthErrorMessage = useMemo(() => {
+    const raw = searchParams.get("oauth_error");
+    return raw ? raw.trim() : "";
+  }, [searchParams]);
+  const oauthNotice = useMemo(() => {
+    const raw = searchParams.get("oauth_notice");
+    return raw ? raw.trim() : "";
+  }, [searchParams]);
 
   const [notionStatus, setNotionStatus] = useState<OAuthStatus | null>(null);
   const [linearStatus, setLinearStatus] = useState<OAuthStatus | null>(null);
@@ -680,6 +688,16 @@ export default function DashboardOAuthConnectionsPage() {
         tooltip="Connect or disconnect personal Notion, Linear, GitHub, and Canva accounts."
       />
       <p className="text-sm text-muted-foreground">Connect Notion, Linear, GitHub, and Canva to expose MCP tools.</p>
+      {oauthErrorMessage ? (
+        <div className="rounded-md border border-destructive/40 bg-destructive/10 px-3 py-2 text-sm text-destructive">
+          {oauthErrorMessage}
+        </div>
+      ) : null}
+      {!oauthErrorMessage && oauthNotice ? (
+        <div className="rounded-md border border-border bg-accent/40 px-3 py-2 text-sm text-muted-foreground">
+          {oauthNotice}
+        </div>
+      ) : null}
 
       <div className="ds-card space-y-3 p-4">
         {statusLoading ? (

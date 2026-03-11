@@ -4,7 +4,7 @@ import base64
 import hashlib
 import secrets
 from datetime import datetime, timedelta, timezone
-from urllib.parse import urlencode
+from urllib.parse import urlencode, quote_plus
 
 import httpx
 from fastapi import APIRouter, HTTPException, Request
@@ -37,6 +37,11 @@ def _frontend_dashboard_url(raw_frontend_url: str, query: str) -> str:
     if not base.startswith(("http://", "https://")):
         raise HTTPException(status_code=500, detail="FRONTEND_URL is invalid. Expected absolute http(s) URL.")
     return f"{base.rstrip('/')}/dashboard/integrations/oauth?{query}"
+
+
+def _frontend_oauth_error_url(raw_frontend_url: str, message: str) -> str:
+    normalized = str(message or "").strip() or "Canva OAuth callback is missing required parameters."
+    return _frontend_dashboard_url(raw_frontend_url, f"canva=error&oauth_error={quote_plus(normalized)}")
 
 
 def _validate_canva_settings() -> None:
@@ -317,16 +322,39 @@ async def canva_oauth_start(request: Request):
 
 
 @router.get("/callback")
-async def canva_oauth_callback(code: str, state: str):
+async def canva_oauth_callback(
+    code: str | None = None,
+    state: str | None = None,
+    error: str | None = None,
+    error_description: str | None = None,
+):
     _validate_canva_settings()
     settings = get_settings()
 
-    user_id = verify_state(state=state, secret=settings.canva_state_secret or "")
+    if error:
+        detail = str(error_description or error).strip() or "Canva OAuth authorization failed."
+        return RedirectResponse(
+            url=_frontend_oauth_error_url(settings.frontend_url, detail),
+            status_code=302,
+        )
+
+    normalized_code = str(code or "").strip()
+    normalized_state = str(state or "").strip()
+    if not normalized_code or not normalized_state:
+        return RedirectResponse(
+            url=_frontend_oauth_error_url(
+                settings.frontend_url,
+                "Canva OAuth callback is missing required code/state parameters. Verify the authorized redirect URI in Canva Developer Portal.",
+            ),
+            status_code=302,
+        )
+
+    user_id = verify_state(state=normalized_state, secret=settings.canva_state_secret or "")
     if not user_id:
         raise HTTPException(status_code=400, detail="Invalid or expired state")
 
     supabase = create_client(settings.supabase_url, settings.supabase_service_role_key)
-    code_verifier = _consume_pkce_verifier(supabase=supabase, state=state)
+    code_verifier = _consume_pkce_verifier(supabase=supabase, state=normalized_state)
     if not code_verifier:
         existing = (
             supabase.table("oauth_tokens")
@@ -349,7 +377,7 @@ async def canva_oauth_callback(code: str, state: str):
             headers={"Content-Type": "application/x-www-form-urlencoded"},
             data={
                 "grant_type": "authorization_code",
-                "code": code,
+                "code": normalized_code,
                 "redirect_uri": settings.canva_redirect_uri,
                 "client_id": settings.canva_client_id,
                 "client_secret": settings.canva_client_secret,
