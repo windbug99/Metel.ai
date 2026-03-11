@@ -320,7 +320,20 @@ Canva에서 사용자 관련 이벤트를 실시간으로 받을 수 있다.
 
 현재 저장소에 구현된 Canva 기능 전체를 쓰려면 `CANVA_SCOPES` 를 아래처럼 맞추는 것이 기준값이다.
 
-`profile:read design:meta:read design:content:read design:content:write asset:read asset:write comment:read comment:write brandtemplate:meta:read brandtemplate:content:read folder:read folder:write`
+기본 연결 성공 우선 권장값:
+
+`profile:read design:meta:read design:content:read design:content:write asset:read asset:write folder:read folder:write`
+
+제한 기능 scope:
+
+`comment:read comment:write brandtemplate:meta:read brandtemplate:content:read`
+
+주의:
+
+- `comments` 는 preview 성격이 강하다.
+- `brand templates` 는 Enterprise/plan 제한이 있을 수 있다.
+- 위 제한 scope를 현재 Canva client가 허용하지 않으면 OAuth 전체가 `Requested scopes are not allowed for this client.` 로 실패한다.
+- 따라서 운영 기본값은 제한 scope를 OAuth 연결에서 제외하고, client entitlement가 확인된 경우에만 별도 활성화하는 편이 안전하다.
 
 기능 매핑:
 

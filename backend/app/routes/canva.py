@@ -20,6 +20,12 @@ from app.security.token_vault import TokenVault
 
 router = APIRouter(prefix="/api/oauth/canva", tags=["canva-oauth"])
 CANVA_DEFAULT_OAUTH_SCOPES = ("profile:read", "design:meta:read")
+CANVA_RESTRICTED_OAUTH_SCOPES = {
+    "comment:read",
+    "comment:write",
+    "brandtemplate:meta:read",
+    "brandtemplate:content:read",
+}
 
 
 class CanvaDesignCreateRequest(BaseModel):
@@ -114,7 +120,11 @@ def _canva_requested_scope_text() -> str:
     settings = get_settings()
     configured = [item.strip() for item in str(settings.canva_scopes or "").split(" ") if item.strip()]
     if configured:
-        return " ".join(dict.fromkeys(configured))
+        normalized = list(dict.fromkeys(configured))
+        if not settings.canva_request_restricted_scopes:
+            normalized = [scope for scope in normalized if scope not in CANVA_RESTRICTED_OAUTH_SCOPES]
+        if normalized:
+            return " ".join(normalized)
     return " ".join(CANVA_DEFAULT_OAUTH_SCOPES)
 
 
@@ -132,6 +142,43 @@ def _match_canva_folder_item(item: dict, query: str) -> bool:
     else:
         label = ""
     return normalized_query in label
+
+
+def _granted_scope_set(row: dict | None) -> set[str]:
+    raw = row.get("granted_scopes") if isinstance(row, dict) else None
+    if isinstance(raw, list):
+        return {str(item).strip() for item in raw if str(item).strip()}
+    if isinstance(raw, str):
+        return {item.strip() for item in raw.split(" ") if item.strip()}
+    return set()
+
+
+async def _require_canva_token_row(user_id: str) -> tuple[str, dict]:
+    settings = get_settings()
+    supabase = create_client(settings.supabase_url, settings.supabase_service_role_key)
+    row = _load_canva_oauth_row(supabase=supabase, user_id=user_id)
+    if not row:
+        raise HTTPException(status_code=400, detail="Canva가 연결되어 있지 않습니다. 먼저 연동을 완료해주세요.")
+    row = await _refresh_canva_access_token_if_needed(supabase=supabase, row=row)
+    encrypted = str((row or {}).get("access_token_encrypted") or "").strip()
+    if not encrypted:
+        raise HTTPException(status_code=500, detail="저장된 Canva 토큰을 찾을 수 없습니다.")
+    return _token_vault().decrypt(encrypted), row
+
+
+async def _require_canva_scopes(user_id: str, required_scopes: set[str]) -> str:
+    access_token, row = await _require_canva_token_row(user_id)
+    granted = _granted_scope_set(row)
+    missing = sorted(scope for scope in required_scopes if scope not in granted)
+    if missing:
+        raise HTTPException(
+            status_code=400,
+            detail=(
+                "Canva client does not currently grant the required scopes for this feature. "
+                f"Missing scopes: {', '.join(missing)}"
+            ),
+        )
+    return access_token
 
 
 def _build_pkce_verifier() -> str:
@@ -334,16 +381,8 @@ def _serialize_canva_integration(row: dict | None) -> dict | None:
 
 
 async def _require_canva_access_token(user_id: str) -> str:
-    settings = get_settings()
-    supabase = create_client(settings.supabase_url, settings.supabase_service_role_key)
-    row = _load_canva_oauth_row(supabase=supabase, user_id=user_id)
-    if not row:
-        raise HTTPException(status_code=400, detail="Canva가 연결되어 있지 않습니다. 먼저 연동을 완료해주세요.")
-    row = await _refresh_canva_access_token_if_needed(supabase=supabase, row=row)
-    encrypted = str((row or {}).get("access_token_encrypted") or "").strip()
-    if not encrypted:
-        raise HTTPException(status_code=500, detail="저장된 Canva 토큰을 찾을 수 없습니다.")
-    return _token_vault().decrypt(encrypted)
+    access_token, _row = await _require_canva_token_row(user_id)
+    return access_token
 
 
 async def load_canva_access_token_for_user(user_id: str) -> str:
@@ -822,7 +861,7 @@ async def canva_resize_get(request: Request, job_id: str):
 @router.post("/designs/{design_id}/comments")
 async def canva_comment_thread_create(request: Request, design_id: str, body: CanvaCommentThreadCreateRequest):
     user_id = await get_authenticated_user_id(request)
-    access_token = await _require_canva_access_token(user_id)
+    access_token = await _require_canva_scopes(user_id, {"comment:write"})
     json_body = {
         "message_plaintext": body.message_plaintext,
         **({"assignee_id": body.assignee_id} if body.assignee_id else {}),
@@ -845,7 +884,7 @@ async def canva_comment_thread_create(request: Request, design_id: str, body: Ca
 @router.get("/designs/{design_id}/comments/{thread_id}")
 async def canva_comment_thread_get(request: Request, design_id: str, thread_id: str):
     user_id = await get_authenticated_user_id(request)
-    access_token = await _require_canva_access_token(user_id)
+    access_token = await _require_canva_scopes(user_id, {"comment:read"})
     payload = await _canva_api_request("GET", f"/designs/{design_id}/comments/{thread_id}", access_token=access_token)
     return {"ok": True, "thread": payload.get("thread") if isinstance(payload.get("thread"), dict) else payload}
 
@@ -853,7 +892,7 @@ async def canva_comment_thread_get(request: Request, design_id: str, thread_id: 
 @router.post("/designs/{design_id}/comments/{thread_id}/replies")
 async def canva_comment_reply_create(request: Request, design_id: str, thread_id: str, body: CanvaCommentReplyCreateRequest):
     user_id = await get_authenticated_user_id(request)
-    access_token = await _require_canva_access_token(user_id)
+    access_token = await _require_canva_scopes(user_id, {"comment:write"})
     json_body = {"message_plaintext": body.message_plaintext}
     payload = await _canva_api_request(
         "POST",
@@ -878,7 +917,7 @@ async def canva_comment_reply_create(request: Request, design_id: str, thread_id
 @router.get("/designs/{design_id}/comments/{thread_id}/replies")
 async def canva_comment_replies_list(request: Request, design_id: str, thread_id: str):
     user_id = await get_authenticated_user_id(request)
-    access_token = await _require_canva_access_token(user_id)
+    access_token = await _require_canva_scopes(user_id, {"comment:read"})
     payload = await _canva_api_request("GET", f"/designs/{design_id}/comments/{thread_id}/replies", access_token=access_token)
     replies = payload.get("replies") if isinstance(payload.get("replies"), list) else []
     return {"ok": True, "count": len(replies), "replies": replies}
@@ -895,7 +934,7 @@ async def canva_brand_templates_list(
     dataset: str | None = None,
 ):
     user_id = await get_authenticated_user_id(request)
-    access_token = await _require_canva_access_token(user_id)
+    access_token = await _require_canva_scopes(user_id, {"brandtemplate:meta:read"})
     params = {"limit": min(max(limit, 1), 100)}
     if query:
         params["query"] = query
@@ -916,7 +955,7 @@ async def canva_brand_templates_list(
 @router.get("/brand-templates/{brand_template_id}")
 async def canva_brand_template_get(request: Request, brand_template_id: str):
     user_id = await get_authenticated_user_id(request)
-    access_token = await _require_canva_access_token(user_id)
+    access_token = await _require_canva_scopes(user_id, {"brandtemplate:meta:read"})
     payload = await _canva_api_request("GET", f"/brand-templates/{brand_template_id}", access_token=access_token)
     return {"ok": True, "brand_template": payload.get("brand_template") if isinstance(payload.get("brand_template"), dict) else payload}
 
@@ -924,7 +963,7 @@ async def canva_brand_template_get(request: Request, brand_template_id: str):
 @router.get("/brand-templates/{brand_template_id}/dataset")
 async def canva_brand_template_dataset_get(request: Request, brand_template_id: str):
     user_id = await get_authenticated_user_id(request)
-    access_token = await _require_canva_access_token(user_id)
+    access_token = await _require_canva_scopes(user_id, {"brandtemplate:content:read"})
     payload = await _canva_api_request("GET", f"/brand-templates/{brand_template_id}/dataset", access_token=access_token)
     return {"ok": True, "dataset": payload.get("dataset") if isinstance(payload.get("dataset"), dict) else payload}
 
