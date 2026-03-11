@@ -166,6 +166,39 @@ export default function DashboardAdminOpsPage() {
     router.replace(`/?next=${next}`);
   }, [pathname, router]);
 
+  const refreshIncidentBannerSection = useCallback(
+    async (resolvedOrgId: number | null) => {
+      const incidentBannerPath = `/api/admin/incident-banner${resolvedOrgId !== null ? `?organization_id=${resolvedOrgId}` : ""}`;
+      const incidentRevisionPath = `/api/admin/incident-banner/revisions?limit=20${resolvedOrgId !== null ? `&organization_id=${resolvedOrgId}` : ""}`;
+      const [incidentRes, incidentRevisionsRes] = await Promise.all([
+        dashboardApiGet<IncidentBanner>(incidentBannerPath),
+        dashboardApiGet<{ items?: IncidentBannerRevisionItem[] }>(incidentRevisionPath),
+      ]);
+
+      if (incidentRes.status === 401 || incidentRevisionsRes.status === 401) {
+        handle401();
+        return { ok: false as const, unauthorized: true as const };
+      }
+
+      if (!incidentRes.ok || !incidentRevisionsRes.ok || !incidentRes.data || !incidentRevisionsRes.data) {
+        return {
+          ok: false as const,
+          error: incidentRes.error ?? incidentRevisionsRes.error ?? "Failed to load incident banner data.",
+        };
+      }
+
+      setIncidentBanner(incidentRes.data);
+      setIncidentRevisions(Array.isArray(incidentRevisionsRes.data.items) ? incidentRevisionsRes.data.items : []);
+      setIncidentEnabledDraft(Boolean(incidentRes.data.enabled));
+      setIncidentSeverityDraft((incidentRes.data.severity ?? "info") as "info" | "warning" | "critical");
+      setIncidentMessageDraft(incidentRes.data.message ?? "");
+      setIncidentStartsAtDraft(incidentRes.data.starts_at ? incidentRes.data.starts_at.slice(0, 10) : "");
+      setIncidentEndsAtDraft(incidentRes.data.ends_at ? incidentRes.data.ends_at.slice(0, 10) : "");
+      return { ok: true as const };
+    },
+    [handle401]
+  );
+
   const fetchAdminOps = useCallback(async () => {
     setLoading(true);
     setError(null);
@@ -201,32 +234,23 @@ export default function DashboardAdminOpsPage() {
       return;
     }
 
-    const incidentBannerPath = `/api/admin/incident-banner${resolvedOrgId !== null ? `?organization_id=${resolvedOrgId}` : ""}`;
-    const incidentRevisionPath = `/api/admin/incident-banner/revisions?limit=20${resolvedOrgId !== null ? `&organization_id=${resolvedOrgId}` : ""}`;
-
     const [
       diagnosticsRes,
       rateLimitRes,
       healthRes,
       externalHealthRes,
-      incidentRes,
-      incidentRevisionsRes,
     ] = await Promise.all([
       dashboardApiGet<{ items?: ConnectorDiagnosticItem[] }>("/api/admin/connectors/diagnostics"),
       dashboardApiGet<{ items?: RateLimitEventItem[] }>("/api/admin/rate-limit-events?days=7&limit=20"),
       dashboardApiGet<SystemHealthPayload>("/api/admin/system-health"),
       dashboardApiGet<{ items?: ExternalHealthItem[] }>("/api/admin/external-health?days=1"),
-      dashboardApiGet<IncidentBanner>(incidentBannerPath),
-      dashboardApiGet<{ items?: IncidentBannerRevisionItem[] }>(incidentRevisionPath),
     ]);
 
     if (
       diagnosticsRes.status === 401 ||
       rateLimitRes.status === 401 ||
       healthRes.status === 401 ||
-      externalHealthRes.status === 401 ||
-      incidentRes.status === 401 ||
-      incidentRevisionsRes.status === 401
+      externalHealthRes.status === 401
     ) {
       handle401();
       setLoading(false);
@@ -238,16 +262,18 @@ export default function DashboardAdminOpsPage() {
       !rateLimitRes.ok ||
       !healthRes.ok ||
       !externalHealthRes.ok ||
-      !incidentRes.ok ||
-      !incidentRevisionsRes.ok ||
       !diagnosticsRes.data ||
       !rateLimitRes.data ||
       !healthRes.data ||
-      !externalHealthRes.data ||
-      !incidentRes.data ||
-      !incidentRevisionsRes.data
+      !externalHealthRes.data
     ) {
-      setError("Failed to load admin diagnostics.");
+      setError(
+        diagnosticsRes.error ??
+          rateLimitRes.error ??
+          healthRes.error ??
+          externalHealthRes.error ??
+          "Failed to load admin diagnostics."
+      );
       setLoading(false);
       return;
     }
@@ -256,17 +282,13 @@ export default function DashboardAdminOpsPage() {
     setRateLimitEvents(Array.isArray(rateLimitRes.data.items) ? rateLimitRes.data.items : []);
     setSystemHealth(healthRes.data);
     setExternalHealth(Array.isArray(externalHealthRes.data.items) ? externalHealthRes.data.items : []);
-
-    setIncidentBanner(incidentRes.data);
-    setIncidentRevisions(Array.isArray(incidentRevisionsRes.data.items) ? incidentRevisionsRes.data.items : []);
-    setIncidentEnabledDraft(Boolean(incidentRes.data.enabled));
-    setIncidentSeverityDraft((incidentRes.data.severity ?? "info") as "info" | "warning" | "critical");
-    setIncidentMessageDraft(incidentRes.data.message ?? "");
-    setIncidentStartsAtDraft(incidentRes.data.starts_at ? incidentRes.data.starts_at.slice(0, 10) : "");
-    setIncidentEndsAtDraft(incidentRes.data.ends_at ? incidentRes.data.ends_at.slice(0, 10) : "");
+    const incidentResult = await refreshIncidentBannerSection(resolvedOrgId);
+    if (!incidentResult.ok && !incidentResult.unauthorized) {
+      setError(incidentResult.error ?? "Failed to load incident banner data.");
+    }
 
     setLoading(false);
-  }, [handle401, searchParams]);
+  }, [handle401, refreshIncidentBannerSection, searchParams]);
 
   const handleSaveIncidentBanner = useCallback(async () => {
     setIncidentSaving(true);
@@ -299,9 +321,12 @@ export default function DashboardAdminOpsPage() {
       return;
     }
 
-    await fetchAdminOps();
+    const incidentResult = await refreshIncidentBannerSection(activeOrgId);
+    if (!incidentResult.ok && !incidentResult.unauthorized) {
+      setError(incidentResult.error ?? "Incident banner was saved, but reloading the banner failed.");
+    }
     setIncidentSaving(false);
-  }, [activeOrgId, fetchAdminOps, handle401, incidentEnabledDraft, incidentEndsAtDraft, incidentMessageDraft, incidentSeverityDraft, incidentStartsAtDraft]);
+  }, [activeOrgId, handle401, incidentEnabledDraft, incidentEndsAtDraft, incidentMessageDraft, incidentSeverityDraft, incidentStartsAtDraft, refreshIncidentBannerSection]);
 
   const handleCreateIncidentBannerRevision = useCallback(async () => {
     setIncidentRevisionSaving(true);
@@ -334,9 +359,12 @@ export default function DashboardAdminOpsPage() {
       return;
     }
 
-    await fetchAdminOps();
+    const incidentResult = await refreshIncidentBannerSection(activeOrgId);
+    if (!incidentResult.ok && !incidentResult.unauthorized) {
+      setError(incidentResult.error ?? "Revision was created, but reloading the banner failed.");
+    }
     setIncidentRevisionSaving(false);
-  }, [activeOrgId, fetchAdminOps, handle401, incidentEnabledDraft, incidentEndsAtDraft, incidentMessageDraft, incidentSeverityDraft, incidentStartsAtDraft]);
+  }, [activeOrgId, handle401, incidentEnabledDraft, incidentEndsAtDraft, incidentMessageDraft, incidentSeverityDraft, incidentStartsAtDraft, refreshIncidentBannerSection]);
 
   const handleReviewIncidentBannerRevision = useCallback(
     async (revisionId: number, decision: "approve" | "reject") => {
@@ -364,10 +392,13 @@ export default function DashboardAdminOpsPage() {
         return;
       }
 
-      await fetchAdminOps();
+      const incidentResult = await refreshIncidentBannerSection(activeOrgId);
+      if (!incidentResult.ok && !incidentResult.unauthorized) {
+        setError(incidentResult.error ?? "Revision was reviewed, but reloading the banner failed.");
+      }
       setIncidentRevisionReviewLoadingId(null);
     },
-    [activeOrgId, fetchAdminOps, handle401]
+    [activeOrgId, handle401, refreshIncidentBannerSection]
   );
 
   useEffect(() => {
