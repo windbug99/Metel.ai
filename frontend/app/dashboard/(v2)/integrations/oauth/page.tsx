@@ -4,7 +4,7 @@ import Image from "next/image";
 import { Button } from "@/components/ui/button";
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { usePathname, useRouter, useSearchParams } from "next/navigation";
-import { ExternalLink, Loader2, RefreshCw } from "lucide-react";
+import { Loader2 } from "lucide-react";
 
 import { buildNextPath, dashboardApiGet, dashboardApiRequest } from "../../../../../lib/dashboard-v2-client";
 import { resolveDashboardScope } from "../../../../../lib/dashboard-scope";
@@ -22,42 +22,6 @@ type OAuthStatus = {
 type OAuthStartPayload = {
   ok: boolean;
   auth_url: string;
-};
-
-type CanvaDesign = {
-  id?: string;
-  title?: string | null;
-  edit_url?: string | null;
-  view_url?: string | null;
-  thumbnail_url?: string | null;
-  updated_at?: string | null;
-};
-
-type CanvaDesignListPayload = {
-  ok: boolean;
-  count: number;
-  designs?: CanvaDesign[];
-  continuation?: string | null;
-};
-
-type ConnectorJobRun = {
-  id?: number;
-  provider?: string;
-  job_type?: string;
-  external_job_id?: string | null;
-  resource_id?: string | null;
-  resource_title?: string | null;
-  status?: string | null;
-  result_payload?: Record<string, unknown> | null;
-  download_urls?: string[] | null;
-  error_message?: string | null;
-  created_at?: string | null;
-  updated_at?: string | null;
-};
-
-type ConnectorJobRunsPayload = {
-  items?: ConnectorJobRun[];
-  count?: number;
 };
 
 type OrganizationOAuthPolicy = {
@@ -217,10 +181,6 @@ export default function DashboardOAuthConnectionsPage() {
   const [blockedDraft, setBlockedDraft] = useState<string[]>([]);
   const [savingPolicy, setSavingPolicy] = useState(false);
   const [policySaveMessage, setPolicySaveMessage] = useState<string | null>(null);
-  const [canvaDesigns, setCanvaDesigns] = useState<CanvaDesign[]>([]);
-  const [canvaDesignsLoading, setCanvaDesignsLoading] = useState(false);
-  const [canvaDesignsError, setCanvaDesignsError] = useState<string | null>(null);
-  const [canvaServerJobRuns, setCanvaServerJobRuns] = useState<ConnectorJobRun[]>([]);
 
   const handle401 = useCallback(() => {
     const next = encodeURIComponent(buildNextPath(pathname, window.location.search));
@@ -313,47 +273,6 @@ export default function DashboardOAuthConnectionsPage() {
     setPolicySaveMessage(null);
     setPolicyLoading(false);
   }, [handle401, scope.organizationId, scope.scope]);
-
-  const fetchCanvaDesigns = useCallback(async () => {
-    if (scope.scope !== "user" || !canvaStatus?.connected) {
-      setCanvaDesigns([]);
-      setCanvaDesignsError(null);
-      return;
-    }
-    setCanvaDesignsLoading(true);
-    setCanvaDesignsError(null);
-    const res = await dashboardApiGet<CanvaDesignListPayload>("/api/oauth/canva/designs?limit=5&sort_by=modified_descending");
-    if (res.status === 401) {
-      handle401();
-      setCanvaDesignsLoading(false);
-      return;
-    }
-    if (!res.ok || !res.data) {
-      setCanvaDesigns([]);
-      setCanvaDesignsError(res.error ?? "Failed to load Canva designs.");
-      setCanvaDesignsLoading(false);
-      return;
-    }
-    setCanvaDesigns(Array.isArray(res.data.designs) ? res.data.designs : []);
-    setCanvaDesignsLoading(false);
-  }, [canvaStatus?.connected, handle401, scope.scope]);
-
-  const fetchCanvaJobRuns = useCallback(async () => {
-    if (scope.scope !== "user" || !canvaStatus?.connected) {
-      setCanvaServerJobRuns([]);
-      return;
-    }
-    const res = await dashboardApiGet<ConnectorJobRunsPayload>("/api/connector-jobs?provider=canva&limit=50");
-    if (res.status === 401) {
-      handle401();
-      return;
-    }
-    if (!res.ok || !Array.isArray(res.data?.items)) {
-      return;
-    }
-    const rows = res.data.items;
-    setCanvaServerJobRuns(rows);
-  }, [canvaStatus?.connected, handle401, scope.scope]);
 
   const setProviderPolicyState = useCallback((provider: string, nextState: "allowed" | "required" | "blocked" | "off") => {
     const normalized = String(provider ?? "").trim().toLowerCase();
@@ -517,20 +436,6 @@ export default function DashboardOAuthConnectionsPage() {
     setCanvaError(null);
     void fetchOrgPolicy();
   }, [fetchOrgPolicy, fetchStatus, scope.scope]);
-
-  useEffect(() => {
-    if (scope.scope !== "user") {
-      return;
-    }
-    if (!canvaStatus?.connected) {
-      setCanvaDesigns([]);
-      setCanvaDesignsError(null);
-      setCanvaServerJobRuns([]);
-      return;
-    }
-    void fetchCanvaDesigns();
-    void fetchCanvaJobRuns();
-  }, [canvaStatus?.connected, fetchCanvaDesigns, fetchCanvaJobRuns, scope.scope]);
 
   useEffect(() => {
     const handler = (event: Event) => {
@@ -740,116 +645,6 @@ export default function DashboardOAuthConnectionsPage() {
             />
           </>
         )}
-      </div>
-
-      <div className="ds-card space-y-3 p-4">
-        <div className="flex items-center justify-between gap-3">
-          <div>
-            <p className="text-sm font-medium">Canva Connection Check</p>
-            <p className="text-xs text-muted-foreground">Verify the connection with a small read-only sample of recent designs and the latest connector jobs.</p>
-          </div>
-          <Button
-            type="button"
-            variant="outline"
-            size="sm"
-            onClick={() => void fetchCanvaDesigns()}
-            disabled={!canvaStatus?.connected || canvaDesignsLoading}
-          >
-            {canvaDesignsLoading ? <Loader2 className="h-4 w-4 animate-spin" /> : <RefreshCw className="h-4 w-4" />}
-            Refresh
-          </Button>
-        </div>
-
-        {!canvaStatus?.connected ? (
-          <p className="text-sm text-muted-foreground">Connect Canva first to verify the account and load a recent design sample.</p>
-        ) : null}
-
-        {canvaDesignsError ? (
-          <div className="rounded-md border border-destructive/40 bg-destructive/10 px-3 py-2 text-sm text-destructive">
-            {canvaDesignsError}
-          </div>
-        ) : null}
-
-        {canvaStatus?.connected && canvaDesignsLoading ? (
-          <div className="flex min-h-[96px] items-center justify-center">
-            <Loader2 className="h-5 w-5 animate-spin text-muted-foreground" />
-          </div>
-        ) : null}
-
-        {canvaStatus?.connected && !canvaDesignsLoading && !canvaDesignsError && canvaDesigns.length === 0 ? (
-          <p className="text-sm text-muted-foreground">No recent Canva designs were returned for this account.</p>
-        ) : null}
-
-        {canvaStatus?.connected && (canvaDesigns.length > 0 || canvaServerJobRuns.length > 0) ? (
-          <div className="grid gap-3 lg:grid-cols-[minmax(0,1.1fr)_minmax(280px,0.9fr)]">
-            <div className="space-y-2">
-              <div className="rounded-md border border-border p-3">
-                <p className="text-sm font-medium">Recent design sample</p>
-                <p className="mt-1 text-xs text-muted-foreground">
-                  This is a lightweight connectivity check only. Open Canva for editing or export workflows.
-                </p>
-              </div>
-              {canvaDesigns.map((design, index) => {
-                const href = design.edit_url || design.view_url || null;
-                return (
-                  <article key={design.id || href || `canva-design-${index}`} className="rounded-md border border-border p-3">
-                    <div className="flex items-start justify-between gap-3">
-                      <div className="min-w-0">
-                        <p className="truncate text-sm font-medium">{design.title || "Untitled design"}</p>
-                        <p className="mt-1 text-xs text-muted-foreground">ID: {design.id || "-"}</p>
-                        {design.updated_at ? (
-                          <p className="mt-1 text-xs text-muted-foreground">Updated: {formatDate(design.updated_at)}</p>
-                        ) : null}
-                      </div>
-                      {href ? (
-                        <a
-                          href={href}
-                          target="_blank"
-                          rel="noreferrer"
-                          className="inline-flex h-8 items-center gap-1 rounded-md border border-border px-2 text-xs text-foreground hover:bg-accent"
-                        >
-                          Open in Canva
-                          <ExternalLink className="h-3.5 w-3.5" />
-                        </a>
-                      ) : null}
-                    </div>
-                  </article>
-                );
-              })}
-            </div>
-
-            <aside className="rounded-md border border-border p-3">
-              <p className="text-sm font-medium">Recent connector jobs</p>
-              <p className="mt-1 text-xs text-muted-foreground">Shows recent Canva-related jobs recorded by metel.</p>
-              {canvaServerJobRuns.length > 0 ? (
-                <div className="mt-3 space-y-2">
-                  {canvaServerJobRuns.slice(0, 8).map((job, idx) => (
-                    <div key={job.id || `connector-job-${idx}`} className="rounded-md border border-border px-2 py-2 text-xs">
-                      <p>
-                        {job.job_type || "job"} / {job.status || "-"}
-                      </p>
-                      {job.resource_title ? <p className="mt-1 text-muted-foreground">{job.resource_title}</p> : null}
-                      <p className="mt-1 text-muted-foreground">{formatDate(job.updated_at || job.created_at || null)}</p>
-                      {job.download_urls?.[0] ? (
-                        <a
-                          href={job.download_urls[0]}
-                          target="_blank"
-                          rel="noreferrer"
-                          className="mt-1 inline-flex items-center gap-1 text-primary hover:underline"
-                        >
-                          Open result
-                          <ExternalLink className="h-3.5 w-3.5" />
-                        </a>
-                      ) : null}
-                    </div>
-                  ))}
-                </div>
-              ) : (
-                <p className="mt-2 text-sm text-muted-foreground">No Canva connector jobs recorded yet.</p>
-              )}
-            </aside>
-          </div>
-        ) : null}
       </div>
     </section>
   );
