@@ -273,14 +273,4 @@ Principle: prioritize trust and deterministic behavior over integration count.
 
 ## Docs
 
-- [`docs/overhaul-20260302.md`](docs/overhaul-20260302.md) — source-of-truth plan
 - [`docs/user-guide-initial-setup-and-menu-settings-20260309.md`](docs/user-guide-initial-setup-and-menu-settings-20260309.md) — user guide
-- [`docs/dashboard-menu-structure-improvement-plan-20260307.md`](docs/dashboard-menu-structure-improvement-plan-20260307.md) — dashboard menu structure
-- [`docs/dashboard-ia-navigation-proposal-20260305.md`](docs/dashboard-ia-navigation-proposal-20260305.md) — dashboard IA/routing
-- [`docs/dashboard-design-system-draft-20260305.md`](docs/dashboard-design-system-draft-20260305.md) — design system tokens
-- [`docs/rbac-production-monitoring-log-20260305.md`](docs/rbac-production-monitoring-log-20260305.md) — RBAC monitoring log
-- [`docs/rbac-production-rollout-runbook-20260304.md`](docs/rbac-production-rollout-runbook-20260304.md) — RBAC rollout runbook
-- [`docs/rbac-dashboard-e2e-smoke-checklist-20260304.md`](docs/rbac-dashboard-e2e-smoke-checklist-20260304.md) — RBAC e2e smoke
-- [`docs/phase3-gap-closing-backlog-20260303.md`](docs/phase3-gap-closing-backlog-20260303.md) — phase3 gap closing
-- [`docs/mcp_smoke_test_checklist.md`](docs/mcp_smoke_test_checklist.md) — deploy smoke test
-- [`docs/sql/legacy/README.md`](docs/sql/legacy/README.md) — migration policy
