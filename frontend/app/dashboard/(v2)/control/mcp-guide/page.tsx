@@ -97,6 +97,22 @@ python scripts/check_claude_bridge_tools.py`,
   -H "Authorization: Bearer metel_xxx" \\
   -H "Content-Type: application/json" \\
   -d '{"jsonrpc":"2.0","id":"5","method":"call_tool","params":{"name":"canva_export_create","arguments":{"design_title":"Launch Poster","format":{"type":"pdf"}}}}'`,
+    canvaFolderCreate: `curl -sS "${base}/mcp" \\
+  -H "Authorization: Bearer metel_xxx" \\
+  -H "Content-Type: application/json" \\
+  -d '{"jsonrpc":"2.0","id":"6","method":"call_tool","params":{"name":"canva_folder_create","arguments":{"name":"Campaign Assets","parent_folder_id":"root"}}}'`,
+    canvaImportByUrl: `curl -sS "${base}/mcp" \\
+  -H "Authorization: Bearer metel_xxx" \\
+  -H "Content-Type: application/json" \\
+  -d '{"jsonrpc":"2.0","id":"7","method":"call_tool","params":{"name":"canva_url_import_create","arguments":{"title":"Sales Deck","url":"https://cdn.example.com/deck.pdf","mime_type":"application/pdf"}}}'`,
+    canvaCommentReply: `curl -sS "${base}/mcp" \\
+  -H "Authorization: Bearer metel_xxx" \\
+  -H "Content-Type: application/json" \\
+  -d '{"jsonrpc":"2.0","id":"8","method":"call_tool","params":{"name":"canva_comment_reply_create","arguments":{"design_id":"DESIGN_ID","thread_id":"THREAD_ID","message_plaintext":"Looks good. Please update slide 4."}}}'`,
+    canvaBrandTemplates: `curl -sS "${base}/mcp" \\
+  -H "Authorization: Bearer metel_xxx" \\
+  -H "Content-Type: application/json" \\
+  -d '{"jsonrpc":"2.0","id":"9","method":"call_tool","params":{"name":"canva_brand_templates_list","arguments":{"limit":5,"query":"sales"}}}'`,
   };
 }
 
@@ -105,11 +121,11 @@ export default function DashboardMcpGuidePage() {
   const examples = useMemo(() => buildExamples(apiBaseUrl), [apiBaseUrl]);
 
   const [copyState, setCopyState] = useState<
-    "" | "list_tools" | "call_tool" | "custom_agent_node" | "claude_config" | "claude_check" | "n8n_http" | "n8n_call" | "canva_list" | "canva_create" | "canva_export"
+    "" | "list_tools" | "call_tool" | "custom_agent_node" | "claude_config" | "claude_check" | "n8n_http" | "n8n_call" | "canva_list" | "canva_create" | "canva_export" | "canva_folder" | "canva_import" | "canva_comment" | "canva_brand_templates"
   >("");
 
   const copyText = async (
-    kind: "list_tools" | "call_tool" | "custom_agent_node" | "claude_config" | "claude_check" | "n8n_http" | "n8n_call" | "canva_list" | "canva_create" | "canva_export"
+    kind: "list_tools" | "call_tool" | "custom_agent_node" | "claude_config" | "claude_check" | "n8n_http" | "n8n_call" | "canva_list" | "canva_create" | "canva_export" | "canva_folder" | "canva_import" | "canva_comment" | "canva_brand_templates"
   ) => {
     const text =
       kind === "list_tools"
@@ -130,7 +146,15 @@ export default function DashboardMcpGuidePage() {
                       ? examples.canvaListDesigns
                       : kind === "canva_create"
                         ? examples.canvaCreateDesign
-                        : examples.canvaExportDesign;
+                        : kind === "canva_export"
+                          ? examples.canvaExportDesign
+                          : kind === "canva_folder"
+                            ? examples.canvaFolderCreate
+                            : kind === "canva_import"
+                              ? examples.canvaImportByUrl
+                              : kind === "canva_comment"
+                                ? examples.canvaCommentReply
+                                : examples.canvaBrandTemplates;
     try {
       await navigator.clipboard.writeText(text);
       setCopyState(kind);
@@ -307,6 +331,55 @@ export default function DashboardMcpGuidePage() {
           </div>
           <pre className="overflow-x-auto rounded bg-muted/60 p-3 text-[11px] text-muted-foreground">{examples.canvaExportDesign}</pre>
         </div>
+
+        <div>
+          <div className="mb-2 flex items-center justify-between gap-2">
+            <p className="text-xs font-medium">Create Canva folder</p>
+            <Button type="button" onClick={() => void copyText("canva_folder")} className="ds-btn h-8 rounded-md px-3 text-xs">
+              {copyState === "canva_folder" ? "Copied" : "Copy"}
+            </Button>
+          </div>
+          <pre className="overflow-x-auto rounded bg-muted/60 p-3 text-[11px] text-muted-foreground">{examples.canvaFolderCreate}</pre>
+        </div>
+
+        <div>
+          <div className="mb-2 flex items-center justify-between gap-2">
+            <p className="text-xs font-medium">Import public file into Canva</p>
+            <Button type="button" onClick={() => void copyText("canva_import")} className="ds-btn h-8 rounded-md px-3 text-xs">
+              {copyState === "canva_import" ? "Copied" : "Copy"}
+            </Button>
+          </div>
+          <pre className="overflow-x-auto rounded bg-muted/60 p-3 text-[11px] text-muted-foreground">{examples.canvaImportByUrl}</pre>
+        </div>
+
+        <div>
+          <div className="mb-2 flex items-center justify-between gap-2">
+            <p className="text-xs font-medium">Reply to Canva comment thread</p>
+            <Button type="button" onClick={() => void copyText("canva_comment")} className="ds-btn h-8 rounded-md px-3 text-xs">
+              {copyState === "canva_comment" ? "Copied" : "Copy"}
+            </Button>
+          </div>
+          <pre className="overflow-x-auto rounded bg-muted/60 p-3 text-[11px] text-muted-foreground">{examples.canvaCommentReply}</pre>
+        </div>
+
+        <div>
+          <div className="mb-2 flex items-center justify-between gap-2">
+            <p className="text-xs font-medium">List Canva brand templates</p>
+            <Button type="button" onClick={() => void copyText("canva_brand_templates")} className="ds-btn h-8 rounded-md px-3 text-xs">
+              {copyState === "canva_brand_templates" ? "Copied" : "Copy"}
+            </Button>
+          </div>
+          <pre className="overflow-x-auto rounded bg-muted/60 p-3 text-[11px] text-muted-foreground">{examples.canvaBrandTemplates}</pre>
+        </div>
+      </article>
+
+      <article className="ds-card p-4">
+        <p className="text-sm font-medium">Canva parity note</p>
+        <p className="mt-2 text-xs text-muted-foreground">
+          metel currently exposes the Canva tools that map to the public Canva Connect API. Claude-style items such as AI design generation,
+          structured AI generation, presentation outline review, shortlink resolution, presenter notes, editing-session lifecycle, and merge
+          flows are not exposed here because matching public Connect endpoints have not been verified.
+        </p>
       </article>
 
       <article className="ds-card p-4">

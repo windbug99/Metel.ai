@@ -804,6 +804,22 @@ def _extract_readable_text(html: str) -> str:
     return re.sub(r"\s+", " ", raw).strip()
 
 
+def _match_canva_folder_result(item: dict[str, Any], query: str) -> bool:
+    normalized_query = str(query or "").strip().lower()
+    if not normalized_query:
+        return True
+    item_type = str(item.get("type") or "").strip().lower()
+    if item_type == "folder" and isinstance(item.get("folder"), dict):
+        label = str(item["folder"].get("name") or "").strip().lower()
+    elif item_type == "design" and isinstance(item.get("design"), dict):
+        label = str(item["design"].get("title") or "").strip().lower()
+    elif item_type == "image" and isinstance(item.get("image"), dict):
+        label = str(item["image"].get("name") or "").strip().lower()
+    else:
+        label = ""
+    return normalized_query in label
+
+
 async def _execute_web_http(_user_id: str, _tool: ToolDefinition, payload: dict[str, Any]) -> dict[str, Any]:
     url = str(payload.get("url") or "").strip()
     if not re.match(r"^https?://", url, flags=re.IGNORECASE):
@@ -848,8 +864,17 @@ async def _execute_web_http(_user_id: str, _tool: ToolDefinition, payload: dict[
 
 async def _execute_canva_http(user_id: str, tool: ToolDefinition, payload: dict[str, Any]) -> dict[str, Any]:
     token = await load_canva_access_token_for_user(user_id)
-    path = _build_path(tool.path, payload)
-    body_or_query, idempotency_key = _split_idempotency_key(_strip_path_params(tool.path, payload))
+    normalized_payload = dict(payload or {})
+    if tool.tool_name in {"canva_folder_list_items", "canva_folder_search"} and not normalized_payload.get("folder_id"):
+        normalized_payload["folder_id"] = "root"
+    path = _build_path(tool.path, normalized_payload)
+    body_or_query, idempotency_key = _split_idempotency_key(_strip_path_params(tool.path, normalized_payload))
+    if tool.tool_name == "canva_folder_list_items" and isinstance(body_or_query.get("item_types"), list):
+        body_or_query["item_types"] = ",".join(str(item).strip() for item in body_or_query["item_types"] if str(item).strip())
+    search_query = ""
+    if tool.tool_name == "canva_folder_search":
+        search_query = str(body_or_query.pop("query", "") or "").strip()
+        body_or_query["item_types"] = "folder"
     url = f"{tool.base_url}{path}"
     headers = {
         "Authorization": f"Bearer {token}",
@@ -877,6 +902,14 @@ async def _execute_canva_http(user_id: str, tool: ToolDefinition, payload: dict[
     parsed = _parse_response_data(response)
     data = parsed.get("data") if isinstance(parsed, dict) else None
     if isinstance(data, dict):
+        if tool.tool_name == "canva_folder_search":
+            items = data.get("items") if isinstance(data.get("items"), list) else []
+            matched = [item for item in items if isinstance(item, dict) and _match_canva_folder_result(item, search_query)]
+            parsed["data"] = {
+                **data,
+                "items": matched,
+                "count": len(matched),
+            }
         if tool.tool_name == "canva_design_create":
             design = data.get("design") if isinstance(data.get("design"), dict) else data
             if isinstance(design, dict):
@@ -917,6 +950,134 @@ async def _execute_canva_http(user_id: str, tool: ToolDefinition, payload: dict[
                     result_payload=job,
                     download_urls=job.get("urls") if isinstance(job.get("urls"), list) else None,
                     error_message=str(job.get("error") or "").strip() or None,
+                )
+        elif tool.tool_name == "canva_folder_create":
+            folder = data.get("folder") if isinstance(data.get("folder"), dict) else data
+            if isinstance(folder, dict):
+                record_connector_job_run(
+                    user_id=user_id,
+                    provider="canva",
+                    job_type="folder_create",
+                    status="success",
+                    resource_id=str(folder.get("id") or "").strip() or None,
+                    resource_title=str(folder.get("name") or payload.get("name") or "").strip() or None,
+                    request_payload=payload,
+                    result_payload=folder,
+                )
+        elif tool.tool_name == "canva_folder_move":
+            record_connector_job_run(
+                user_id=user_id,
+                provider="canva",
+                job_type="folder_move",
+                status="success",
+                resource_id=str(payload.get("item_id") or "").strip() or None,
+                request_payload=payload,
+                result_payload=data,
+            )
+        elif tool.tool_name == "canva_url_asset_upload_create":
+            job = data.get("job") if isinstance(data.get("job"), dict) else data
+            if isinstance(job, dict):
+                record_connector_job_run(
+                    user_id=user_id,
+                    provider="canva",
+                    job_type="asset_url_upload",
+                    external_job_id=str(job.get("id") or "").strip() or None,
+                    resource_title=str(payload.get("name") or "").strip() or None,
+                    status=str(job.get("status") or "in_progress").strip().lower() or "in_progress",
+                    request_payload=payload,
+                    result_payload=job,
+                )
+        elif tool.tool_name == "canva_url_asset_upload_get":
+            job = data.get("job") if isinstance(data.get("job"), dict) else data
+            if isinstance(job, dict):
+                asset_id = str((job.get("asset") or {}).get("id") or job.get("asset_id") or "").strip() or None
+                record_connector_job_run(
+                    user_id=user_id,
+                    provider="canva",
+                    job_type="asset_url_upload",
+                    external_job_id=str(payload.get("job_id") or job.get("id") or "").strip() or None,
+                    resource_id=asset_id,
+                    status=str(job.get("status") or "unknown").strip().lower() or "unknown",
+                    result_payload=job,
+                    error_message=str(job.get("error") or "").strip() or None,
+                )
+        elif tool.tool_name == "canva_url_import_create":
+            job = data.get("job") if isinstance(data.get("job"), dict) else data
+            if isinstance(job, dict):
+                record_connector_job_run(
+                    user_id=user_id,
+                    provider="canva",
+                    job_type="url_import",
+                    external_job_id=str(job.get("id") or "").strip() or None,
+                    resource_title=str(payload.get("title") or "").strip() or None,
+                    status=str(job.get("status") or "in_progress").strip().lower() or "in_progress",
+                    request_payload=payload,
+                    result_payload=job,
+                )
+        elif tool.tool_name == "canva_url_import_get":
+            job = data.get("job") if isinstance(data.get("job"), dict) else data
+            if isinstance(job, dict):
+                design_id = str((job.get("design") or {}).get("id") or job.get("design_id") or "").strip() or None
+                record_connector_job_run(
+                    user_id=user_id,
+                    provider="canva",
+                    job_type="url_import",
+                    external_job_id=str(payload.get("job_id") or job.get("id") or "").strip() or None,
+                    resource_id=design_id,
+                    status=str(job.get("status") or "unknown").strip().lower() or "unknown",
+                    result_payload=job,
+                    error_message=str(job.get("error") or "").strip() or None,
+                )
+        elif tool.tool_name == "canva_resize_create":
+            job = data.get("job") if isinstance(data.get("job"), dict) else data
+            if isinstance(job, dict):
+                record_connector_job_run(
+                    user_id=user_id,
+                    provider="canva",
+                    job_type="resize_create",
+                    external_job_id=str(job.get("id") or "").strip() or None,
+                    resource_id=str(payload.get("design_id") or "").strip() or None,
+                    status=str(job.get("status") or "in_progress").strip().lower() or "in_progress",
+                    request_payload=payload,
+                    result_payload=job,
+                )
+        elif tool.tool_name == "canva_resize_get":
+            job = data.get("job") if isinstance(data.get("job"), dict) else data
+            if isinstance(job, dict):
+                resized_design_id = str((job.get("design") or {}).get("id") or job.get("design_id") or "").strip() or None
+                record_connector_job_run(
+                    user_id=user_id,
+                    provider="canva",
+                    job_type="resize_create",
+                    external_job_id=str(payload.get("job_id") or job.get("id") or "").strip() or None,
+                    resource_id=resized_design_id,
+                    status=str(job.get("status") or "unknown").strip().lower() or "unknown",
+                    result_payload=job,
+                    error_message=str(job.get("error") or "").strip() or None,
+                )
+        elif tool.tool_name == "canva_comment_thread_create":
+            thread = data.get("thread") if isinstance(data.get("thread"), dict) else data
+            if isinstance(thread, dict):
+                record_connector_job_run(
+                    user_id=user_id,
+                    provider="canva",
+                    job_type="comment_thread_create",
+                    status="success",
+                    resource_id=str(thread.get("id") or "").strip() or None,
+                    request_payload=payload,
+                    result_payload=thread,
+                )
+        elif tool.tool_name == "canva_comment_reply_create":
+            reply = data.get("reply") if isinstance(data.get("reply"), dict) else data
+            if isinstance(reply, dict):
+                record_connector_job_run(
+                    user_id=user_id,
+                    provider="canva",
+                    job_type="comment_reply_create",
+                    status="success",
+                    resource_id=str(reply.get("id") or "").strip() or None,
+                    request_payload=payload,
+                    result_payload=reply,
                 )
     return parsed
 

@@ -5,17 +5,42 @@ from urllib.parse import parse_qs, urlparse
 from starlette.requests import Request
 
 from app.routes.canva import (
+    CanvaAssetUrlUploadCreateRequest,
+    CanvaCommentReplyCreateRequest,
+    CanvaCommentThreadCreateRequest,
     CanvaDesignCreateRequest,
     CanvaExportCreateRequest,
+    CanvaFolderCreateRequest,
+    CanvaFolderMoveRequest,
+    CanvaResizeCreateRequest,
+    CanvaUrlImportCreateRequest,
+    canva_asset_get,
+    canva_brand_template_dataset_get,
+    canva_brand_template_get,
+    canva_brand_templates_list,
+    canva_comment_replies_list,
+    canva_comment_reply_create,
+    canva_comment_thread_create,
+    canva_comment_thread_get,
     canva_design_create,
     canva_design_export_formats,
     canva_design_get,
     canva_designs_list,
     canva_export_create,
     canva_export_get,
+    canva_folder_create,
+    canva_folder_items_list,
+    canva_folder_move,
+    canva_folder_search,
     canva_oauth_callback,
     canva_oauth_start,
     canva_oauth_status,
+    canva_resize_create,
+    canva_resize_get,
+    canva_url_asset_upload_create,
+    canva_url_asset_upload_get,
+    canva_url_import_create,
+    canva_url_import_get,
 )
 
 
@@ -356,3 +381,179 @@ def test_canva_export_endpoints_return_job(monkeypatch):
     assert get_out["job"]["status"] == "success"
     assert formats_out["count"] == 2
     assert design_out["design"]["id"] == "design-1"
+
+
+def test_canva_folder_endpoints_return_items_and_mutations(monkeypatch):
+    async def _fake_user(_request: Request) -> str:
+        return "user-1"
+
+    monkeypatch.setattr("app.routes.canva.get_authenticated_user_id", _fake_user)
+    monkeypatch.setattr("app.routes.canva._require_canva_access_token", lambda _user_id: asyncio.sleep(0, result="token-1"))
+    monkeypatch.setattr(
+        "app.routes.canva.httpx.AsyncClient",
+        lambda **_kwargs: _AsyncClient(
+            [
+                _Response(
+                    200,
+                    {
+                        "items": [
+                            {"type": "folder", "folder": {"id": "folder-1", "name": "Campaigns"}},
+                            {"type": "design", "design": {"id": "design-1", "title": "Poster"}},
+                        ],
+                        "continuation": "cursor-folders",
+                    },
+                ),
+                _Response(
+                    200,
+                    {
+                        "items": [
+                            {"type": "folder", "folder": {"id": "folder-1", "name": "Campaigns"}},
+                            {"type": "folder", "folder": {"id": "folder-2", "name": "Archive"}},
+                        ],
+                        "continuation": None,
+                    },
+                ),
+                _Response(200, {"folder": {"id": "folder-3", "name": "Launch"}}),
+                _Response(200, {"success": True}),
+            ]
+        ),
+    )
+    monkeypatch.setattr(
+        "app.routes.canva.get_settings",
+        lambda: SimpleNamespace(canva_api_base_url="https://api.canva.com/rest/v1"),
+    )
+
+    list_out = asyncio.run(canva_folder_items_list(_request("/api/oauth/canva/folders/root/items"), folder_id="root", item_types="folder,design"))
+    search_out = asyncio.run(canva_folder_search(_request("/api/oauth/canva/folders/search"), folder_id="root", query="camp"))
+    create_out = asyncio.run(
+        canva_folder_create(
+            _request("/api/oauth/canva/folders", "POST"),
+            CanvaFolderCreateRequest(name="Launch", parent_folder_id="root"),
+        )
+    )
+    move_out = asyncio.run(
+        canva_folder_move(
+            _request("/api/oauth/canva/folders/move", "POST"),
+            CanvaFolderMoveRequest(item_id="design-1", to_folder_id="folder-3"),
+        )
+    )
+
+    assert list_out["count"] == 2
+    assert list_out["continuation"] == "cursor-folders"
+    assert search_out["count"] == 1
+    assert search_out["items"][0]["folder"]["id"] == "folder-1"
+    assert create_out["folder"]["id"] == "folder-3"
+    assert move_out["ok"] is True
+
+
+def test_canva_asset_import_and_resize_endpoints_return_jobs(monkeypatch):
+    async def _fake_user(_request: Request) -> str:
+        return "user-1"
+
+    monkeypatch.setattr("app.routes.canva.get_authenticated_user_id", _fake_user)
+    monkeypatch.setattr("app.routes.canva._require_canva_access_token", lambda _user_id: asyncio.sleep(0, result="token-1"))
+    monkeypatch.setattr(
+        "app.routes.canva.httpx.AsyncClient",
+        lambda **_kwargs: _AsyncClient(
+            [
+                _Response(200, {"asset": {"id": "asset-1", "name": "Brand Logo"}}),
+                _Response(200, {"job": {"id": "asset-job-1", "status": "in_progress"}}),
+                _Response(200, {"job": {"id": "asset-job-1", "status": "success", "asset": {"id": "asset-1"}}}),
+                _Response(200, {"job": {"id": "import-job-1", "status": "in_progress"}}),
+                _Response(200, {"job": {"id": "import-job-1", "status": "success", "design": {"id": "design-9"}}}),
+                _Response(200, {"job": {"id": "resize-job-1", "status": "in_progress"}}),
+                _Response(200, {"job": {"id": "resize-job-1", "status": "success", "design": {"id": "design-10"}}}),
+            ]
+        ),
+    )
+    monkeypatch.setattr(
+        "app.routes.canva.get_settings",
+        lambda: SimpleNamespace(canva_api_base_url="https://api.canva.com/rest/v1"),
+    )
+
+    asset_out = asyncio.run(canva_asset_get(_request("/api/oauth/canva/assets/asset-1"), asset_id="asset-1"))
+    asset_upload_create_out = asyncio.run(
+        canva_url_asset_upload_create(
+            _request("/api/oauth/canva/url-asset-uploads", "POST"),
+            CanvaAssetUrlUploadCreateRequest(name="Brand Logo", url="https://cdn.example.com/logo.png"),
+        )
+    )
+    asset_upload_get_out = asyncio.run(canva_url_asset_upload_get(_request("/api/oauth/canva/url-asset-uploads/asset-job-1"), job_id="asset-job-1"))
+    import_create_out = asyncio.run(
+        canva_url_import_create(
+            _request("/api/oauth/canva/url-imports", "POST"),
+            CanvaUrlImportCreateRequest(title="Sales Deck", url="https://cdn.example.com/deck.pdf", mime_type="application/pdf"),
+        )
+    )
+    import_get_out = asyncio.run(canva_url_import_get(_request("/api/oauth/canva/url-imports/import-job-1"), job_id="import-job-1"))
+    resize_create_out = asyncio.run(
+        canva_resize_create(
+            _request("/api/oauth/canva/resizes", "POST"),
+            CanvaResizeCreateRequest(design_id="design-9", design_type={"type": "presentation"}),
+        )
+    )
+    resize_get_out = asyncio.run(canva_resize_get(_request("/api/oauth/canva/resizes/resize-job-1"), job_id="resize-job-1"))
+
+    assert asset_out["asset"]["id"] == "asset-1"
+    assert asset_upload_create_out["job"]["id"] == "asset-job-1"
+    assert asset_upload_get_out["job"]["asset"]["id"] == "asset-1"
+    assert import_create_out["job"]["id"] == "import-job-1"
+    assert import_get_out["job"]["design"]["id"] == "design-9"
+    assert resize_create_out["job"]["id"] == "resize-job-1"
+    assert resize_get_out["job"]["design"]["id"] == "design-10"
+
+
+def test_canva_comment_and_brand_template_endpoints_return_payloads(monkeypatch):
+    async def _fake_user(_request: Request) -> str:
+        return "user-1"
+
+    monkeypatch.setattr("app.routes.canva.get_authenticated_user_id", _fake_user)
+    monkeypatch.setattr("app.routes.canva._require_canva_access_token", lambda _user_id: asyncio.sleep(0, result="token-1"))
+    monkeypatch.setattr(
+        "app.routes.canva.httpx.AsyncClient",
+        lambda **_kwargs: _AsyncClient(
+            [
+                _Response(200, {"thread": {"id": "thread-1", "message_plaintext": "Please review"}}),
+                _Response(200, {"thread": {"id": "thread-1", "message_plaintext": "Please review"}}),
+                _Response(200, {"reply": {"id": "reply-1", "message_plaintext": "Looks good"}}),
+                _Response(200, {"replies": [{"id": "reply-1", "message_plaintext": "Looks good"}]}),
+                _Response(200, {"items": [{"id": "bt-1", "title": "Sales Deck Template"}], "continuation": "cursor-bt"}),
+                _Response(200, {"brand_template": {"id": "bt-1", "title": "Sales Deck Template"}}),
+                _Response(200, {"dataset": {"fields": [{"name": "title", "type": "text"}]}}),
+            ]
+        ),
+    )
+    monkeypatch.setattr(
+        "app.routes.canva.get_settings",
+        lambda: SimpleNamespace(canva_api_base_url="https://api.canva.com/rest/v1"),
+    )
+
+    thread_create_out = asyncio.run(
+        canva_comment_thread_create(
+            _request("/api/oauth/canva/designs/design-1/comments", "POST"),
+            design_id="design-1",
+            body=CanvaCommentThreadCreateRequest(message_plaintext="Please review"),
+        )
+    )
+    thread_get_out = asyncio.run(canva_comment_thread_get(_request("/api/oauth/canva/designs/design-1/comments/thread-1"), design_id="design-1", thread_id="thread-1"))
+    reply_create_out = asyncio.run(
+        canva_comment_reply_create(
+            _request("/api/oauth/canva/designs/design-1/comments/thread-1/replies", "POST"),
+            design_id="design-1",
+            thread_id="thread-1",
+            body=CanvaCommentReplyCreateRequest(message_plaintext="Looks good"),
+        )
+    )
+    replies_out = asyncio.run(canva_comment_replies_list(_request("/api/oauth/canva/designs/design-1/comments/thread-1/replies"), design_id="design-1", thread_id="thread-1"))
+    brand_templates_out = asyncio.run(canva_brand_templates_list(_request("/api/oauth/canva/brand-templates"), query="sales"))
+    brand_template_out = asyncio.run(canva_brand_template_get(_request("/api/oauth/canva/brand-templates/bt-1"), brand_template_id="bt-1"))
+    dataset_out = asyncio.run(canva_brand_template_dataset_get(_request("/api/oauth/canva/brand-templates/bt-1/dataset"), brand_template_id="bt-1"))
+
+    assert thread_create_out["thread"]["id"] == "thread-1"
+    assert thread_get_out["thread"]["id"] == "thread-1"
+    assert reply_create_out["reply"]["id"] == "reply-1"
+    assert replies_out["count"] == 1
+    assert brand_templates_out["count"] == 1
+    assert brand_templates_out["continuation"] == "cursor-bt"
+    assert brand_template_out["brand_template"]["id"] == "bt-1"
+    assert dataset_out["dataset"]["fields"][0]["name"] == "title"

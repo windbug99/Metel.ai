@@ -19,7 +19,20 @@ from app.core.state import build_state, verify_state
 from app.security.token_vault import TokenVault
 
 router = APIRouter(prefix="/api/oauth/canva", tags=["canva-oauth"])
-CANVA_OAUTH_REQUESTED_SCOPES = ("profile:read", "design:meta:read")
+CANVA_OAUTH_REQUESTED_SCOPES = (
+    "profile:read",
+    "design:meta:read",
+    "design:content:read",
+    "design:content:write",
+    "asset:read",
+    "asset:write",
+    "comment:read",
+    "comment:write",
+    "brandtemplate:meta:read",
+    "brandtemplate:content:read",
+    "folder:read",
+    "folder:write",
+)
 
 
 class CanvaDesignCreateRequest(BaseModel):
@@ -31,6 +44,51 @@ class CanvaDesignCreateRequest(BaseModel):
 class CanvaExportCreateRequest(BaseModel):
     design_id: str = Field(min_length=1)
     format: dict
+
+
+class CanvaFolderCreateRequest(BaseModel):
+    name: str = Field(min_length=1, max_length=255)
+    parent_folder_id: str = Field(default="root", min_length=1, max_length=50)
+
+
+class CanvaFolderMoveRequest(BaseModel):
+    item_id: str = Field(min_length=1, max_length=50)
+    to_folder_id: str = Field(min_length=1, max_length=50)
+
+
+class CanvaAssetUrlUploadCreateRequest(BaseModel):
+    name: str = Field(min_length=1, max_length=255)
+    url: str = Field(min_length=8, max_length=2048)
+    tags: list[str] | None = None
+
+
+class CanvaUrlImportCreateRequest(BaseModel):
+    title: str = Field(min_length=1, max_length=255)
+    url: str = Field(min_length=1, max_length=2048)
+    mime_type: str | None = Field(default=None, min_length=1, max_length=100)
+
+
+class CanvaResizeCreateRequest(BaseModel):
+    design_id: str = Field(min_length=1, max_length=50)
+    design_type: dict
+
+
+class CanvaCommentThreadCreateRequest(BaseModel):
+    message_plaintext: str = Field(min_length=1, max_length=2048)
+    assignee_id: str | None = Field(default=None, min_length=1, max_length=100)
+
+
+class CanvaCommentReplyCreateRequest(BaseModel):
+    message_plaintext: str = Field(min_length=1, max_length=2048)
+
+
+class CanvaBrandTemplateListQuery(BaseModel):
+    query: str | None = None
+    continuation: str | None = None
+    limit: int = Field(default=25, ge=1, le=100)
+    ownership: str | None = None
+    sort_by: str | None = None
+    dataset: str | None = None
 
 
 def _frontend_dashboard_url(raw_frontend_url: str, query: str) -> str:
@@ -66,10 +124,25 @@ def _normalize_scope_text(raw_scope_text: str | None, fallback_scope_text: str) 
 
 
 def _canva_requested_scope_text() -> str:
-    # The current OAuth Connections experience is read-only.
-    # Requesting content/write scopes here makes Canva reject the full auth request
-    # when those scopes are not enabled for the client in Developer Portal.
+    # Request the scopes required by the currently supported Canva tool surface.
+    # These must also be enabled for the integration in Canva Developer Portal.
     return " ".join(CANVA_OAUTH_REQUESTED_SCOPES)
+
+
+def _match_canva_folder_item(item: dict, query: str) -> bool:
+    normalized_query = str(query or "").strip().lower()
+    if not normalized_query:
+        return True
+    item_type = str(item.get("type") or "").strip().lower()
+    if item_type == "folder" and isinstance(item.get("folder"), dict):
+        label = str(item["folder"].get("name") or "").strip().lower()
+    elif item_type == "design" and isinstance(item.get("design"), dict):
+        label = str(item["design"].get("title") or "").strip().lower()
+    elif item_type == "image" and isinstance(item.get("image"), dict):
+        label = str(item["image"].get("name") or "").strip().lower()
+    else:
+        label = ""
+    return normalized_query in label
 
 
 def _build_pkce_verifier() -> str:
@@ -514,6 +587,357 @@ async def canva_design_export_formats(request: Request, design_id: str):
     payload = await _canva_api_request("GET", f"/designs/{design_id}/export-formats", access_token=access_token)
     formats = payload.get("formats") if isinstance(payload.get("formats"), list) else []
     return {"ok": True, "count": len(formats), "formats": formats}
+
+
+@router.get("/folders/{folder_id}/items")
+async def canva_folder_items_list(
+    request: Request,
+    folder_id: str,
+    continuation: str | None = None,
+    limit: int = 50,
+    item_types: str | None = None,
+    sort_by: str | None = None,
+    pin_status: str | None = None,
+):
+    user_id = await get_authenticated_user_id(request)
+    access_token = await _require_canva_access_token(user_id)
+    params = {"limit": min(max(limit, 1), 100)}
+    if continuation:
+        params["continuation"] = continuation
+    if item_types:
+        params["item_types"] = item_types
+    if sort_by:
+        params["sort_by"] = sort_by
+    if pin_status:
+        params["pin_status"] = pin_status
+    payload = await _canva_api_request("GET", f"/folders/{folder_id}/items", access_token=access_token, params=params)
+    items = payload.get("items") if isinstance(payload.get("items"), list) else []
+    return {"ok": True, "count": len(items), "items": items, "continuation": payload.get("continuation")}
+
+
+@router.get("/folders/search")
+async def canva_folder_search(
+    request: Request,
+    query: str | None = None,
+    folder_id: str = "root",
+    continuation: str | None = None,
+    limit: int = 50,
+    sort_by: str | None = None,
+):
+    user_id = await get_authenticated_user_id(request)
+    access_token = await _require_canva_access_token(user_id)
+    params = {
+        "limit": min(max(limit, 1), 100),
+        "item_types": "folder",
+    }
+    if continuation:
+        params["continuation"] = continuation
+    if sort_by:
+        params["sort_by"] = sort_by
+    payload = await _canva_api_request("GET", f"/folders/{folder_id}/items", access_token=access_token, params=params)
+    items = payload.get("items") if isinstance(payload.get("items"), list) else []
+    matched = [item for item in items if isinstance(item, dict) and _match_canva_folder_item(item, query or "")]
+    return {"ok": True, "count": len(matched), "items": matched, "continuation": payload.get("continuation")}
+
+
+@router.post("/folders")
+async def canva_folder_create(request: Request, body: CanvaFolderCreateRequest):
+    user_id = await get_authenticated_user_id(request)
+    access_token = await _require_canva_access_token(user_id)
+    json_body = {
+        "name": body.name,
+        "parent_folder_id": body.parent_folder_id,
+    }
+    payload = await _canva_api_request("POST", "/folders", access_token=access_token, json_body=json_body)
+    folder = payload.get("folder") if isinstance(payload.get("folder"), dict) else payload
+    if isinstance(folder, dict):
+        record_connector_job_run(
+            user_id=user_id,
+            provider="canva",
+            job_type="folder_create",
+            status="success",
+            resource_id=str(folder.get("id") or "").strip() or None,
+            resource_title=str(folder.get("name") or body.name or "").strip() or None,
+            request_payload=json_body,
+            result_payload=folder,
+        )
+    return {"ok": True, "folder": folder}
+
+
+@router.post("/folders/move")
+async def canva_folder_move(request: Request, body: CanvaFolderMoveRequest):
+    user_id = await get_authenticated_user_id(request)
+    access_token = await _require_canva_access_token(user_id)
+    json_body = {
+        "item_id": body.item_id,
+        "to_folder_id": body.to_folder_id,
+    }
+    payload = await _canva_api_request("POST", "/folders/move", access_token=access_token, json_body=json_body)
+    record_connector_job_run(
+        user_id=user_id,
+        provider="canva",
+        job_type="folder_move",
+        status="success",
+        resource_id=body.item_id,
+        request_payload=json_body,
+        result_payload=payload if isinstance(payload, dict) else None,
+    )
+    return {"ok": True, "result": payload if isinstance(payload, dict) else {}}
+
+
+@router.get("/assets/{asset_id}")
+async def canva_asset_get(request: Request, asset_id: str):
+    user_id = await get_authenticated_user_id(request)
+    access_token = await _require_canva_access_token(user_id)
+    payload = await _canva_api_request("GET", f"/assets/{asset_id}", access_token=access_token)
+    return {"ok": True, "asset": payload.get("asset") if isinstance(payload.get("asset"), dict) else payload}
+
+
+@router.post("/url-asset-uploads")
+async def canva_url_asset_upload_create(request: Request, body: CanvaAssetUrlUploadCreateRequest):
+    user_id = await get_authenticated_user_id(request)
+    access_token = await _require_canva_access_token(user_id)
+    json_body = {
+        "name": body.name,
+        "url": body.url,
+        **({"tags": body.tags} if body.tags else {}),
+    }
+    payload = await _canva_api_request("POST", "/url-asset-uploads", access_token=access_token, json_body=json_body)
+    job = payload.get("job") if isinstance(payload.get("job"), dict) else payload
+    if isinstance(job, dict):
+        record_connector_job_run(
+            user_id=user_id,
+            provider="canva",
+            job_type="asset_url_upload",
+            external_job_id=str(job.get("id") or "").strip() or None,
+            resource_title=body.name,
+            status=str(job.get("status") or "in_progress").strip().lower() or "in_progress",
+            request_payload=json_body,
+            result_payload=job,
+        )
+    return {"ok": True, "job": job}
+
+
+@router.get("/url-asset-uploads/{job_id}")
+async def canva_url_asset_upload_get(request: Request, job_id: str):
+    user_id = await get_authenticated_user_id(request)
+    access_token = await _require_canva_access_token(user_id)
+    payload = await _canva_api_request("GET", f"/url-asset-uploads/{job_id}", access_token=access_token)
+    job = payload.get("job") if isinstance(payload.get("job"), dict) else payload
+    if isinstance(job, dict):
+        asset_id = str((job.get("asset") or {}).get("id") or job.get("asset_id") or "").strip() or None
+        record_connector_job_run(
+            user_id=user_id,
+            provider="canva",
+            job_type="asset_url_upload",
+            external_job_id=job_id,
+            resource_id=asset_id,
+            status=str(job.get("status") or "unknown").strip().lower() or "unknown",
+            result_payload=job,
+            error_message=str(job.get("error") or "").strip() or None,
+        )
+    return {"ok": True, "job": job}
+
+
+@router.post("/url-imports")
+async def canva_url_import_create(request: Request, body: CanvaUrlImportCreateRequest):
+    user_id = await get_authenticated_user_id(request)
+    access_token = await _require_canva_access_token(user_id)
+    json_body = {
+        "title": body.title,
+        "url": body.url,
+        **({"mime_type": body.mime_type} if body.mime_type else {}),
+    }
+    payload = await _canva_api_request("POST", "/url-imports", access_token=access_token, json_body=json_body)
+    job = payload.get("job") if isinstance(payload.get("job"), dict) else payload
+    if isinstance(job, dict):
+        record_connector_job_run(
+            user_id=user_id,
+            provider="canva",
+            job_type="url_import",
+            external_job_id=str(job.get("id") or "").strip() or None,
+            resource_title=body.title,
+            status=str(job.get("status") or "in_progress").strip().lower() or "in_progress",
+            request_payload=json_body,
+            result_payload=job,
+        )
+    return {"ok": True, "job": job}
+
+
+@router.get("/url-imports/{job_id}")
+async def canva_url_import_get(request: Request, job_id: str):
+    user_id = await get_authenticated_user_id(request)
+    access_token = await _require_canva_access_token(user_id)
+    payload = await _canva_api_request("GET", f"/url-imports/{job_id}", access_token=access_token)
+    job = payload.get("job") if isinstance(payload.get("job"), dict) else payload
+    if isinstance(job, dict):
+        design_id = str((job.get("design") or {}).get("id") or job.get("design_id") or "").strip() or None
+        record_connector_job_run(
+            user_id=user_id,
+            provider="canva",
+            job_type="url_import",
+            external_job_id=job_id,
+            resource_id=design_id,
+            status=str(job.get("status") or "unknown").strip().lower() or "unknown",
+            result_payload=job,
+            error_message=str(job.get("error") or "").strip() or None,
+        )
+    return {"ok": True, "job": job}
+
+
+@router.post("/resizes")
+async def canva_resize_create(request: Request, body: CanvaResizeCreateRequest):
+    user_id = await get_authenticated_user_id(request)
+    access_token = await _require_canva_access_token(user_id)
+    json_body = {
+        "design_id": body.design_id,
+        "design_type": body.design_type,
+    }
+    payload = await _canva_api_request("POST", "/resizes", access_token=access_token, json_body=json_body)
+    job = payload.get("job") if isinstance(payload.get("job"), dict) else payload
+    if isinstance(job, dict):
+        record_connector_job_run(
+            user_id=user_id,
+            provider="canva",
+            job_type="resize_create",
+            external_job_id=str(job.get("id") or "").strip() or None,
+            resource_id=body.design_id,
+            status=str(job.get("status") or "in_progress").strip().lower() or "in_progress",
+            request_payload=json_body,
+            result_payload=job,
+        )
+    return {"ok": True, "job": job}
+
+
+@router.get("/resizes/{job_id}")
+async def canva_resize_get(request: Request, job_id: str):
+    user_id = await get_authenticated_user_id(request)
+    access_token = await _require_canva_access_token(user_id)
+    payload = await _canva_api_request("GET", f"/resizes/{job_id}", access_token=access_token)
+    job = payload.get("job") if isinstance(payload.get("job"), dict) else payload
+    if isinstance(job, dict):
+        resized_design_id = str((job.get("design") or {}).get("id") or job.get("design_id") or "").strip() or None
+        record_connector_job_run(
+            user_id=user_id,
+            provider="canva",
+            job_type="resize_create",
+            external_job_id=job_id,
+            resource_id=resized_design_id,
+            status=str(job.get("status") or "unknown").strip().lower() or "unknown",
+            result_payload=job,
+            error_message=str(job.get("error") or "").strip() or None,
+        )
+    return {"ok": True, "job": job}
+
+
+@router.post("/designs/{design_id}/comments")
+async def canva_comment_thread_create(request: Request, design_id: str, body: CanvaCommentThreadCreateRequest):
+    user_id = await get_authenticated_user_id(request)
+    access_token = await _require_canva_access_token(user_id)
+    json_body = {
+        "message_plaintext": body.message_plaintext,
+        **({"assignee_id": body.assignee_id} if body.assignee_id else {}),
+    }
+    payload = await _canva_api_request("POST", f"/designs/{design_id}/comments", access_token=access_token, json_body=json_body)
+    thread = payload.get("thread") if isinstance(payload.get("thread"), dict) else payload
+    if isinstance(thread, dict):
+        record_connector_job_run(
+            user_id=user_id,
+            provider="canva",
+            job_type="comment_thread_create",
+            status="success",
+            resource_id=str(thread.get("id") or "").strip() or None,
+            request_payload={"design_id": design_id, **json_body},
+            result_payload=thread,
+        )
+    return {"ok": True, "thread": thread}
+
+
+@router.get("/designs/{design_id}/comments/{thread_id}")
+async def canva_comment_thread_get(request: Request, design_id: str, thread_id: str):
+    user_id = await get_authenticated_user_id(request)
+    access_token = await _require_canva_access_token(user_id)
+    payload = await _canva_api_request("GET", f"/designs/{design_id}/comments/{thread_id}", access_token=access_token)
+    return {"ok": True, "thread": payload.get("thread") if isinstance(payload.get("thread"), dict) else payload}
+
+
+@router.post("/designs/{design_id}/comments/{thread_id}/replies")
+async def canva_comment_reply_create(request: Request, design_id: str, thread_id: str, body: CanvaCommentReplyCreateRequest):
+    user_id = await get_authenticated_user_id(request)
+    access_token = await _require_canva_access_token(user_id)
+    json_body = {"message_plaintext": body.message_plaintext}
+    payload = await _canva_api_request(
+        "POST",
+        f"/designs/{design_id}/comments/{thread_id}/replies",
+        access_token=access_token,
+        json_body=json_body,
+    )
+    reply = payload.get("reply") if isinstance(payload.get("reply"), dict) else payload
+    if isinstance(reply, dict):
+        record_connector_job_run(
+            user_id=user_id,
+            provider="canva",
+            job_type="comment_reply_create",
+            status="success",
+            resource_id=str(reply.get("id") or "").strip() or None,
+            request_payload={"design_id": design_id, "thread_id": thread_id, **json_body},
+            result_payload=reply,
+        )
+    return {"ok": True, "reply": reply}
+
+
+@router.get("/designs/{design_id}/comments/{thread_id}/replies")
+async def canva_comment_replies_list(request: Request, design_id: str, thread_id: str):
+    user_id = await get_authenticated_user_id(request)
+    access_token = await _require_canva_access_token(user_id)
+    payload = await _canva_api_request("GET", f"/designs/{design_id}/comments/{thread_id}/replies", access_token=access_token)
+    replies = payload.get("replies") if isinstance(payload.get("replies"), list) else []
+    return {"ok": True, "count": len(replies), "replies": replies}
+
+
+@router.get("/brand-templates")
+async def canva_brand_templates_list(
+    request: Request,
+    query: str | None = None,
+    continuation: str | None = None,
+    limit: int = 25,
+    ownership: str | None = None,
+    sort_by: str | None = None,
+    dataset: str | None = None,
+):
+    user_id = await get_authenticated_user_id(request)
+    access_token = await _require_canva_access_token(user_id)
+    params = {"limit": min(max(limit, 1), 100)}
+    if query:
+        params["query"] = query
+    if continuation:
+        params["continuation"] = continuation
+    if ownership:
+        params["ownership"] = ownership
+    if sort_by:
+        params["sort_by"] = sort_by
+    if dataset:
+        params["dataset"] = dataset
+    payload = await _canva_api_request("GET", "/brand-templates", access_token=access_token, params=params)
+    items = payload.get("items") if isinstance(payload.get("items"), list) else payload.get("brand_templates")
+    templates = items if isinstance(items, list) else []
+    return {"ok": True, "count": len(templates), "brand_templates": templates, "continuation": payload.get("continuation")}
+
+
+@router.get("/brand-templates/{brand_template_id}")
+async def canva_brand_template_get(request: Request, brand_template_id: str):
+    user_id = await get_authenticated_user_id(request)
+    access_token = await _require_canva_access_token(user_id)
+    payload = await _canva_api_request("GET", f"/brand-templates/{brand_template_id}", access_token=access_token)
+    return {"ok": True, "brand_template": payload.get("brand_template") if isinstance(payload.get("brand_template"), dict) else payload}
+
+
+@router.get("/brand-templates/{brand_template_id}/dataset")
+async def canva_brand_template_dataset_get(request: Request, brand_template_id: str):
+    user_id = await get_authenticated_user_id(request)
+    access_token = await _require_canva_access_token(user_id)
+    payload = await _canva_api_request("GET", f"/brand-templates/{brand_template_id}/dataset", access_token=access_token)
+    return {"ok": True, "dataset": payload.get("dataset") if isinstance(payload.get("dataset"), dict) else payload}
 
 
 @router.post("/designs")

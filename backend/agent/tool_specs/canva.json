@@ -4,7 +4,7 @@
   "base_url": "https://api.canva.com/rest/v1",
   "auth": {
     "type": "oauth2",
-    "required_scopes": ["profile:read", "design:meta:read", "design:content:read", "design:content:write"]
+    "required_scopes": ["profile:read", "design:meta:read", "design:content:read", "design:content:write", "asset:read", "asset:write", "comment:read", "comment:write", "brandtemplate:meta:read", "brandtemplate:content:read", "folder:read", "folder:write"]
   },
   "limits": {
     "timeout_ms": 12000,
@@ -69,6 +69,23 @@
       "error_map": { "400": "BAD_REQUEST", "401": "AUTH_REQUIRED", "403": "AUTH_FORBIDDEN", "429": "RATE_LIMITED" }
     },
     {
+      "tool_name": "canva_design_export_formats",
+      "description": "Get export formats supported by a Canva design",
+      "method": "GET",
+      "path": "/designs/{design_id}/export-formats",
+      "adapter_function": "canva_design_export_formats",
+      "required_scopes": ["design:content:read"],
+      "idempotency_key_policy": "none",
+      "input_schema": {
+        "type": "object",
+        "properties": {
+          "design_id": { "type": "string" }
+        },
+        "required": ["design_id"]
+      },
+      "error_map": { "400": "BAD_REQUEST", "401": "AUTH_REQUIRED", "403": "AUTH_FORBIDDEN", "404": "NOT_FOUND", "429": "RATE_LIMITED" }
+    },
+    {
       "tool_name": "canva_export_create",
       "description": "Create an export job for a Canva design",
       "method": "POST",
@@ -101,6 +118,351 @@
           "export_id": { "type": "string" }
         },
         "required": ["export_id"]
+      },
+      "error_map": { "400": "BAD_REQUEST", "401": "AUTH_REQUIRED", "403": "AUTH_FORBIDDEN", "404": "NOT_FOUND", "429": "RATE_LIMITED" }
+    },
+    {
+      "tool_name": "canva_folder_list_items",
+      "description": "List items in a Canva folder",
+      "method": "GET",
+      "path": "/folders/{folder_id}/items",
+      "adapter_function": "canva_folder_list_items",
+      "required_scopes": ["folder:read"],
+      "idempotency_key_policy": "none",
+      "input_schema": {
+        "type": "object",
+        "properties": {
+          "folder_id": { "type": "string" },
+          "continuation": { "type": "string" },
+          "limit": { "type": "integer", "minimum": 1, "maximum": 100 },
+          "item_types": {
+            "oneOf": [
+              { "type": "string" },
+              {
+                "type": "array",
+                "items": { "type": "string", "enum": ["design", "folder", "image"] },
+                "minItems": 1
+              }
+            ]
+          },
+          "sort_by": { "type": "string", "enum": ["modified_descending", "modified_ascending", "title_ascending", "title_descending"] },
+          "pin_status": { "type": "string", "enum": ["pinned", "not_pinned", "any"] }
+        },
+        "required": ["folder_id"]
+      },
+      "error_map": { "400": "BAD_REQUEST", "401": "AUTH_REQUIRED", "403": "AUTH_FORBIDDEN", "404": "NOT_FOUND", "429": "RATE_LIMITED" }
+    },
+    {
+      "tool_name": "canva_folder_search",
+      "description": "Search folder items within a Canva parent folder and return matching folders",
+      "method": "GET",
+      "path": "/folders/{folder_id}/items",
+      "adapter_function": "canva_folder_search",
+      "required_scopes": ["folder:read"],
+      "idempotency_key_policy": "none",
+      "input_schema": {
+        "type": "object",
+        "properties": {
+          "folder_id": { "type": "string" },
+          "query": { "type": "string" },
+          "continuation": { "type": "string" },
+          "limit": { "type": "integer", "minimum": 1, "maximum": 100 },
+          "sort_by": { "type": "string", "enum": ["modified_descending", "modified_ascending", "title_ascending", "title_descending"] }
+        }
+      },
+      "error_map": { "400": "BAD_REQUEST", "401": "AUTH_REQUIRED", "403": "AUTH_FORBIDDEN", "404": "NOT_FOUND", "429": "RATE_LIMITED" }
+    },
+    {
+      "tool_name": "canva_folder_create",
+      "description": "Create a Canva folder",
+      "method": "POST",
+      "path": "/folders",
+      "adapter_function": "canva_folder_create",
+      "required_scopes": ["folder:write"],
+      "idempotency_key_policy": "optional",
+      "input_schema": {
+        "type": "object",
+        "properties": {
+          "name": { "type": "string", "minLength": 1, "maxLength": 255 },
+          "parent_folder_id": { "type": "string" },
+          "idempotency_key": { "type": "string" }
+        },
+        "required": ["name"]
+      },
+      "error_map": { "400": "BAD_REQUEST", "401": "AUTH_REQUIRED", "403": "AUTH_FORBIDDEN", "429": "RATE_LIMITED" }
+    },
+    {
+      "tool_name": "canva_folder_move",
+      "description": "Move a Canva item into another folder",
+      "method": "POST",
+      "path": "/folders/move",
+      "adapter_function": "canva_folder_move",
+      "required_scopes": ["folder:write"],
+      "idempotency_key_policy": "optional",
+      "input_schema": {
+        "type": "object",
+        "properties": {
+          "item_id": { "type": "string" },
+          "to_folder_id": { "type": "string" },
+          "idempotency_key": { "type": "string" }
+        },
+        "required": ["item_id", "to_folder_id"]
+      },
+      "error_map": { "400": "BAD_REQUEST", "401": "AUTH_REQUIRED", "403": "AUTH_FORBIDDEN", "404": "NOT_FOUND", "429": "RATE_LIMITED" }
+    },
+    {
+      "tool_name": "canva_asset_get",
+      "description": "Get Canva asset metadata",
+      "method": "GET",
+      "path": "/assets/{asset_id}",
+      "adapter_function": "canva_asset_get",
+      "required_scopes": ["asset:read"],
+      "idempotency_key_policy": "none",
+      "input_schema": {
+        "type": "object",
+        "properties": {
+          "asset_id": { "type": "string" }
+        },
+        "required": ["asset_id"]
+      },
+      "error_map": { "400": "BAD_REQUEST", "401": "AUTH_REQUIRED", "403": "AUTH_FORBIDDEN", "404": "NOT_FOUND", "429": "RATE_LIMITED" }
+    },
+    {
+      "tool_name": "canva_url_asset_upload_create",
+      "description": "Upload an asset to Canva from a public HTTPS URL",
+      "method": "POST",
+      "path": "/url-asset-uploads",
+      "adapter_function": "canva_url_asset_upload_create",
+      "required_scopes": ["asset:write"],
+      "idempotency_key_policy": "optional",
+      "input_schema": {
+        "type": "object",
+        "properties": {
+          "name": { "type": "string", "minLength": 1, "maxLength": 255 },
+          "url": { "type": "string", "minLength": 8, "maxLength": 2048 },
+          "tags": { "type": "array", "items": { "type": "string" } },
+          "idempotency_key": { "type": "string" }
+        },
+        "required": ["name", "url"]
+      },
+      "error_map": { "400": "BAD_REQUEST", "401": "AUTH_REQUIRED", "403": "AUTH_FORBIDDEN", "429": "RATE_LIMITED" }
+    },
+    {
+      "tool_name": "canva_url_asset_upload_get",
+      "description": "Get the status of a Canva URL asset upload job",
+      "method": "GET",
+      "path": "/url-asset-uploads/{job_id}",
+      "adapter_function": "canva_url_asset_upload_get",
+      "required_scopes": ["asset:read"],
+      "idempotency_key_policy": "none",
+      "input_schema": {
+        "type": "object",
+        "properties": {
+          "job_id": { "type": "string" }
+        },
+        "required": ["job_id"]
+      },
+      "error_map": { "400": "BAD_REQUEST", "401": "AUTH_REQUIRED", "403": "AUTH_FORBIDDEN", "404": "NOT_FOUND", "429": "RATE_LIMITED" }
+    },
+    {
+      "tool_name": "canva_url_import_create",
+      "description": "Import a design into Canva from a public HTTPS URL",
+      "method": "POST",
+      "path": "/url-imports",
+      "adapter_function": "canva_url_import_create",
+      "required_scopes": ["design:content:write"],
+      "idempotency_key_policy": "optional",
+      "input_schema": {
+        "type": "object",
+        "properties": {
+          "title": { "type": "string", "minLength": 1, "maxLength": 255 },
+          "url": { "type": "string", "minLength": 8, "maxLength": 2048 },
+          "mime_type": { "type": "string" },
+          "idempotency_key": { "type": "string" }
+        },
+        "required": ["title", "url"]
+      },
+      "error_map": { "400": "BAD_REQUEST", "401": "AUTH_REQUIRED", "403": "AUTH_FORBIDDEN", "429": "RATE_LIMITED" }
+    },
+    {
+      "tool_name": "canva_url_import_get",
+      "description": "Get the status of a Canva URL import job",
+      "method": "GET",
+      "path": "/url-imports/{job_id}",
+      "adapter_function": "canva_url_import_get",
+      "required_scopes": ["design:meta:read"],
+      "idempotency_key_policy": "none",
+      "input_schema": {
+        "type": "object",
+        "properties": {
+          "job_id": { "type": "string" }
+        },
+        "required": ["job_id"]
+      },
+      "error_map": { "400": "BAD_REQUEST", "401": "AUTH_REQUIRED", "403": "AUTH_FORBIDDEN", "404": "NOT_FOUND", "429": "RATE_LIMITED" }
+    },
+    {
+      "tool_name": "canva_resize_create",
+      "description": "Create a Canva resize job from an existing design",
+      "method": "POST",
+      "path": "/resizes",
+      "adapter_function": "canva_resize_create",
+      "required_scopes": ["design:content:read", "design:content:write"],
+      "idempotency_key_policy": "optional",
+      "input_schema": {
+        "type": "object",
+        "properties": {
+          "design_id": { "type": "string" },
+          "design_type": { "type": "object" },
+          "idempotency_key": { "type": "string" }
+        },
+        "required": ["design_id", "design_type"]
+      },
+      "error_map": { "400": "BAD_REQUEST", "401": "AUTH_REQUIRED", "403": "AUTH_FORBIDDEN", "429": "RATE_LIMITED" }
+    },
+    {
+      "tool_name": "canva_resize_get",
+      "description": "Get the status of a Canva resize job",
+      "method": "GET",
+      "path": "/resizes/{job_id}",
+      "adapter_function": "canva_resize_get",
+      "required_scopes": ["design:content:read"],
+      "idempotency_key_policy": "none",
+      "input_schema": {
+        "type": "object",
+        "properties": {
+          "job_id": { "type": "string" }
+        },
+        "required": ["job_id"]
+      },
+      "error_map": { "400": "BAD_REQUEST", "401": "AUTH_REQUIRED", "403": "AUTH_FORBIDDEN", "404": "NOT_FOUND", "429": "RATE_LIMITED" }
+    },
+    {
+      "tool_name": "canva_comment_thread_create",
+      "description": "Create a comment thread on a Canva design",
+      "method": "POST",
+      "path": "/designs/{design_id}/comments",
+      "adapter_function": "canva_comment_thread_create",
+      "required_scopes": ["comment:write"],
+      "idempotency_key_policy": "none",
+      "input_schema": {
+        "type": "object",
+        "properties": {
+          "design_id": { "type": "string" },
+          "message_plaintext": { "type": "string", "minLength": 1, "maxLength": 2048 },
+          "assignee_id": { "type": "string" }
+        },
+        "required": ["design_id", "message_plaintext"]
+      },
+      "error_map": { "400": "BAD_REQUEST", "401": "AUTH_REQUIRED", "403": "AUTH_FORBIDDEN", "404": "NOT_FOUND", "429": "RATE_LIMITED" }
+    },
+    {
+      "tool_name": "canva_comment_thread_get",
+      "description": "Get a Canva comment thread by thread id",
+      "method": "GET",
+      "path": "/designs/{design_id}/comments/{thread_id}",
+      "adapter_function": "canva_comment_thread_get",
+      "required_scopes": ["comment:read"],
+      "idempotency_key_policy": "none",
+      "input_schema": {
+        "type": "object",
+        "properties": {
+          "design_id": { "type": "string" },
+          "thread_id": { "type": "string" }
+        },
+        "required": ["design_id", "thread_id"]
+      },
+      "error_map": { "400": "BAD_REQUEST", "401": "AUTH_REQUIRED", "403": "AUTH_FORBIDDEN", "404": "NOT_FOUND", "429": "RATE_LIMITED" }
+    },
+    {
+      "tool_name": "canva_comment_reply_create",
+      "description": "Reply to a Canva comment thread",
+      "method": "POST",
+      "path": "/designs/{design_id}/comments/{thread_id}/replies",
+      "adapter_function": "canva_comment_reply_create",
+      "required_scopes": ["comment:write"],
+      "idempotency_key_policy": "none",
+      "input_schema": {
+        "type": "object",
+        "properties": {
+          "design_id": { "type": "string" },
+          "thread_id": { "type": "string" },
+          "message_plaintext": { "type": "string", "minLength": 1, "maxLength": 2048 }
+        },
+        "required": ["design_id", "thread_id", "message_plaintext"]
+      },
+      "error_map": { "400": "BAD_REQUEST", "401": "AUTH_REQUIRED", "403": "AUTH_FORBIDDEN", "404": "NOT_FOUND", "429": "RATE_LIMITED" }
+    },
+    {
+      "tool_name": "canva_comment_replies_list",
+      "description": "List replies in a Canva comment thread",
+      "method": "GET",
+      "path": "/designs/{design_id}/comments/{thread_id}/replies",
+      "adapter_function": "canva_comment_replies_list",
+      "required_scopes": ["comment:read"],
+      "idempotency_key_policy": "none",
+      "input_schema": {
+        "type": "object",
+        "properties": {
+          "design_id": { "type": "string" },
+          "thread_id": { "type": "string" }
+        },
+        "required": ["design_id", "thread_id"]
+      },
+      "error_map": { "400": "BAD_REQUEST", "401": "AUTH_REQUIRED", "403": "AUTH_FORBIDDEN", "404": "NOT_FOUND", "429": "RATE_LIMITED" }
+    },
+    {
+      "tool_name": "canva_brand_templates_list",
+      "description": "List Canva brand templates",
+      "method": "GET",
+      "path": "/brand-templates",
+      "adapter_function": "canva_brand_templates_list",
+      "required_scopes": ["brandtemplate:meta:read"],
+      "idempotency_key_policy": "none",
+      "input_schema": {
+        "type": "object",
+        "properties": {
+          "query": { "type": "string" },
+          "continuation": { "type": "string" },
+          "limit": { "type": "integer", "minimum": 1, "maximum": 100 },
+          "ownership": { "type": "string" },
+          "sort_by": { "type": "string" },
+          "dataset": { "type": "string" }
+        }
+      },
+      "error_map": { "400": "BAD_REQUEST", "401": "AUTH_REQUIRED", "403": "AUTH_FORBIDDEN", "429": "RATE_LIMITED" }
+    },
+    {
+      "tool_name": "canva_brand_template_get",
+      "description": "Get a Canva brand template",
+      "method": "GET",
+      "path": "/brand-templates/{brand_template_id}",
+      "adapter_function": "canva_brand_template_get",
+      "required_scopes": ["brandtemplate:meta:read"],
+      "idempotency_key_policy": "none",
+      "input_schema": {
+        "type": "object",
+        "properties": {
+          "brand_template_id": { "type": "string" }
+        },
+        "required": ["brand_template_id"]
+      },
+      "error_map": { "400": "BAD_REQUEST", "401": "AUTH_REQUIRED", "403": "AUTH_FORBIDDEN", "404": "NOT_FOUND", "429": "RATE_LIMITED" }
+    },
+    {
+      "tool_name": "canva_brand_template_dataset_get",
+      "description": "Get the dataset schema for a Canva brand template",
+      "method": "GET",
+      "path": "/brand-templates/{brand_template_id}/dataset",
+      "adapter_function": "canva_brand_template_dataset_get",
+      "required_scopes": ["brandtemplate:content:read"],
+      "idempotency_key_policy": "none",
+      "input_schema": {
+        "type": "object",
+        "properties": {
+          "brand_template_id": { "type": "string" }
+        },
+        "required": ["brand_template_id"]
       },
       "error_map": { "400": "BAD_REQUEST", "401": "AUTH_REQUIRED", "403": "AUTH_FORBIDDEN", "404": "NOT_FOUND", "429": "RATE_LIMITED" }
     }
