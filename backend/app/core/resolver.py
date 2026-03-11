@@ -99,6 +99,35 @@ def _pick_single_linear_team(query: str, teams: list[dict[str, Any]]) -> str:
     )
 
 
+def _pick_single_canva_design(query: str, designs: list[dict[str, Any]]) -> str:
+    candidates = [row for row in designs if isinstance(row, dict) and row.get("id")]
+    if not candidates:
+        raise ResolverException(
+            error_code="resolve_not_found",
+            message="resolve_not_found",
+            data={"target": "canva_design", "query": query},
+        )
+    if len(candidates) == 1:
+        return str(candidates[0]["id"])
+
+    query_norm = _normalize_text(query)
+    exact = [row for row in candidates if _normalize_text(str(row.get("title") or "")) == query_norm]
+    if len(exact) == 1:
+        return str(exact[0]["id"])
+    if len(exact) > 1:
+        candidates = exact
+
+    raise ResolverException(
+        error_code="resolve_ambiguous",
+        message="resolve_ambiguous",
+        data={
+            "target": "canva_design",
+            "query": query,
+            "candidate_ids": [str(row.get("id")) for row in candidates[:5]],
+        },
+    )
+
+
 async def _resolve_notion_page_id(
     *,
     user_id: str,
@@ -158,6 +187,35 @@ async def _resolve_linear_team_id(
     return normalized
 
 
+async def _resolve_canva_design_id(
+    *,
+    user_id: str,
+    tool_name: str,
+    payload: dict[str, Any],
+    execute_tool: ToolExecutor,
+) -> dict[str, Any]:
+    if tool_name not in {"canva_export_create", "canva_design_get"}:
+        return payload
+    design_id = str(payload.get("design_id") or "").strip()
+    if design_id:
+        return payload
+
+    query = str(payload.get("design_title") or payload.get("title") or "").strip()
+    if not query:
+        return payload
+
+    result = await execute_tool(user_id=user_id, tool_name="canva_design_list", payload={"query": query, "limit": 10})
+    data = result.get("data") if isinstance(result, dict) else None
+    rows = data.get("items") if isinstance(data, dict) else None
+    if not isinstance(rows, list):
+        rows = []
+
+    resolved_design_id = _pick_single_canva_design(query, rows)
+    normalized = dict(payload)
+    normalized["design_id"] = resolved_design_id
+    return normalized
+
+
 async def resolve_tool_payload(
     *,
     user_id: str,
@@ -173,6 +231,12 @@ async def resolve_tool_payload(
         execute_tool=execute_tool,
     )
     normalized = await _resolve_linear_team_id(
+        user_id=user_id,
+        tool_name=tool_name,
+        payload=normalized,
+        execute_tool=execute_tool,
+    )
+    normalized = await _resolve_canva_design_id(
         user_id=user_id,
         tool_name=tool_name,
         payload=normalized,

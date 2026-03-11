@@ -85,6 +85,18 @@ python scripts/check_claude_bridge_tools.py`,
     "arguments": { "first": 3 }
   }
 }`,
+    canvaListDesigns: `curl -sS "${base}/mcp" \\
+  -H "Authorization: Bearer metel_xxx" \\
+  -H "Content-Type: application/json" \\
+  -d '{"jsonrpc":"2.0","id":"3","method":"call_tool","params":{"name":"canva_design_list","arguments":{"limit":5,"sort_by":"modified_descending"}}}'`,
+    canvaCreateDesign: `curl -sS "${base}/mcp" \\
+  -H "Authorization: Bearer metel_xxx" \\
+  -H "Content-Type: application/json" \\
+  -d '{"jsonrpc":"2.0","id":"4","method":"call_tool","params":{"name":"canva_design_create","arguments":{"title":"Launch Poster","design_type":{"type":"poster","name":"Poster"}}}}'`,
+    canvaExportDesign: `curl -sS "${base}/mcp" \\
+  -H "Authorization: Bearer metel_xxx" \\
+  -H "Content-Type: application/json" \\
+  -d '{"jsonrpc":"2.0","id":"5","method":"call_tool","params":{"name":"canva_export_create","arguments":{"design_title":"Launch Poster","format":{"type":"pdf"}}}}'`,
   };
 }
 
@@ -93,11 +105,11 @@ export default function DashboardMcpGuidePage() {
   const examples = useMemo(() => buildExamples(apiBaseUrl), [apiBaseUrl]);
 
   const [copyState, setCopyState] = useState<
-    "" | "list_tools" | "call_tool" | "custom_agent_node" | "claude_config" | "claude_check" | "n8n_http" | "n8n_call"
+    "" | "list_tools" | "call_tool" | "custom_agent_node" | "claude_config" | "claude_check" | "n8n_http" | "n8n_call" | "canva_list" | "canva_create" | "canva_export"
   >("");
 
   const copyText = async (
-    kind: "list_tools" | "call_tool" | "custom_agent_node" | "claude_config" | "claude_check" | "n8n_http" | "n8n_call"
+    kind: "list_tools" | "call_tool" | "custom_agent_node" | "claude_config" | "claude_check" | "n8n_http" | "n8n_call" | "canva_list" | "canva_create" | "canva_export"
   ) => {
     const text =
       kind === "list_tools"
@@ -112,7 +124,13 @@ export default function DashboardMcpGuidePage() {
                 ? examples.claudeDesktopCheck
                 : kind === "n8n_http"
                   ? examples.n8nHttpNode
-                  : examples.n8nCallToolBody;
+                  : kind === "n8n_call"
+                    ? examples.n8nCallToolBody
+                    : kind === "canva_list"
+                      ? examples.canvaListDesigns
+                      : kind === "canva_create"
+                        ? examples.canvaCreateDesign
+                        : examples.canvaExportDesign;
     try {
       await navigator.clipboard.writeText(text);
       setCopyState(kind);
@@ -255,6 +273,40 @@ export default function DashboardMcpGuidePage() {
           </Button>
         </div>
         <pre className="overflow-x-auto rounded bg-muted/60 p-3 text-[11px] text-muted-foreground">{examples.callTool}</pre>
+      </article>
+
+      <article className="ds-card space-y-4 p-4">
+        <p className="text-sm font-medium">Canva MCP examples</p>
+
+        <div>
+          <div className="mb-2 flex items-center justify-between gap-2">
+            <p className="text-xs font-medium">List recent Canva designs</p>
+            <Button type="button" onClick={() => void copyText("canva_list")} className="ds-btn h-8 rounded-md px-3 text-xs">
+              {copyState === "canva_list" ? "Copied" : "Copy"}
+            </Button>
+          </div>
+          <pre className="overflow-x-auto rounded bg-muted/60 p-3 text-[11px] text-muted-foreground">{examples.canvaListDesigns}</pre>
+        </div>
+
+        <div>
+          <div className="mb-2 flex items-center justify-between gap-2">
+            <p className="text-xs font-medium">Create Canva design</p>
+            <Button type="button" onClick={() => void copyText("canva_create")} className="ds-btn h-8 rounded-md px-3 text-xs">
+              {copyState === "canva_create" ? "Copied" : "Copy"}
+            </Button>
+          </div>
+          <pre className="overflow-x-auto rounded bg-muted/60 p-3 text-[11px] text-muted-foreground">{examples.canvaCreateDesign}</pre>
+        </div>
+
+        <div>
+          <div className="mb-2 flex items-center justify-between gap-2">
+            <p className="text-xs font-medium">Export Canva design by title</p>
+            <Button type="button" onClick={() => void copyText("canva_export")} className="ds-btn h-8 rounded-md px-3 text-xs">
+              {copyState === "canva_export" ? "Copied" : "Copy"}
+            </Button>
+          </div>
+          <pre className="overflow-x-auto rounded bg-muted/60 p-3 text-[11px] text-muted-foreground">{examples.canvaExportDesign}</pre>
+        </div>
       </article>
 
       <article className="ds-card p-4">

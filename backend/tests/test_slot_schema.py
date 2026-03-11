@@ -75,6 +75,9 @@ def test_get_action_slot_schema():
     schema = get_action_slot_schema("notion_search")
     assert schema is not None
     assert "query" in schema.optional_slots
+    canva_schema = get_action_slot_schema("canva_export_create")
+    assert canva_schema is not None
+    assert "design_title" in canva_schema.optional_slots
 
 
 def test_validate_slots_missing_order_follows_ask_order():

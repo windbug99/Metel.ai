@@ -13,6 +13,7 @@ from pydantic import BaseModel, Field
 from supabase import create_client
 
 from app.core.auth import get_authenticated_user_id
+from app.core.connector_jobs import record_connector_job_run
 from app.core.config import get_settings
 from app.core.state import build_state, verify_state
 from app.security.token_vault import TokenVault
@@ -489,7 +490,19 @@ async def canva_design_create(request: Request, body: CanvaDesignCreateRequest):
         **({"asset_id": body.asset_id} if body.asset_id else {}),
     }
     payload = await _canva_api_request("POST", "/designs", access_token=access_token, json_body=json_body)
-    return {"ok": True, "design": payload.get("design") if isinstance(payload.get("design"), dict) else payload}
+    design = payload.get("design") if isinstance(payload.get("design"), dict) else payload
+    if isinstance(design, dict):
+        record_connector_job_run(
+            user_id=user_id,
+            provider="canva",
+            job_type="design_create",
+            status="success",
+            resource_id=str(design.get("id") or "").strip() or None,
+            resource_title=str(design.get("title") or body.title or "").strip() or None,
+            request_payload=json_body,
+            result_payload=design,
+        )
+    return {"ok": True, "design": design}
 
 
 @router.post("/exports")
@@ -502,7 +515,20 @@ async def canva_export_create(request: Request, body: CanvaExportCreateRequest):
         access_token=access_token,
         json_body={"design_id": body.design_id, "format": body.format},
     )
-    return {"ok": True, "job": payload.get("job") if isinstance(payload.get("job"), dict) else payload}
+    job = payload.get("job") if isinstance(payload.get("job"), dict) else payload
+    if isinstance(job, dict):
+        record_connector_job_run(
+            user_id=user_id,
+            provider="canva",
+            job_type="export_create",
+            external_job_id=str(job.get("id") or "").strip() or None,
+            resource_id=body.design_id,
+            status=str(job.get("status") or "in_progress").strip().lower() or "in_progress",
+            request_payload={"design_id": body.design_id, "format": body.format},
+            result_payload=job,
+            download_urls=job.get("urls") if isinstance(job.get("urls"), list) else None,
+        )
+    return {"ok": True, "job": job}
 
 
 @router.get("/exports/{export_id}")
@@ -510,4 +536,16 @@ async def canva_export_get(request: Request, export_id: str):
     user_id = await get_authenticated_user_id(request)
     access_token = await _require_canva_access_token(user_id)
     payload = await _canva_api_request("GET", f"/exports/{export_id}", access_token=access_token)
-    return {"ok": True, "job": payload.get("job") if isinstance(payload.get("job"), dict) else payload}
+    job = payload.get("job") if isinstance(payload.get("job"), dict) else payload
+    if isinstance(job, dict):
+        record_connector_job_run(
+            user_id=user_id,
+            provider="canva",
+            job_type="export_create",
+            external_job_id=export_id,
+            status=str(job.get("status") or "unknown").strip().lower() or "unknown",
+            result_payload=job,
+            download_urls=job.get("urls") if isinstance(job.get("urls"), list) else None,
+            error_message=str(job.get("error") or "").strip() or None,
+        )
+    return {"ok": True, "job": job}

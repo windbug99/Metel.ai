@@ -49,7 +49,9 @@ curl -sS -X POST "$API_BASE_URL/mcp/call_tool" \
 
 ### Claude Desktop
 
-Add to your `claude_desktop_config.json`:
+1. Run **Claude Desktop**.
+2. Go to **Settings** > **Developer** > **Edit Config**.
+3. Add the following to your `claude_desktop_config.json`:
 
 ```json
 {
@@ -65,6 +67,9 @@ Add to your `claude_desktop_config.json`:
   }
 }
 ```
+
+4. After adding `mcpServers`, verify that **Metel** is listed in **Settings** > **Connectors**.
+
 
 ### Local development
 

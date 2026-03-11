@@ -16,6 +16,7 @@ from supabase import create_client
 
 from agent.registry import ToolDefinition, load_registry
 from app.core.config import get_settings
+from app.core.connector_jobs import record_connector_job_run
 from app.routes.canva import load_canva_access_token_for_user
 from app.security.token_vault import TokenVault
 
@@ -873,7 +874,51 @@ async def _execute_canva_http(user_id: str, tool: ToolDefinition, payload: dict[
             status_code=400,
             detail=f"{tool.tool_name}:{mapped}|status={response.status_code}|message={response.text[:300]}",
         )
-    return _parse_response_data(response)
+    parsed = _parse_response_data(response)
+    data = parsed.get("data") if isinstance(parsed, dict) else None
+    if isinstance(data, dict):
+        if tool.tool_name == "canva_design_create":
+            design = data.get("design") if isinstance(data.get("design"), dict) else data
+            if isinstance(design, dict):
+                record_connector_job_run(
+                    user_id=user_id,
+                    provider="canva",
+                    job_type="design_create",
+                    status="success",
+                    resource_id=str(design.get("id") or "").strip() or None,
+                    resource_title=str(design.get("title") or payload.get("title") or "").strip() or None,
+                    request_payload=payload,
+                    result_payload=design,
+                )
+        elif tool.tool_name == "canva_export_create":
+            job = data.get("job") if isinstance(data.get("job"), dict) else data
+            if isinstance(job, dict):
+                record_connector_job_run(
+                    user_id=user_id,
+                    provider="canva",
+                    job_type="export_create",
+                    external_job_id=str(job.get("id") or "").strip() or None,
+                    resource_id=str(payload.get("design_id") or "").strip() or None,
+                    resource_title=str(payload.get("design_title") or "").strip() or None,
+                    status=str(job.get("status") or "in_progress").strip().lower() or "in_progress",
+                    request_payload=payload,
+                    result_payload=job,
+                    download_urls=job.get("urls") if isinstance(job.get("urls"), list) else None,
+                )
+        elif tool.tool_name == "canva_export_get":
+            job = data.get("job") if isinstance(data.get("job"), dict) else data
+            if isinstance(job, dict):
+                record_connector_job_run(
+                    user_id=user_id,
+                    provider="canva",
+                    job_type="export_create",
+                    external_job_id=str(payload.get("export_id") or job.get("id") or "").strip() or None,
+                    status=str(job.get("status") or "unknown").strip().lower() or "unknown",
+                    result_payload=job,
+                    download_urls=job.get("urls") if isinstance(job.get("urls"), list) else None,
+                    error_message=str(job.get("error") or "").strip() or None,
+                )
+    return parsed
 
 
 def _build_default_headers_for_service(user_id: str, tool: ToolDefinition) -> dict[str, str]:

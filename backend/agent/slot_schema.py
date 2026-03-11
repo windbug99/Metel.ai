@@ -192,6 +192,38 @@ ACTION_SLOT_SCHEMAS: dict[str, ActionSlotSchema] = {
             "body": {"type": "string", "min_length": 1, "max_length": 4000},
         },
     ),
+    "canva_design_create": ActionSlotSchema(
+        action="canva_design_create",
+        required_slots=("design_type",),
+        optional_slots=("title",),
+        auto_fill_slots=(),
+        ask_order=("design_type", "title"),
+        aliases={
+            "design_type": ("디자인타입", "디자인유형", "type"),
+            "title": ("제목", "name"),
+        },
+        validation_rules={
+            "design_type": {"type": "object"},
+            "title": {"type": "string", "min_length": 1, "max_length": 255},
+        },
+    ),
+    "canva_export_create": ActionSlotSchema(
+        action="canva_export_create",
+        required_slots=("design_id", "format"),
+        optional_slots=("design_title",),
+        auto_fill_slots=("design_id",),
+        ask_order=("design_id", "format"),
+        aliases={
+            "design_id": ("디자인", "design", "design_id"),
+            "design_title": ("디자인제목", "title", "design_title"),
+            "format": ("포맷", "형식", "format"),
+        },
+        validation_rules={
+            "design_id": {"type": "string", "min_length": 1, "max_length": 200},
+            "design_title": {"type": "string", "min_length": 1, "max_length": 255},
+            "format": {"type": "object"},
+        },
+    ),
 }
 
 
