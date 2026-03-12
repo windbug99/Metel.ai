@@ -1,5 +1,12 @@
 import AuthPanel from "../components/auth-panel";
 
+const PROVIDER_LOGOS = {
+  notion: "https://images.seeklogo.com/logo-png/46/1/notion-icon-logo-png_seeklogo-465585.png",
+  linear: "https://images.seeklogo.com/logo-png/48/1/linear-icon-logo-png_seeklogo-483921.png",
+  github: "https://images.seeklogo.com/logo-png/27/1/github-logo-png_seeklogo-273183.png",
+  canva: "https://images.seeklogo.com/logo-png/65/1/canva-logo-png_seeklogo-653227.png",
+} as const;
+
 export default function Home() {
   const githubUrl = "https://github.com/windbug99/metel";
   const signInButtonClassName =
@@ -8,10 +15,10 @@ export default function Home() {
     "rounded-md border border-border bg-card px-5 py-2.5 text-sm font-medium text-foreground transition hover:bg-accent hover:text-accent-foreground";
 
   const services = [
-    { name: "Notion", icon: "/logos/notion.svg", count: "30 Tools", status: "Connected" },
-    { name: "Linear", icon: "/logos/linear.svg", count: "8 Tools", status: "Connected" },
-    { name: "GitHub", icon: "/logos/github.svg", count: "5 Tools", status: "Connected" },
-    { name: "Canva", icon: null, count: "24 Tools", status: "Connected" }
+    { name: "Notion", icon: PROVIDER_LOGOS.notion, count: "30 Tools", status: "Connected" },
+    { name: "Linear", icon: PROVIDER_LOGOS.linear, count: "8 Tools", status: "Connected" },
+    { name: "GitHub", icon: PROVIDER_LOGOS.github, count: "5 Tools", status: "Connected" },
+    { name: "Canva", icon: PROVIDER_LOGOS.canva, count: "24 Tools", status: "Connected" }
   ];
 
   const controlLayers = [
@@ -153,11 +160,7 @@ export default function Home() {
                 <article key={service.name} className="group relative rounded-xl border border-border bg-card p-5 transition hover:bg-accent/5">
                   <div className="flex items-center gap-3">
                     <span className="inline-flex h-10 w-10 items-center justify-center rounded-lg border border-border bg-muted">
-                      {service.icon ? (
-                        <img src={service.icon} alt={service.name} width={24} height={24} className="h-6 w-6 object-contain" />
-                      ) : (
-                        <span className="text-xs font-semibold tracking-[0.16em] text-foreground">CV</span>
-                      )}
+                      <img src={service.icon} alt={service.name} width={24} height={24} className="h-6 w-6 object-contain" />
                     </span>
                     <div>
                       <p className="text-sm font-semibold text-foreground">{service.name}</p>

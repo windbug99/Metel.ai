@@ -46,6 +46,13 @@ type OrganizationOAuthPolicyPayload = {
   };
 };
 
+const PROVIDER_LOGOS = {
+  notion: "https://images.seeklogo.com/logo-png/46/1/notion-icon-logo-png_seeklogo-465585.png",
+  linear: "https://images.seeklogo.com/logo-png/48/1/linear-icon-logo-png_seeklogo-483921.png",
+  github: "https://images.seeklogo.com/logo-png/27/1/github-logo-png_seeklogo-273183.png",
+  canva: "https://images.seeklogo.com/logo-png/65/1/canva-logo-png_seeklogo-653227.png",
+} as const;
+
 function formatDate(value?: string | null): string {
   if (!value) {
     return "-";
@@ -67,17 +74,8 @@ function formatProviderLabel(provider: string): string {
 
 function providerLogoSrc(provider: string): string | null {
   const value = String(provider ?? "").trim().toLowerCase();
-  if (value === "canva") {
-    return null;
-  }
-  if (value === "linear") {
-    return "/logos/linear.svg";
-  }
-  if (value === "notion") {
-    return "/logos/notion.svg";
-  }
-  if (value === "github") {
-    return "/logos/github.svg";
+  if (value in PROVIDER_LOGOS) {
+    return PROVIDER_LOGOS[value as keyof typeof PROVIDER_LOGOS];
   }
   return null;
 }
@@ -90,6 +88,7 @@ function normalizeProviders(items: string[]): string[] {
 
 function ServiceRow({
   name,
+  provider,
   status,
   error,
   busy,
@@ -97,18 +96,29 @@ function ServiceRow({
   onDisconnect,
 }: {
   name: string;
+  provider: OAuthProvider;
   status: OAuthStatus | null;
   error: string | null;
   busy: boolean;
   onConnect: () => void;
   onDisconnect: () => void;
 }) {
+  const logoSrc = providerLogoSrc(provider);
   return (
     <article className="rounded-md border border-border p-3">
       <div className="flex items-center justify-between gap-3">
-        <div>
-          <p className="text-sm font-medium">{name}</p>
-          <p className="text-xs text-muted-foreground">{status?.connected ? "Connected" : "Not connected"}</p>
+        <div className="flex items-center gap-3">
+          <span className="inline-flex h-9 w-9 shrink-0 items-center justify-center rounded-md border border-border bg-muted">
+            {logoSrc ? (
+              <Image src={logoSrc} alt={`${name} logo`} width={20} height={20} className="h-5 w-5 object-contain" />
+            ) : (
+              <span className="text-[10px] font-medium">{name.slice(0, 1)}</span>
+            )}
+          </span>
+          <div>
+            <p className="text-sm font-medium">{name}</p>
+            <p className="text-xs text-muted-foreground">{status?.connected ? "Connected" : "Not connected"}</p>
+          </div>
         </div>
 
         {status?.connected ? (
@@ -626,6 +636,7 @@ export default function DashboardOAuthConnectionsPage() {
           <>
             <ServiceRow
               name="Notion"
+              provider="notion"
               status={notionStatus}
               error={notionError}
               busy={notionBusy}
@@ -634,6 +645,7 @@ export default function DashboardOAuthConnectionsPage() {
             />
             <ServiceRow
               name="Linear"
+              provider="linear"
               status={linearStatus}
               error={linearError}
               busy={linearBusy}
@@ -642,6 +654,7 @@ export default function DashboardOAuthConnectionsPage() {
             />
             <ServiceRow
               name="GitHub"
+              provider="github"
               status={githubStatus}
               error={githubError}
               busy={githubBusy}
@@ -650,6 +663,7 @@ export default function DashboardOAuthConnectionsPage() {
             />
             <ServiceRow
               name="Canva"
+              provider="canva"
               status={canvaStatus}
               error={canvaError}
               busy={canvaBusy}
