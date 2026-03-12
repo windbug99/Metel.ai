@@ -62,6 +62,17 @@ console.log(await mcp("call_tool", {
 API_BASE_URL="${base}" \\
 API_KEY="metel_xxx" \\
 python scripts/check_claude_bridge_tools.py`,
+    claudeDesktopArgsHelp: `# Find the absolute path for args[0]
+cd /Users/tomato/cursor/metel
+realpath backend/scripts/mcp_stdio_bridge.py
+
+# If realpath is unavailable
+cd /Users/tomato/cursor/metel
+pwd
+
+# Append /backend/scripts/mcp_stdio_bridge.py to the pwd output
+# Example:
+# /Users/tomato/cursor/metel/backend/scripts/mcp_stdio_bridge.py`,
     n8nHttpNode: `// n8n HTTP Request node settings
 // Method: POST
 // URL: ${base}/mcp
@@ -121,11 +132,11 @@ export default function DashboardMcpGuidePage() {
   const examples = useMemo(() => buildExamples(apiBaseUrl), [apiBaseUrl]);
 
   const [copyState, setCopyState] = useState<
-    "" | "list_tools" | "call_tool" | "custom_agent_node" | "claude_config" | "claude_check" | "n8n_http" | "n8n_call" | "canva_list" | "canva_create" | "canva_export" | "canva_folder" | "canva_import" | "canva_comment" | "canva_brand_templates"
+    "" | "list_tools" | "call_tool" | "custom_agent_node" | "claude_config" | "claude_check" | "claude_args_help" | "n8n_http" | "n8n_call" | "canva_list" | "canva_create" | "canva_export" | "canva_folder" | "canva_import" | "canva_comment" | "canva_brand_templates"
   >("");
 
   const copyText = async (
-    kind: "list_tools" | "call_tool" | "custom_agent_node" | "claude_config" | "claude_check" | "n8n_http" | "n8n_call" | "canva_list" | "canva_create" | "canva_export" | "canva_folder" | "canva_import" | "canva_comment" | "canva_brand_templates"
+    kind: "list_tools" | "call_tool" | "custom_agent_node" | "claude_config" | "claude_check" | "claude_args_help" | "n8n_http" | "n8n_call" | "canva_list" | "canva_create" | "canva_export" | "canva_folder" | "canva_import" | "canva_comment" | "canva_brand_templates"
   ) => {
     const text =
       kind === "list_tools"
@@ -138,7 +149,9 @@ export default function DashboardMcpGuidePage() {
               ? examples.claudeDesktopConfig
               : kind === "claude_check"
                 ? examples.claudeDesktopCheck
-                : kind === "n8n_http"
+                : kind === "claude_args_help"
+                  ? examples.claudeDesktopArgsHelp
+                  : kind === "n8n_http"
                   ? examples.n8nHttpNode
                   : kind === "n8n_call"
                     ? examples.n8nCallToolBody
@@ -223,6 +236,18 @@ export default function DashboardMcpGuidePage() {
               </Button>
             </div>
             <pre className="overflow-x-auto rounded bg-muted/60 p-3 text-[11px] text-muted-foreground">{examples.claudeDesktopConfig}</pre>
+
+            <div className="mt-3 mb-2 flex items-center justify-between gap-2">
+              <p className="text-xs font-medium">How to find your own args path</p>
+              <Button
+                type="button"
+                onClick={() => void copyText("claude_args_help")}
+                className="ds-btn h-8 rounded-md px-3 text-xs"
+              >
+                {copyState === "claude_args_help" ? "Copied" : "Copy"}
+              </Button>
+            </div>
+            <pre className="overflow-x-auto rounded bg-muted/60 p-3 text-[11px] text-muted-foreground">{examples.claudeDesktopArgsHelp}</pre>
 
             <div className="mt-3 mb-2 flex items-center justify-between gap-2">
               <p className="text-xs font-medium">Bridge quick check command</p>

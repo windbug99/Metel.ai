@@ -46,6 +46,22 @@ Expected:
 
 Add an MCP server entry in `claude_desktop_config.json`.
 
+Before editing `args`, find your own absolute path for the bridge script. Do not keep the placeholder path.
+
+```bash
+cd /Users/tomato/cursor/metel
+realpath backend/scripts/mcp_stdio_bridge.py
+```
+
+If `realpath` is unavailable, use:
+
+```bash
+cd /Users/tomato/cursor/metel
+pwd
+```
+
+Then append `/backend/scripts/mcp_stdio_bridge.py` to the `pwd` output and use that full path as `args[0]`.
+
 ```json
 {
   "mcpServers": {
